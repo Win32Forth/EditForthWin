@@ -10,6 +10,16 @@
       "cwd": "${workspaceFolder}",
       "console": "internalConsole",
       "preLaunchTask": "build ARM64"
+    },
+    {
+      "name": "Run Editor",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/Edit/build/arm64/editforthwin.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "preLaunchTask": "build ARM64"
     }
   ]
 }
