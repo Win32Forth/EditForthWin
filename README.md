@@ -1,16 +1,24 @@
 # EditForthWin
 
-Windows sibling of [EditForth](https://github.com/Win32Forth/EditForth). This tree is the console interpreter. The Qt editor is not written yet.
+Windows sibling of [EditForth](https://github.com/Win32Forth/EditForth). This tree is the Forth console. The Qt editor is not written yet.
 
 **Version 1.0.0**, released Oct 15, 2026 3:28 PM.
 
-A startup prints the cold-load lines, then:
+Starting `forth.exe` opens a window. The cold-load lines appear, then the banner, then a prompt:
 
 ```
 === EditForthWin 1.0.0 === Oct 15, 2026 3:28 PM ===
+ok(0)>
 ```
 
-That line is the same shape as the Mac EditForth console banner. The version and the release date and time are fixed in `Forth\host\main.c` and change when the version changes.
+The banner matches the Mac EditForth console. The version and the release date and time are fixed in `Forth\host\main.c` and change when the version changes. Return evaluates the line at the prompt. Up and Down recall earlier lines. `BYE` closes the window.
+
+`--agent` runs the same kernel with no window and writes the transcript to the console that launched it:
+
+```bat
+forth.exe --agent -e "2 3 + ."
+forth.exe --agent --help
+```
 
 ## Layout
 
@@ -28,7 +36,7 @@ From this directory:
 build.bat
 ```
 
-The executable is `Forth\build\arm64\forth.exe`. In VS Code, Ctrl+Shift+B builds it. F5 builds it and opens the REPL. Close a running `forth.exe` before rebuilding, or the linker cannot replace it.
+The executable is `Forth\build\arm64\forth.exe`. In VS Code, Ctrl+Shift+B builds it. F5 builds it and opens the window. Close a running `forth.exe` before rebuilding, or the linker cannot replace it.
 
 ## Later
 

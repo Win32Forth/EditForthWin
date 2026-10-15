@@ -3,8 +3,53 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <io.h>
 #include <windows.h>
+
+extern unsigned char data_stack[];
+extern unsigned long long vm_dsp;
+
+static void sink_discard(const void *p, size_t n)
+{
+    (void)p;
+    (void)n;
+}
+
+static void (*host_sink)(const void *, size_t) = sink_discard;
+static int (*key_hook)(void);
+
+void host_set_sink(void (*fn)(const void *, size_t))
+{
+    host_sink = fn != NULL ? fn : sink_discard;
+}
+
+void host_out(const void *p, size_t n)
+{
+    if (p != NULL && n != 0)
+        host_sink(p, n);
+}
+
+void host_outs(const char *s)
+{
+    if (s != NULL && s[0] != '\0')
+        host_out(s, strlen(s));
+}
+
+void forth_set_key_hook(int (*fn)(void))
+{
+    key_hook = fn;
+}
+
+long long forth_depth(void)
+{
+    unsigned long long sp0;
+
+    sp0 = (unsigned long long)(uintptr_t)data_stack + 4096ULL;
+    if (vm_dsp == 0 || vm_dsp > sp0)
+        return 0;
+    return (long long)((sp0 - vm_dsp) / 8ULL);
+}
 
 unsigned long long host_ms(void)
 {
@@ -335,29 +380,28 @@ void host_last_included(long long *addr, long long *len)
 void host_dot_included(void)
 {
     if (reg_n <= 0) {
-        fputs("Included:\n  (none)\n", stdout);
-        fflush(stdout);
+        host_outs("Included:\n  (none)\n");
         return;
     }
-    fputs("Included:\n", stdout);
+    host_outs("Included:\n");
     for (int i = 0; i < reg_n; i++) {
-        fputs("  ", stdout);
-        fwrite(reg_path[i], 1, (size_t)reg_len[i], stdout);
-        fputc('\n', stdout);
+        host_outs("  ");
+        host_out(reg_path[i], (size_t)reg_len[i]);
+        host_outs("\n");
     }
-    fflush(stdout);
 }
 
 static void emit_c(int c)
 {
-    fputc(c, stdout);
-    fflush(stdout);
+    unsigned char b = (unsigned char)c;
+    host_out(&b, 1);
 }
 
 static int key_c(void)
 {
-    int c = getchar();
-    return c == EOF ? -1 : c;
+    if (key_hook != NULL)
+        return key_hook();
+    return -1;
 }
 
 long long host_read_line(char *buf, long long n, long long id, long long *flag)
@@ -526,9 +570,8 @@ void host_pwd(void)
 
     if (n == 0 || n >= sizeof buf)
         return;
-    fputs(buf, stdout);
-    fputc('\n', stdout);
-    fflush(stdout);
+    host_out(buf, strlen(buf));
+    host_outs("\n");
 }
 
 long long host_cwd(char *buf, long long max)
@@ -599,11 +642,10 @@ void host_dir(const char *p, long long n)
     do {
         if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
             continue;
-        fputs(fd.cFileName, stdout);
-        fputc('\n', stdout);
+        host_out(fd.cFileName, strlen(fd.cFileName));
+        host_outs("\n");
     } while (FindNextFileA(h, &fd));
     FindClose(h);
-    fflush(stdout);
 }
 
 long long host_accept(char *buf, long long n)
@@ -614,8 +656,8 @@ long long host_accept(char *buf, long long n)
     if (buf == NULL || n <= 0)
         return 0;
     while (i < n) {
-        c = getchar();
-        if (c == EOF || c == '\n')
+        c = key_c();
+        if (c < 0 || c == '\n')
             break;
         if (c == '\r')
             continue;
@@ -624,87 +666,75 @@ long long host_accept(char *buf, long long n)
     return i;
 }
 
-static int eval_buffer(const char *text, size_t n)
+int forth_eval(const char *text, size_t n)
 {
-    int rc = kernel_eval(text, n);
-    if (rc == 0) {
-        fputs("ok\n", stdout);
-        fflush(stdout);
+    return kernel_eval(text, n);
+}
+
+void forth_prompt(void)
+{
+    char buf[64];
+    int n = snprintf(buf, sizeof buf, "ok(%lld)> ", forth_depth());
+    if (n > 0)
+        host_out(buf, (size_t)n);
+}
+
+int forth_boot(void)
+{
+    kernel_set_emit(emit_c);
+    kernel_set_key(key_c);
+    if (kernel_init() != 0) {
+        host_outs("kernel_init failed\n");
+        return 1;
     }
-    return rc;
+    host_outs("=== EditForthWin 1.0.0 === Oct 15, 2026 3:28 PM ===\n");
+    return 0;
 }
 
 /* One kernel_eval of the whole file. kernel1.fth defines words across lines. */
-static int eval_file(const char *path)
+int forth_eval_file(const char *path)
 {
     FILE *fp = NULL;
     long sz;
     char *buf;
     size_t nread;
     int rc;
+    char msg[HOST_PATH + 64];
 
     if (fopen_s(&fp, path, "rb") != 0 || fp == NULL) {
-        fprintf(stderr, "cannot open %s\n", path);
+        snprintf(msg, sizeof msg, "cannot open %s\n", path);
+        host_outs(msg);
         return -1;
     }
     if (fseek(fp, 0, SEEK_END) != 0) {
         fclose(fp);
-        fprintf(stderr, "cannot size %s\n", path);
+        snprintf(msg, sizeof msg, "cannot size %s\n", path);
+        host_outs(msg);
         return -1;
     }
     sz = ftell(fp);
     if (sz < 0) {
         fclose(fp);
-        fprintf(stderr, "cannot size %s\n", path);
+        snprintf(msg, sizeof msg, "cannot size %s\n", path);
+        host_outs(msg);
         return -1;
     }
     if (fseek(fp, 0, SEEK_SET) != 0) {
         fclose(fp);
-        fprintf(stderr, "cannot read %s\n", path);
+        snprintf(msg, sizeof msg, "cannot read %s\n", path);
+        host_outs(msg);
         return -1;
     }
     buf = (char *)malloc((size_t)sz + 1);
     if (buf == NULL) {
         fclose(fp);
-        fprintf(stderr, "out of memory\n");
+        host_outs("out of memory\n");
         return -1;
     }
     nread = fread(buf, 1, (size_t)sz, fp);
     fclose(fp);
     buf[nread] = '\0';
-    rc = eval_buffer(buf, nread);
+    rc = forth_eval(buf, nread);
     free(buf);
     return rc;
-}
-
-int main(int argc, char **argv)
-{
-    char line[1024];
-
-    kernel_set_emit(emit_c);
-    kernel_set_key(key_c);
-    if (kernel_init() != 0) {
-        fprintf(stderr, "kernel_init failed\n");
-        return 1;
-    }
-
-    fputs("=== EditForthWin 1.0.0 === Oct 15, 2026 3:28 PM ===\n", stdout);
-    fflush(stdout);
-
-    for (int i = 1; i < argc; i++) {
-        int rc = eval_file(argv[i]);
-        if (rc != 0)
-            return 1;
-    }
-
-    for (;;) {
-        if (fgets(line, (int)sizeof line, stdin) == NULL)
-            break;
-        size_t n = strlen(line);
-        while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r'))
-            line[--n] = '\0';
-        if (eval_buffer(line, n) != 0)
-            break;
-    }
-    return 0;
 }

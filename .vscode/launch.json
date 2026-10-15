@@ -8,7 +8,7 @@
       "program": "${workspaceFolder}/Forth/build/arm64/forth.exe",
       "args": [],
       "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
+      "console": "internalConsole",
       "preLaunchTask": "build ARM64"
     }
   ]
