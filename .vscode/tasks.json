@@ -1,0 +1,26 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build ARM64",
+      "type": "shell",
+      "command": "${workspaceFolder}\\build.bat",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "run ARM64",
+      "type": "shell",
+      "command": "${workspaceFolder}\\Forth\\build\\arm64\\forth.exe",
+      "dependsOn": "build ARM64",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

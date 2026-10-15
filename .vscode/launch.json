@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run ARM64 Forth",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/Forth/build/arm64/forth.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "build ARM64"
+    }
+  ]
+}

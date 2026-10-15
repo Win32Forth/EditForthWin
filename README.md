@@ -1,0 +1,35 @@
+# EditForthWin
+
+Windows sibling of [EditForth](https://github.com/Win32Forth/EditForth). This tree is the console interpreter. The Qt editor is not written yet.
+
+**Version 1.0.0**, released Oct 15, 2026 3:28 PM.
+
+A startup prints the cold-load lines, then:
+
+```
+=== EditForthWin 1.0.0 === Oct 15, 2026 3:28 PM ===
+```
+
+That line is the same shape as the Mac EditForth console banner. The version and the release date and time are fixed in `Forth\host\main.c` and change when the version changes.
+
+## Layout
+
+`Forth` is the interpreter. `Edit` is reserved for the editor. `build.bat` at the project root is the build entry. Forth objects and `forth.exe` go in `Forth\build\arm64\`.
+
+The ARM64 kernel under `Forth\kernel\arm64` is indirect-threaded code with TOS in `x20`, the same register map as the Mac kernel. `NEXT` loads a code field and jumps to it. Assembly words use `BOOT_WORD` rows and the Mac header: counted help, counted name, link, flags, code field. `Forth\host\main.c` is the C host. Windows calls stay there. `Forth\include\kernel_api.h` exposes `kernel_init`, `kernel_eval`, `kernel_set_emit`, and `kernel_set_key`.
+
+Cold start interprets one blob of `kernel1.fth`, `kernel2.fth`, `vocemit.fth`, `app-output.fth`, `app-points.fth`, `vocsys.fth`, and `xref.fth`. Other files load with `INCLUDE`. The x64 kernel is the same ITC design and is not started.
+
+## Build
+
+From this directory:
+
+```bat
+build.bat
+```
+
+The executable is `Forth\build\arm64\forth.exe`. In VS Code, Ctrl+Shift+B builds it. F5 builds it and opens the REPL. Close a running `forth.exe` before rebuilding, or the linker cannot replace it.
+
+## Later
+
+The x64 kernel, the Qt editor, the debugger, the facility screen, graphics windows, and native code are not in 1.0.0. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false.

@@ -1,0 +1,8 @@
+Forth/build/
+Edit/build/
+.vs/
+*.user
+*.obj
+*.exe
+*.pdb
+*.ilk
