@@ -106,12 +106,12 @@ The other `DBG-*` hooks live in `SYSVOC`. `DBG-HOST-SPAN` remembers an editor sp
 
 `FROMLIB FLOAD Testing/ANSValidate/ANS-VALIDATE.fth` was run after the normal boot on Oct 16, 2026.
 
-Core, Core Ext, Search-Order, String, Facility, Exception, and Memory-Allocation finished with an empty stack and no failures.
+Core, Core Ext, Search-Order, String, Facility, Exception, Memory-Allocation, Double, Locals, Programming-Tools, and File-Access finished with an empty stack and no failures. `123.` is a double literal. `LOCALS|` compiles its locals.
 
-Double failed one check. `123.` is not accepted as a double literal, so the suite printed `123. ?` and `FAIL: lit.`. The rest of that section finished.
+Block then stopped the run. `LOAD` does not interpret the block, so the suite printed `BL-T ?` and `FAIL: LOAD`. `BLK` is not defined, so the next line printed `BLK ?` and the process faulted. XChar, Float, and Host did not run. There is no final pass count.
 
-Locals then stopped the run. `(LOCAL)` does not compile a local, so `LOCALS|` leaves the name unknown and the following `TO` aborts the load. Tools, File, Block, XChar, Float, and Host did not run. There is no final pass count.
+The assembly words still open are listed in `REMAINING.md`.
 
 ## Later
 
-The x64 kernel and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false. Trailing-dot double literals and `(LOCAL)` are the open ANS-VALIDATE gaps above. Emitter and Hyper stay commented out of autoload.
+The x64 kernel and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false. The open assembly gaps are in `REMAINING.md`. Emitter and Hyper stay commented out of autoload.

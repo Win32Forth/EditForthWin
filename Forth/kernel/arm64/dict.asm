@@ -275,14 +275,27 @@ _find_miss
         mov     x1, #0
         ret
 
-; x0=addr, x1=len. x0=1 and x1=value, or x0=0.
+; x0=addr, x1=len.
+; x0=1 and x1=value for a single cell.
+; x0=2, x1=lo, x2=hi when the token ends in '.'
+; x0=0 on failure.
 ; Honors BASE (2..36). Optional # $ % prefixes and a leading sign.
+; A trailing dot is a double. The high cell is the sign extension.
 ; Does not clobber the VM registers.
 _parse_number
         cbz     x1, _pnum_no
         mov     x9, x0
         mov     x10, x1
         mov     x11, #0
+        mov     x12, #0
+        add     x3, x9, x10
+        ldrb    w4, [x3, #-1]
+        cmp     w4, #46
+        b.ne    _pnum_base
+        mov     x12, #1
+        sub     x10, x10, #1
+        cbz     x10, _pnum_no
+_pnum_base
         adrp    x5, base_var
         add     x5, x5, base_var
         ldr     x5, [x5]
@@ -360,8 +373,14 @@ _pnum_digit
         b       _pnum_loop
 _pnum_done
         cbz     x7, _pnum_no
-        cbz     x11, _pnum_yes
+        cbz     x11, _pnum_pos
         neg     x6, x6
+_pnum_pos
+        cbz     x12, _pnum_yes
+        asr     x2, x6, #63
+        mov     x1, x6
+        mov     x0, #2
+        ret
 _pnum_yes
         mov     x1, x6
         mov     x0, #1

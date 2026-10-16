@@ -506,6 +506,8 @@ _try_number_after_find
         mov     x1, x26
         bl      _parse_number
         cbz     x0, _interpret_undef
+        cmp     x0, #2
+        b.eq    _number_double
         adrp    x2, state_var
         add     x2, x2, state_var
         ldr     x2, [x2]
@@ -522,6 +524,33 @@ _compile_lit
         bl      _compile_cell
         mov     x0, x25
         bl      _compile_cell
+        b       _interpret_loop
+
+_number_double
+        adrp    x3, state_var
+        add     x3, x3, state_var
+        ldr     x3, [x3]
+        cbnz    x3, _compile_dlit
+        str     x20, [x22, #-8]!
+        str     x1, [x22, #-8]!
+        mov     x20, x2
+        b       _interpret_loop
+
+_compile_dlit
+        stp     x1, x2, [sp, #-16]!
+        adrp    x0, cfa_lit
+        add     x0, x0, cfa_lit
+        ldr     x0, [x0]
+        bl      _compile_cell
+        ldr     x0, [sp]
+        bl      _compile_cell
+        adrp    x0, cfa_lit
+        add     x0, x0, cfa_lit
+        ldr     x0, [x0]
+        bl      _compile_cell
+        ldr     x0, [sp, #8]
+        bl      _compile_cell
+        add     sp, sp, #16
         b       _interpret_loop
 
 _interpret_undef

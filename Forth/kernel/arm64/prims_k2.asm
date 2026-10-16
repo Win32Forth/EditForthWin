@@ -51,7 +51,13 @@
         EXTERN _find_word
         EXTERN _compile_cell
         EXTERN _local_lookup
+        EXTERN _local_compile_reset
+        EXTERN _local_add_name
+        EXTERN _local_finalize_compile
         EXTERN cfa_local_store
+        EXTERN local_declaring
+        EXTERN local_init_count
+        EXTERN local_init_reverse
         EXTERN _cursor_load
         EXTERN _cursor_commit
         EXTERN _putchar
@@ -1813,14 +1819,55 @@ XFLOAT_OP
 XFLOAT_OP_END
         NEXT
 
-        BOOT_WORD (LOCAL), (LOCAL) ( c-addr u -- ) locals are not compiled yet, 0, XLOCAL_PAREN, XLOCAL_PAREN_END
+        BOOT_WORD (LOCAL), (LOCAL) ( c-addr u -- ) declare a local or end the local list, 0, XLOCAL_PAREN, XLOCAL_PAREN_END
 XLOCAL_PAREN
+        stp     x29, x30, [sp, #-16]!
         adrp    x0, state_var
         add     x0, x0, state_var
         ldr     x0, [x0]
-        cbz     x0, XLOCAL_PAREN_END
+        cbz     x0, _lp_leave
+        mov     x1, x20
+        ldr     x0, [x22], #8
         ldr     x20, [x22], #8
-        ldr     x20, [x22], #8
+        cbz     x1, _lp_last
+        adrp    x2, local_declaring
+        add     x2, x2, local_declaring
+        ldr     x3, [x2]
+        cbnz    x3, _lp_add
+        stp     x0, x1, [sp, #-16]!
+        bl      _local_compile_reset
+        ldp     x0, x1, [sp], #16
+        adrp    x3, local_init_reverse
+        add     x3, x3, local_init_reverse
+        str     xzr, [x3]
+        mov     x3, #1
+        adrp    x2, local_declaring
+        add     x2, x2, local_declaring
+        str     x3, [x2]
+_lp_add
+        bl      _local_add_name
+        adrp    x2, local_init_count
+        add     x2, x2, local_init_count
+        ldr     x3, [x2]
+        add     x3, x3, #1
+        str     x3, [x2]
+        b       _lp_leave
+_lp_last
+        adrp    x2, local_declaring
+        add     x2, x2, local_declaring
+        ldr     x3, [x2]
+        cbnz    x3, _lp_fin
+        bl      _local_compile_reset
+        adrp    x3, local_init_reverse
+        add     x3, x3, local_init_reverse
+        str     xzr, [x3]
+_lp_fin
+        bl      _local_finalize_compile
+        adrp    x2, local_declaring
+        add     x2, x2, local_declaring
+        str     xzr, [x2]
+_lp_leave
+        ldp     x29, x30, [sp], #16
 XLOCAL_PAREN_END
         NEXT
 
