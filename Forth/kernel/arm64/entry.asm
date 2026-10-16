@@ -28,6 +28,9 @@
         EXTERN line_limit
         EXTERN line_next
         EXTERN source_id
+        EXTERN file_echo
+        EXTERN file_echo_pos
+        EXTERN file_echo_stack
         EXTERN source_sp
         EXTERN source_stack
         EXTERN local_frame_depth
@@ -39,6 +42,9 @@
         EXTERN cfa_0branch
         EXTERN cfa_does
         EXTERN cfa_slit
+        EXTERN cfa_cstr
+        EXTERN cfa_execute
+        EXTERN cfa_comma
         EXTERN cfa_flit
         EXTERN cfa_local_init
         EXTERN cfa_local_at
@@ -59,6 +65,8 @@
         EXTERN _record_words_user_base_once
         EXTERN emit_str
         EXTERN emit_cstr
+        EXTERN _putchar
+        EXTERN _print_unsigned
         EXTERN forth_init_str
         EXTERN forth_init_end
         EXPORT kernel_init
@@ -294,6 +302,21 @@ _boot_cache_cfa PROC
         adrp    x2, cfa_slit
         add     x2, x2, cfa_slit
         bl      _bcc_match
+        adrp    x1, boot_cmp_cstr
+        add     x1, x1, boot_cmp_cstr
+        adrp    x2, cfa_cstr
+        add     x2, x2, cfa_cstr
+        bl      _bcc_match
+        adrp    x1, boot_cmp_execute
+        add     x1, x1, boot_cmp_execute
+        adrp    x2, cfa_execute
+        add     x2, x2, cfa_execute
+        bl      _bcc_match
+        adrp    x1, boot_cmp_comma
+        add     x1, x1, boot_cmp_comma
+        adrp    x2, cfa_comma
+        add     x2, x2, cfa_comma
+        bl      _bcc_match
         adrp    x1, boot_cmp_flit
         add     x1, x1, boot_cmp_flit
         adrp    x2, cfa_flit
@@ -410,6 +433,7 @@ _eval_go
 _interpret_loop
         adrp    x24, latest_var
         add     x24, x24, latest_var
+        bl      _file_echo_upto_cursor
         bl      _next_word
         cbz     x1, _interpret_empty
         mov     x25, x0
@@ -579,9 +603,232 @@ _embed_ret_x0
         ret
         ENDP
 
+; FILE-ECHO. Echo source lines of a file load up through the line that
+; holds the next token. Each line is "NNNNN| " plus the text. source-id
+; -2 is (LINE-SOURCE). A positive id is a classic file buffer.
+_file_echo_upto_cursor
+        stp     x29, x30, [sp, #-16]!
+        adrp    x0, file_echo
+        add     x0, x0, file_echo
+        ldr     x0, [x0]
+        cbz     x0, _fe_done
+        adrp    x0, source_id
+        add     x0, x0, source_id
+        ldr     x0, [x0]
+        cmp     x0, #0
+        b.gt    _fe_on
+        cmn     x0, #2
+        b.ne    _fe_done
+_fe_on
+        sub     sp, sp, #48
+        adrp    x4, line_mode
+        add     x4, x4, line_mode
+        ldr     x4, [x4]
+        cbz     x4, _fe_src
+        adrp    x1, line_origin
+        add     x1, x1, line_origin
+        ldr     x1, [x1]
+        adrp    x2, line_limit
+        add     x2, x2, line_limit
+        ldr     x2, [x2]
+        b       _fe_bounds
+_fe_src
+        adrp    x1, source_base
+        add     x1, x1, source_base
+        ldr     x1, [x1]
+        adrp    x2, source_end
+        add     x2, x2, source_end
+        ldr     x2, [x2]
+_fe_bounds
+        str     x1, [sp]
+        str     x2, [sp, #8]
+        adrp    x0, source_cur
+        add     x0, x0, source_cur
+        ldr     x0, [x0]
+        cmp     x0, x1
+        b.hs    _fe_clamp_hi
+        mov     x0, x1
+_fe_clamp_hi
+        cmp     x0, x2
+        b.ls    _fe_skip
+        mov     x0, x2
+_fe_skip
+        cmp     x0, x2
+        b.hs    _fe_eol
+        ldrb    w3, [x0]
+        cbz     w3, _fe_eol
+        cmp     w3, #32
+        b.eq    _fe_skip1
+        cmp     w3, #9
+        b.eq    _fe_skip1
+        cmp     w3, #10
+        b.eq    _fe_skip1
+        cmp     w3, #13
+        b.eq    _fe_skip1
+        b       _fe_eol
+_fe_skip1
+        add     x0, x0, #1
+        b       _fe_skip
+_fe_eol
+        mov     x3, x0
+_fe_eol_scan
+        cmp     x3, x2
+        b.hs    _fe_eol_ok
+        ldrb    w4, [x3]
+        cbz     w4, _fe_eol_ok
+        cmp     w4, #10
+        b.eq    _fe_eol_ok
+        cmp     w4, #13
+        b.eq    _fe_eol_ok
+        add     x3, x3, #1
+        b       _fe_eol_scan
+_fe_eol_ok
+        str     x3, [sp, #16]
+        adrp    x4, file_echo_pos
+        add     x4, x4, file_echo_pos
+        ldr     x0, [x4]
+        ldr     x1, [sp]
+        cmp     x0, x1
+        b.hs    _fe_pos_hi
+        mov     x0, x1
+_fe_pos_hi
+        ldr     x2, [sp, #8]
+        cmp     x0, x2
+        b.ls    _fe_pos_ok
+        mov     x0, x2
+_fe_pos_ok
+        str     x0, [sp, #24]
+        ldr     x3, [sp, #16]
+        cmp     x0, x3
+        b.hs    _fe_drop
+_fe_line
+        ldr     x0, [sp, #24]
+        ldr     x3, [sp, #16]
+        cmp     x0, x3
+        b.hs    _fe_drop
+        ldr     x1, [sp]
+        cmp     x0, x1
+        b.eq    _fe_num
+        ldrb    w4, [x0, #-1]
+        cmp     w4, #10
+        b.eq    _fe_num
+        cmp     w4, #13
+        b.eq    _fe_num
+        b       _fe_text
+_fe_num
+        mov     x4, #1
+        mov     x3, x1
+_fe_count
+        cmp     x3, x0
+        b.hs    _fe_count_done
+        ldrb    w5, [x3]
+        cmp     w5, #10
+        b.ne    _fe_count_next
+        add     x4, x4, #1
+_fe_count_next
+        add     x3, x3, #1
+        b       _fe_count
+_fe_count_done
+        mov     x0, x4
+        bl      _fe_emit_lineno
+_fe_text
+        ldr     x0, [sp, #24]
+        ldr     x2, [sp, #8]
+        mov     x3, x0
+_fe_text_scan
+        cmp     x3, x2
+        b.hs    _fe_text_write
+        ldrb    w4, [x3]
+        cbz     w4, _fe_text_write
+        cmp     w4, #10
+        b.eq    _fe_text_write
+        cmp     w4, #13
+        b.eq    _fe_text_write
+        add     x3, x3, #1
+        b       _fe_text_scan
+_fe_text_write
+        mov     x1, x3
+        ldr     x0, [sp, #24]
+        subs    x1, x1, x0
+        b.eq    _fe_advance
+        str     x3, [sp, #32]
+        bl      emit_str
+        ldr     x3, [sp, #32]
+_fe_advance
+        ldr     x2, [sp, #8]
+        mov     x1, x3
+        cmp     x3, x2
+        b.hs    _fe_store
+        ldrb    w0, [x3]
+        cmp     w0, #10
+        b.eq    _fe_one
+        cmp     w0, #13
+        b.ne    _fe_store
+        add     x1, x3, #1
+        cmp     x1, x2
+        b.hs    _fe_store
+        ldrb    w0, [x1]
+        cmp     w0, #10
+        b.ne    _fe_store
+        add     x1, x1, #1
+        b       _fe_store
+_fe_one
+        add     x1, x3, #1
+_fe_store
+        str     x1, [sp, #24]
+        adrp    x4, file_echo_pos
+        add     x4, x4, file_echo_pos
+        str     x1, [x4]
+        mov     x0, #10
+        bl      _putchar
+        b       _fe_line
+_fe_drop
+        add     sp, sp, #48
+_fe_done
+        ldp     x29, x30, [sp], #16
+        ret
+
+_fe_emit_lineno
+        stp     x29, x30, [sp, #-32]!
+        str     x0, [sp, #16]
+        mov     x1, #1
+        mov     x2, #10
+_fe_digits
+        cmp     x0, x2
+        b.lo    _fe_pad
+        add     x1, x1, #1
+        mov     x3, #10
+        mul     x2, x2, x3
+        cmp     x1, #5
+        b.lo    _fe_digits
+_fe_pad
+        mov     x2, #5
+        subs    x2, x2, x1
+        b.ls    _fe_print
+_fe_spaces
+        mov     x0, #32
+        str     x2, [sp, #24]
+        bl      _putchar
+        ldr     x2, [sp, #24]
+        subs    x2, x2, #1
+        b.ne    _fe_spaces
+_fe_print
+        ldr     x0, [sp, #16]
+        bl      _print_unsigned
+        mov     x0, #124
+        bl      _putchar
+        mov     x0, #32
+        bl      _putchar
+        ldp     x29, x30, [sp], #32
+        ret
+
 ; Line window over an included file. Eight quads per source frame:
 ; base, end, >IN, source-id, line_mode, origin, limit, next.
+; file_echo_pos is reset to the start of this file image.
 _arm_lines
+        adrp    x2, file_echo_pos
+        add     x2, x2, file_echo_pos
+        str     x0, [x2]
         adrp    x2, line_origin
         add     x2, x2, line_origin
         str     x0, [x2]
@@ -698,6 +945,12 @@ _push_source
         add     x3, x3, line_next
         ldr     x3, [x3]
         str     x3, [x2]
+        adrp    x3, file_echo_pos
+        add     x3, x3, file_echo_pos
+        ldr     x3, [x3]
+        adrp    x2, file_echo_stack
+        add     x2, x2, file_echo_stack
+        str     x3, [x2, x1, lsl #3]
         add     x1, x1, #1
         str     x1, [x0]
         mov     x0, #1
@@ -753,6 +1006,12 @@ _pop_source
         ldr     x3, [x2]
         adrp    x0, line_next
         add     x0, x0, line_next
+        str     x3, [x0]
+        adrp    x2, file_echo_stack
+        add     x2, x2, file_echo_stack
+        ldr     x3, [x2, x1, lsl #3]
+        adrp    x0, file_echo_pos
+        add     x0, x0, file_echo_pos
         str     x3, [x0]
         mov     x0, #1
         ret
@@ -866,6 +1125,9 @@ boot_cmp_branch DCB     "BRANCH", 0
 boot_cmp_0branch DCB    "0BRANCH", 0
 boot_cmp_does   DCB     "(DOES>)", 0
 boot_cmp_slit   DCB     "(S", 0x22, ")", 0
+boot_cmp_cstr   DCB     "(C", 0x22, ")", 0
+boot_cmp_execute DCB    "EXECUTE", 0
+boot_cmp_comma  DCB     0x2C, 0
 boot_cmp_flit   DCB     "FLIT", 0
 boot_cmp_linit  DCB     "LOCAL-INIT", 0
 boot_cmp_lat    DCB     "(LOCAL@)", 0

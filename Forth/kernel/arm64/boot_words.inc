@@ -14,7 +14,7 @@
 ;
 ; A semicolon, comma, backslash, or quotation mark cannot appear on a
 ; call line. Those names use BOOT_WORD_SEMI / _COMMA / _BSLASH /
-; _SQUOTE / _SLIT, which still take the same flags argument.
+; _SQUOTE / _SLIT / _CQUOTE / _CSTR, which still take the same flags argument.
 
 FLAG_INLINE EQU 0x20000000
 FLAG_EMM    EQU 0x40000000
@@ -119,6 +119,22 @@ hl_$code DCB "S", 0x5C, 0x22, "$help", 0
         AREA |.bwstr|, DATA, READONLY
 nm_$code DCB "TIME", 0x26, "DATE", 0
 hl_$code DCB "TIME", 0x26, "DATE", "$help", 0
+        BOOT_ROW nm_$code, hl_$code, $flags, $code, $end, row_$code
+        MEND
+
+        MACRO
+        BOOT_WORD_CQUOTE $help, $flags, $code, $end
+        AREA |.bwstr|, DATA, READONLY
+nm_$code DCB "C", 0x22, 0
+hl_$code DCB "C", 0x22, "$help", 0
+        BOOT_ROW nm_$code, hl_$code, $flags, $code, $end, row_$code
+        MEND
+
+        MACRO
+        BOOT_WORD_CSTR $help, $flags, $code, $end
+        AREA |.bwstr|, DATA, READONLY
+nm_$code DCB "(C", 0x22, ")", 0
+hl_$code DCB "(C", 0x22, ")", "$help", 0
         BOOT_ROW nm_$code, hl_$code, $flags, $code, $end, row_$code
         MEND
 

@@ -54,11 +54,17 @@ Forth starts in `Documents\EditForthWin`. `CHDIR` with a path changes that direc
 
 The shipped copies live in `Forth\Resources`: `Library`, `AutoLoad`, `Docs`, and `Config`. The first run copies `Library`, `AutoLoad`, and `Docs` into `Documents\EditForthWin` and creates an empty `Config` folder. Files already present are left as they are. The copy looks for `Forth\Resources\Library\BigInteger\big-int.fth` by walking up from `forth.exe`.
 
-`FROMLIB` and `FROM-LIBRARY` make the next relative load start in `Documents\EditForthWin\Library`, then clear. `FROMLIB-OFF` clears that without loading. An absolute path is left unchanged. The PI demo is:
+`FROMLIB` and `FROM-LIBRARY` make the next relative load start in `Documents\EditForthWin\Library`, then clear. `FROMLIB?` is true while that arm is set, and asking does not clear it. `FROMLIB-OFF` clears it without loading. `LIBRARY-PATH` returns that absolute Library directory. An absolute path is left unchanged. The PI demo is:
 
 ```
 FROMLIB FLOAD PI/pi-test.fth
 ```
+
+## Included lines
+
+`FILE-ECHO` is a variable and starts off. `FILE-ECHO ON` prints each line of an `INCLUDE` or `FLOAD` before that line runs. The prefix is a five-digit line number, a bar, and a space.
+
+`HERE` and `CELLS` are the colon words in `kernel1.fth`: `HERE` is `DP @`, and `CELLS` multiplies by 8. `CLS` is the colon word in `app-output.fth`. It clears the graphics character grid. The assembly originals are in the boot catalog and are replaced when those files load. The assembly `CLS` clears the Forth console window.
 
 ## Big integers
 

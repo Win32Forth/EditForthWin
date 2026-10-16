@@ -429,6 +429,39 @@ void host_fromlib_off(void)
     fromlib_armed = 0;
 }
 
+long long host_fromlib_query(void)
+{
+    return fromlib_armed ? -1 : 0;
+}
+
+static void (*host_cls_fn)(void);
+
+void host_set_cls(void (*fn)(void))
+{
+    host_cls_fn = fn;
+}
+
+void host_cls(void)
+{
+    if (host_cls_fn != NULL)
+        host_cls_fn();
+}
+
+long long host_library_path(char *dst, long long cap)
+{
+    size_t n;
+
+    if (dst == NULL || cap < 2)
+        return 0;
+    n = strlen(library_root);
+    if (n >= (size_t)cap)
+        n = (size_t)cap - 1;
+    if (n > 0)
+        memcpy(dst, library_root, n);
+    dst[n] = '\0';
+    return (long long)n;
+}
+
 long long host_resolve(const char *p, long long n, char *out, long long cap)
 {
     char tmp[HOST_PATH];

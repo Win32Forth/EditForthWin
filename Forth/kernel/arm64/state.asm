@@ -48,6 +48,9 @@
         EXPORT line_limit
         EXPORT line_next
         EXPORT source_id
+        EXPORT file_echo
+        EXPORT file_echo_pos
+        EXPORT file_echo_stack
         EXPORT source_sp
         EXPORT source_stack
         EXPORT eval_resume_sp
@@ -74,6 +77,10 @@
         EXPORT cfa_0branch
         EXPORT cfa_does
         EXPORT cfa_slit
+        EXPORT cfa_cstr
+        EXPORT cfa_execute
+        EXPORT cfa_comma
+        EXPORT library_path_buf
         EXPORT exit_cfa
         EXPORT cfa_exit
         EXPORT lit_cfa
@@ -141,12 +148,16 @@ line_origin DCQ     0
 line_limit  DCQ     0
 line_next   DCQ     0
 source_id   DCQ     0
+file_echo   DCQ     0
+file_echo_pos DCQ   0
+file_echo_stack SPACE 64
 source_sp   DCQ     0
 eval_resume_sp DCQ  0
 source_stack SPACE  512
 eval_resume_stack SPACE 64
 resolve_buf SPACE   256
 pad_buffer  SPACE   1024
+library_path_buf SPACE 1024
 redef_warn  DCQ     0
 block_file  DCQ     0
 block_upd   DCQ     0
@@ -163,6 +174,9 @@ cfa_branch  DCQ     0
 cfa_0branch DCQ     0
 cfa_does    DCQ     0
 cfa_slit    DCQ     0
+cfa_cstr    DCQ     0
+cfa_execute DCQ     0
+cfa_comma   DCQ     0
 restart_cell DCQ    restart_cfa
 numbuf      SPACE   32
 word_scratch SPACE  80

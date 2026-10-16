@@ -84,6 +84,14 @@
         EXTERN host_chdir
         EXTERN host_fromlib
         EXTERN host_fromlib_off
+        EXTERN host_fromlib_query
+        EXTERN host_cls
+        EXTERN file_echo
+        EXTERN host_library_path
+        EXTERN library_path_buf
+        EXTERN cfa_execute
+        EXTERN cfa_comma
+        EXTERN XROLL
         EXTERN host_bi_mul
         EXTERN host_bi_divmod
         EXTERN host_bi_isqrt
@@ -2302,6 +2310,30 @@ XFROMLIB_OFF
         ldp     x29, x30, [sp], #16
         NEXT
 
+        BOOT_WORD FROMLIB?, FROMLIB? ( -- flag ) true when FROMLIB is armed, 0, XFROMLIB_Q, XFROMLIB_Q_END
+XFROMLIB_Q
+        stp     x29, x30, [sp, #-16]!
+        bl      host_fromlib_query
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XFROMLIB_Q_END
+        NEXT
+
+        BOOT_WORD FILE-ECHO, FILE-ECHO ( -- addr ) echo INCLUDE and FLOAD lines with a line number, 0, XFILE_ECHO, 0
+XFILE_ECHO
+        adrp    x0, file_echo
+        add     x0, x0, file_echo
+        DPUSH
+        NEXT
+
+        BOOT_WORD CLS, CLS ( -- ) clear the host console, 0, XCLS, XCLS_END
+XCLS
+        stp     x29, x30, [sp, #-16]!
+        bl      host_cls
+        ldp     x29, x30, [sp], #16
+XCLS_END
+        NEXT
+
         BOOT_WORD BI-MUL, BI-MUL ( a b r -- ) BIG-INTEGER host multiply, 0, XBIMUL, XBIMUL_END
 XBIMUL
         mov     x2, x20
@@ -2841,6 +2873,87 @@ _ri_drop
 _ri_bad
         str     x20, [x22, #-8]!
         mov     x20, #-1
+        NEXT
+
+        BOOT_WORD N>R, N>R ( xn .. x1 n -- ) ( R: -- xn .. x1 n ) move n items and the count to the return stack, 0, XNTOR, 0
+XNTOR
+        mov     x5, x20
+        mov     x1, x5
+_ntor_loop
+        cbz     x1, _ntor_count
+        ldr     x2, [x22], #8
+        str     x2, [x23, #-8]!
+        sub     x1, x1, #1
+        b       _ntor_loop
+_ntor_count
+        str     x5, [x23, #-8]!
+        ldr     x20, [x22], #8
+        NEXT
+
+        BOOT_WORD NR>, NR> ( -- xn .. x1 n ) ( R: xn .. x1 n -- ) restore n items and the count, 0, XNRFROM, 0
+XNRFROM
+        ldr     x5, [x23], #8
+        str     x20, [x22, #-8]!
+        mov     x1, x5
+_nrfrom_loop
+        cbz     x1, _nrfrom_count
+        ldr     x2, [x23], #8
+        str     x2, [x22, #-8]!
+        sub     x1, x1, #1
+        b       _nrfrom_loop
+_nrfrom_count
+        mov     x20, x5
+        NEXT
+
+        BOOT_WORD CS-PICK, CS-PICK ( i*x u -- i*x x_u ) copy the uth control-flow item, 0, XCSPICK, 0
+XCSPICK
+        b       XPICK
+
+        BOOT_WORD CS-ROLL, CS-ROLL ( xu .. x0 u -- xu-1 .. x0 xu ) rotate the uth control-flow item to the top, 0, XCSROLL, 0
+XCSROLL
+        b       XROLL
+
+        BOOT_WORD NAME>INTERPRET, NAME>INTERPRET ( nt -- xt | 0 ) interpretation xt for a name token, 0, XNAME_INTERPRET, 0
+XNAME_INTERPRET
+        NEXT
+
+        BOOT_WORD NAME>COMPILE, NAME>COMPILE ( nt -- x xt ) compilation semantics pair for a name token, 0, XNAME_COMPILE, 0
+XNAME_COMPILE
+        mov     x5, x20
+        ldr     x0, [x5, #-8]
+        tbnz    x0, #63, _nc_imm
+        adrp    x1, cfa_comma
+        add     x1, x1, cfa_comma
+        ldr     x1, [x1]
+        str     x5, [x22, #-8]!
+        mov     x20, x1
+        NEXT
+_nc_imm
+        adrp    x1, cfa_execute
+        add     x1, x1, cfa_execute
+        ldr     x1, [x1]
+        str     x5, [x22, #-8]!
+        mov     x20, x1
+        NEXT
+
+        BOOT_WORD LIBRARY-PATH, LIBRARY-PATH ( -- c-addr u ) absolute Library directory, 0, XLIBRARY_PATH, XLIBRARY_PATH_END
+XLIBRARY_PATH
+        sub     sp, sp, #64
+        stp     x29, x30, [sp, #32]
+        adrp    x0, library_path_buf
+        add     x0, x0, library_path_buf
+        mov     x1, #1024
+        bl      host_library_path
+        mov     x1, x0
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #64
+        adrp    x0, library_path_buf
+        add     x0, x0, library_path_buf
+        str     x20, [x22, #-8]!
+        mov     x20, x0
+        str     x20, [x22, #-8]!
+        mov     x20, x1
+XLIBRARY_PATH_END
         NEXT
 
         AREA |.rdata|, DATA, READONLY

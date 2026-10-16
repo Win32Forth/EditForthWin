@@ -30,6 +30,8 @@
         EXTERN cfa_0branch
         EXTERN cfa_does
         EXTERN cfa_slit
+        EXTERN cfa_cstr
+        EXTERN pad_buffer
         EXTERN wordlist_reg
         EXTERN wordlist_reg_n
         EXTERN DOCOL
@@ -86,6 +88,7 @@ XNROT
 XNROT_END
         NEXT
 
+        EXPORT XROLL
         BOOT_WORD ROLL, ROLL ( xu ... x0 u -- xu ) move the uth cell to TOS, 0, XROLL, XROLL_END
 XROLL
         mov     x1, x20
@@ -273,6 +276,15 @@ XDP
         add     x0, x0, here_ptr
         DPUSH
 XDP_END
+        NEXT
+
+        BOOT_WORD HERE, HERE ( -- addr ) current dictionary pointer, 0, XHERE, XHERE_END
+XHERE
+        adrp    x0, here_ptr
+        add     x0, x0, here_ptr
+        ldr     x0, [x0]
+        DPUSH
+XHERE_END
         NEXT
 
         BOOT_WORD ALLOT, ALLOT ( n -- ) allocate n bytes in dictionary, 0, XALLOT, XALLOT_END
@@ -688,6 +700,12 @@ XCELL
         mov     x0, #8
         DPUSH
 XCELL_END
+        NEXT
+
+        BOOT_WORD CELLS, CELLS ( n -- n ) cells to address units, 0, XCELLS, XCELLS_END
+XCELLS
+        lsl     x20, x20, #3
+XCELLS_END
         NEXT
 
 ; Depth is the cells under TOS. The cached top is not counted, so an
@@ -1355,6 +1373,101 @@ _sq_cpy
         add     x3, x3, #1
         b       _sq_cpy
 _sq_align
+        add     x1, x1, x5
+        add     x1, x1, #7
+        bic     x1, x1, #7
+        str     x1, [x0]
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #96
+        NEXT
+
+        BOOT_WORD_CSTR  ( -- c-addr ) runtime for a compiled counted string, 0, XCSTR, XCSTR_END
+XCSTR
+        str     x20, [x22, #-8]!
+        mov     x20, x19
+        ldrb    w0, [x19]
+        add     x19, x19, x0
+        add     x19, x19, #1
+        add     x19, x19, #7
+        bic     x19, x19, #7
+XCSTR_END
+        NEXT
+
+        BOOT_WORD_CQUOTE  ( -- c-addr ) compile a quote-delimited counted string, FLAG_IMM, XCQUOTE, 0
+XCQUOTE
+        sub     sp, sp, #96
+        stp     x29, x30, [sp, #32]
+        bl      _cursor_load
+        mov     x1, x0
+        adrp    x3, source_end
+        add     x3, x3, source_end
+        ldr     x6, [x3]
+        mov     x9, x1
+_cq_scan
+        cmp     x1, x6
+        b.hs    _cq_eos
+        ldrb    w3, [x1]
+        cbz     w3, _cq_eos
+        cmp     w3, #34
+        b.eq    _cq_found
+        add     x1, x1, #1
+        b       _cq_scan
+_cq_found
+        sub     x5, x1, x9
+        add     x1, x1, #1
+        b       _cq_commit
+_cq_eos
+        sub     x5, x1, x9
+_cq_commit
+        mov     x0, x1
+        bl      _cursor_commit
+        cmp     x5, #255
+        b.ls    _cq_lenok
+        mov     x5, #255
+_cq_lenok
+        adrp    x0, state_var
+        add     x0, x0, state_var
+        ldr     x0, [x0]
+        cbnz    x0, _cq_comp
+        adrp    x0, pad_buffer
+        add     x0, x0, pad_buffer
+        strb    w5, [x0]
+        mov     x3, #0
+_cq_ipad
+        cmp     x3, x5
+        b.ge    _cq_idone
+        ldrb    w4, [x9, x3]
+        add     x6, x0, #1
+        strb    w4, [x6, x3]
+        add     x3, x3, #1
+        b       _cq_ipad
+_cq_idone
+        str     x20, [x22, #-8]!
+        mov     x20, x0
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #96
+        NEXT
+_cq_comp
+        stp     x9, x5, [sp, #48]
+        adrp    x0, cfa_cstr
+        add     x0, x0, cfa_cstr
+        ldr     x0, [x0]
+        bl      _compile_cell
+        ldr     x5, [sp, #56]
+        ldr     x9, [sp, #48]
+        adrp    x0, here_ptr
+        add     x0, x0, here_ptr
+        ldr     x1, [x0]
+        strb    w5, [x1], #1
+        mov     x3, #0
+_cq_cpy
+        cmp     x3, x5
+        b.ge    _cq_align
+        ldrb    w4, [x9, x3]
+        strb    w4, [x1, x3]
+        add     x3, x3, #1
+        b       _cq_cpy
+_cq_align
         add     x1, x1, x5
         add     x1, x1, #7
         bic     x1, x1, #7

@@ -11,6 +11,7 @@
 #include <windows.h>
 
 void host_set_sink(void (*fn)(const void *, size_t));
+void host_set_cls(void (*fn)(void));
 void host_out(const void *p, size_t n);
 void host_outs(const char *s);
 void forth_set_key_hook(int (*fn)(void));
@@ -401,6 +402,7 @@ done:
 
 #define WM_APP_TEXT (WM_APP + 1)
 #define WM_APP_READY (WM_APP + 2)
+#define WM_APP_CLS (WM_APP + 3)
 
 static HWND g_hwnd;
 static HFONT g_font;
@@ -476,6 +478,26 @@ static void gui_write(const void *p, size_t n)
     LeaveCriticalSection(&g_text_cs);
     if (post)
         PostMessageW(g_hwnd, WM_APP_TEXT, 0, 0);
+}
+
+static void gui_cls(void)
+{
+    struct text_chunk *c;
+    struct text_chunk *n;
+
+    if (g_hwnd == NULL)
+        return;
+    EnterCriticalSection(&g_text_cs);
+    c = g_text_head;
+    g_text_head = NULL;
+    g_text_tail = NULL;
+    LeaveCriticalSection(&g_text_cs);
+    while (c != NULL) {
+        n = c->next;
+        free(c);
+        c = n;
+    }
+    PostMessageW(g_hwnd, WM_APP_CLS, 0, 0);
 }
 
 static int gui_key(void)
@@ -1004,6 +1026,13 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_APP_TEXT:
         console_drain();
         return 0;
+    case WM_APP_CLS:
+        g_doc_n = 0;
+        g_prot_n = 0;
+        if (g_prot != NULL)
+            g_prot[0] = 0;
+        InvalidateRect(hwnd, NULL, TRUE);
+        return 0;
     case WM_APP_READY:
         SetForegroundWindow(hwnd);
         SetFocus(hwnd);
@@ -1071,6 +1100,7 @@ static int window_run(wchar_t **argv, int show)
     SetFocus(g_hwnd);
 
     host_set_sink(gui_write);
+    host_set_cls(gui_cls);
     forth_set_key_hook(gui_key);
     thread = CreateThread(NULL, 0, forth_thread, argv, 0, NULL);
 
