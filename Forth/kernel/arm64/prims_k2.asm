@@ -88,7 +88,10 @@
         EXTERN host_fromlib
         EXTERN host_fromlib_off
         EXTERN host_fromlib_query
-        EXTERN host_cls
+        EXTERN facility_op_hook
+        EXTERN host_facility_xy
+        EXTERN host_clip_set
+        EXTERN host_clip_get
         EXTERN file_echo
         EXTERN host_library_path
         EXTERN library_path_buf
@@ -2320,11 +2323,11 @@ XFILE_ECHO
 
         BOOT_WORD CLS, CLS ( -- ) clear the host console, 0, XCLS, XCLS_END
 XCLS
-        stp     x29, x30, [sp, #-16]!
-        bl      host_cls
-        ldp     x29, x30, [sp], #16
+        mov     x0, #9
+        mov     x1, #0
+        mov     x2, #0
+        b       _facility_op_go
 XCLS_END
-        NEXT
 
         BOOT_WORD BI-MUL, BI-MUL ( a b r -- ) BIG-INTEGER host multiply, 0, XBIMUL, XBIMUL_END
 XBIMUL
@@ -2946,6 +2949,111 @@ XLIBRARY_PATH
         str     x20, [x22, #-8]!
         mov     x20, x1
 XLIBRARY_PATH_END
+        NEXT
+
+        BOOT_WORD PAGE, PAGE ( -- ) clear facility terminal and home cursor, 0, XPAGE, XPAGE_END
+XPAGE
+        mov     x0, #1
+        mov     x1, #0
+        mov     x2, #0
+        b       _facility_op_go
+XPAGE_END
+
+        BOOT_WORD AT-XY, AT-XY ( u1 u2 -- ) facility cursor to column u1 row u2, 0, XAT_XY, XAT_XY_END
+XAT_XY
+        mov     x2, x20
+        ldr     x1, [x22], #8
+        ldr     x20, [x22], #8
+        mov     x0, #2
+        b       _facility_op_go
+XAT_XY_END
+
+        BOOT_WORD AT-XY?, AT-XY? ( -- col row ) facility cursor position, 0, XAT_XY_Q, XAT_XY_Q_END
+XAT_XY_Q
+        sub     sp, sp, #32
+        stp     x29, x30, [sp, #16]
+        mov     x0, sp
+        add     x1, sp, #8
+        str     xzr, [sp]
+        str     xzr, [sp, #8]
+        bl      host_facility_xy
+        ldr     x1, [sp]
+        ldr     x2, [sp, #8]
+        ldp     x29, x30, [sp, #16]
+        add     sp, sp, #32
+        str     x20, [x22, #-8]!
+        mov     x20, x1
+        str     x20, [x22, #-8]!
+        mov     x20, x2
+XAT_XY_Q_END
+        NEXT
+
+        BOOT_WORD CLIP!, CLIP! ( c-addr u -- ) set host clipboard, 0, XCLIP_STORE, XCLIP_STORE_END
+XCLIP_STORE
+        mov     x1, x20
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_clip_set
+        ldp     x29, x30, [sp], #16
+        NEXT
+XCLIP_STORE_END
+
+        BOOT_WORD CLIP@, CLIP@ ( c-addr max -- u ) fetch host clipboard, 0, XCLIP_FETCH, XCLIP_FETCH_END
+XCLIP_FETCH
+        mov     x1, x20
+        ldr     x0, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_clip_get
+        ldp     x29, x30, [sp], #16
+        mov     x20, x0
+        NEXT
+XCLIP_FETCH_END
+
+        BOOT_WORD TERMINAL-REFRESH, TERMINAL-REFRESH ( -- ) paint facility terminal to host console, 0, XTERM_REFRESH, 0
+XTERM_REFRESH
+        mov     x0, #3
+        mov     x1, #0
+        mov     x2, #0
+        b       _facility_op_go
+
+        BOOT_WORD FACILITY-OFF, FACILITY-OFF ( -- ) leave facility terminal mode, 0, XFACILITY_OFF, 0
+XFACILITY_OFF
+        mov     x0, #4
+        mov     x1, #0
+        mov     x2, #0
+        b       _facility_op_go
+
+        BOOT_WORD (FACILITY-SIZE), (FACILITY-SIZE) ( cols rows -- ) resize facility terminal grid, 0, XFACILITY_SIZE, XFACILITY_SIZE_END
+XFACILITY_SIZE
+        mov     x2, x20
+        ldr     x1, [x22], #8
+        ldr     x20, [x22], #8
+        mov     x0, #5
+        b       _facility_op_go
+XFACILITY_SIZE_END
+
+        BOOT_WORD FACILITY-REV, FACILITY-REV ( f -- ) reverse-video on or off for facility EMIT, 0, XFACILITY_REV, XFACILITY_REV_END
+XFACILITY_REV
+        mov     x1, x20
+        ldr     x20, [x22], #8
+        mov     x0, #6
+        mov     x2, #0
+        b       _facility_op_go
+XFACILITY_REV_END
+
+        BOOT_WORD (XFACILITY-OP-GO), (XFACILITY-OP-GO) ( -- ) facility host hook x0=op x1 x2=args, 0, XFACILITY_OP_GO, XFACILITY_OP_GO_END
+XFACILITY_OP_GO
+_facility_op_go
+        adrp    x9, facility_op_hook
+        add     x9, x9, facility_op_hook
+        ldr     x9, [x9]
+        cbz     x9, fac_op_done
+        stp     x29, x30, [sp, #-16]!
+        blr     x9
+        ldp     x29, x30, [sp], #16
+fac_op_done
+XFACILITY_OP_GO_END
         NEXT
 
 next_debug_gate

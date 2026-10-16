@@ -11,6 +11,7 @@
         EXPORT inited
         EXPORT emit_fn
         EXPORT key_fn
+        EXPORT facility_op_hook
         EXPORT vm_tos
         EXPORT vm_dsp
         EXPORT vm_rsp
@@ -118,6 +119,7 @@ emit_hook
 emit_fn     DCQ     0
 key_hook
 key_fn      DCQ     0
+facility_op_hook DCQ 0
 vm_tos      DCQ     0
 vm_dsp      DCQ     0
 vm_rsp      DCQ     0

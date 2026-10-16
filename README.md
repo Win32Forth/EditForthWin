@@ -92,6 +92,14 @@ While paused, Space or `o` steps over, `i` steps into, `u` steps out, `g` runs, 
 
 The other `DBG-*` hooks live in `SYSVOC`. `DBG-HOST-SPAN` remembers an editor span. Nothing paints that span yet.
 
+## Facility terminal
+
+`PAGE` clears an 88 by 27 character grid and homes the cursor. `AT-XY` moves that cursor. Column and row are 0-based. `AT-XY?` returns the column under the row. While the grid is active, `EMIT` paints cells there instead of the console. `TERMINAL-REFRESH` writes the grid to the console. `FACILITY-OFF` sends later output back to the console. `FACILITY-REV` turns reverse video on or off for the next cells. `(FACILITY-SIZE)` sets the grid, at least 16 by 8 and at most 256 by 128.
+
+`CLIP!` and `CLIP@` copy text through the Windows clipboard. The assembly `CLS` still clears the console transcript. The `CLS` you type is the GRAPHICS word.
+
+`FACILITY` and `FACILITY-EXT` still report false. `EKEY` and the `K-` key names are not in this kernel.
+
 ## Later
 
-The x64 kernel, the facility screen, and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false.
+The x64 kernel and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false.

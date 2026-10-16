@@ -12,6 +12,7 @@
 
         EXTERN emit_hook
         EXTERN key_hook
+        EXTERN facility_op_hook
         EXTERN kernel_inited
         EXTERN bye_flag
         EXTERN latest_var
@@ -81,6 +82,8 @@
         EXPORT _kernel_set_emit
         EXPORT kernel_set_key
         EXPORT _kernel_set_key
+        EXPORT kernel_set_facility_op
+        EXPORT _kernel_set_facility_op
         EXPORT _kernel_cold_common
         EXPORT _boot_kernel
         EXPORT _boot_cache_cfa
@@ -120,6 +123,14 @@ _kernel_set_key
 kernel_set_key PROC
         adrp    x1, key_hook
         add     x1, x1, key_hook
+        str     x0, [x1]
+        ret
+        ENDP
+
+_kernel_set_facility_op
+kernel_set_facility_op PROC
+        adrp    x1, facility_op_hook
+        add     x1, x1, facility_op_hook
         str     x0, [x1]
         ret
         ENDP

@@ -642,9 +642,14 @@ void host_dot_included(void)
     }
 }
 
+int host_facility_emit(unsigned char byte);
+void host_facility_op(int64_t op, int64_t a, int64_t b);
+
 static void emit_c(int c)
 {
     unsigned char b = (unsigned char)c;
+    if (host_facility_emit(b))
+        return;
     host_out(&b, 1);
 }
 
@@ -936,6 +941,7 @@ int forth_boot(void)
 {
     kernel_set_emit(emit_c);
     kernel_set_key(key_c);
+    kernel_set_facility_op(host_facility_op);
     if (kernel_init() != 0) {
         host_outs("kernel_init failed\n");
         return 1;
