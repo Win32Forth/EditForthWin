@@ -52,7 +52,7 @@ Forth starts in `Documents\EditForthWin`. `CHDIR` with a path changes that direc
 
 ## Library
 
-The first run copies `Library`, `AutoLoad`, and `Docs` into `Documents\EditForthWin` and creates an empty `Config` folder. Files already present are left as they are. The copy looks for a library that contains `BigInteger\big-int.fth`, walking up from `forth.exe` through `Forth\Resources\Library`, `Resources\Library`, and `EditForth\Forth\Resources\Library`.
+The shipped copies live in `Forth\Resources`: `Library`, `AutoLoad`, `Docs`, and `Config`. The first run copies `Library`, `AutoLoad`, and `Docs` into `Documents\EditForthWin` and creates an empty `Config` folder. Files already present are left as they are. The copy looks for `Forth\Resources\Library\BigInteger\big-int.fth` by walking up from `forth.exe`.
 
 `FROMLIB` and `FROM-LIBRARY` make the next relative load start in `Documents\EditForthWin\Library`, then clear. `FROMLIB-OFF` clears that without loading. An absolute path is left unchanged. The PI demo is:
 
