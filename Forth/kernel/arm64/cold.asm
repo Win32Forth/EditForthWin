@@ -15,6 +15,7 @@ forth_init_str
         INCBIN  Forth/app-points.fth
         INCBIN  Forth/vocsys.fth
         INCBIN  Forth/xref.fth
+        INCBIN  Forth/boot-fix.fth
         DCB     0
 forth_init_end
 

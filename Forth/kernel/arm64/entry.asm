@@ -67,6 +67,8 @@
         EXTERN _strlen
         EXTERN _find_word
         EXTERN _parse_number
+        EXTERN host_float_op
+        EXTERN XTHROW
         EXTERN _next_word
         EXTERN _compile_cell
         EXTERN _record_words_user_base_once
@@ -507,7 +509,7 @@ _try_number_after_find
         mov     x0, x25
         mov     x1, x26
         bl      _parse_number
-        cbz     x0, _interpret_undef
+        cbz     x0, _try_charlit
         cmp     x0, #2
         b.eq    _number_double
         adrp    x2, state_var
@@ -555,6 +557,77 @@ _compile_dlit
         add     sp, sp, #16
         b       _interpret_loop
 
+; 'c' is a character literal. Length 3, apostrophe on both ends.
+_try_charlit
+        cmp     x26, #3
+        b.ne    _try_float
+        ldrb    w2, [x25]
+        cmp     w2, #39
+        b.ne    _try_float
+        ldrb    w2, [x25, #2]
+        cmp     w2, #39
+        b.ne    _try_float
+        ldrb    w1, [x25, #1]
+        adrp    x2, state_var
+        add     x2, x2, state_var
+        ldr     x2, [x2]
+        cbnz    x2, _compile_lit
+        mov     x0, x1
+        DPUSH
+        b       _interpret_loop
+
+; 1.5E0 and 1E-12. A trailing-dot double already returned from _parse_number.
+_try_float
+        sub     sp, sp, #80
+        stp     x29, x30, [sp, #32]
+        mov     x0, #100
+        mov     x1, #0
+        mov     x2, x26
+        mov     x3, #0
+        mov     x4, #0
+        mov     x5, x25
+        add     x6, sp, #48
+        str     xzr, [sp, #48]
+        str     xzr, [sp, #56]
+        str     xzr, [sp, #64]
+        bl      host_float_op
+        ldr     x6, [sp, #48]
+        ldr     x7, [sp, #56]
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #80
+        cbz     x6, _interpret_undef
+        mov     x26, x7
+        adrp    x2, state_var
+        add     x2, x2, state_var
+        ldr     x2, [x2]
+        cbnz    x2, _compile_flit
+        mov     x1, x26
+        mov     x0, #101
+        mov     x2, #0
+        mov     x3, #0
+        mov     x4, #0
+        mov     x5, #0
+        sub     sp, sp, #80
+        stp     x29, x30, [sp, #32]
+        add     x6, sp, #48
+        str     xzr, [sp, #48]
+        str     xzr, [sp, #56]
+        str     xzr, [sp, #64]
+        bl      host_float_op
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #80
+        b       _interpret_loop
+
+_compile_flit
+        mov     x25, x26
+        adrp    x0, cfa_flit
+        add     x0, x0, cfa_flit
+        ldr     x0, [x0]
+        bl      _compile_cell
+        mov     x0, x25
+        bl      _compile_cell
+        b       _interpret_loop
+
 _interpret_undef
         mov     x0, x25
         mov     x1, x26
@@ -562,7 +635,12 @@ _interpret_undef
         adrp    x0, msg_huh
         add     x0, x0, msg_huh
         bl      emit_cstr
-        b       _interpret_loop
+        adrp    x7, throw_handler
+        add     x7, x7, throw_handler
+        ldr     x1, [x7]
+        cbz     x1, _interpret_loop
+        mov     x20, #-13
+        b       XTHROW
 
 _interpret_empty
         adrp    x0, line_mode

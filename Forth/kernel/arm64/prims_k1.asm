@@ -9,10 +9,15 @@
 
         AREA |.text|, CODE, READONLY, ALIGN=4
 
+        EXTERN source_base
         EXTERN source_cur
         EXTERN source_end
+        EXTERN to_in
+        EXTERN blk_var
         EXTERN _cursor_load
         EXTERN _cursor_commit
+        EXTERN _take_line
+        EXTERN line_mode
         EXTERN throw_handler
         EXTERN dict_end
         EXTERN here_ptr
@@ -1036,8 +1041,16 @@ XTHROW
         mov     x23, x1
         ldr     x19, [x23], #8
         ldr     x6, [x23], #8
+        mov     x4, x22
         ldr     x22, [x23], #8
-        ldr     x20, [x23], #8
+        ldr     x8, [x23], #8
+        ; Deeper than CATCH: the live top is the cell under the saved DSP.
+        ; Shallower or equal keeps the CATCH snapshot.
+        cmp     x4, x22
+        b.hs    _throw_tos_snap
+        ldr     x8, [x22, #-8]
+_throw_tos_snap
+        mov     x20, x8
         ldr     x0, [x23], #8
         str     x0, [x7]
         ldr     x0, [x23], #8
@@ -1266,6 +1279,10 @@ _dotp_go
 
         BOOT_WORD_BSLASH  ( -- ) comment to end of line (immediate), FLAG_IMM, XBACKSLASH, 0
 XBACKSLASH
+        adrp    x0, blk_var
+        add     x0, x0, blk_var
+        ldr     x0, [x0]
+        cbnz    x0, _bs_block
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
         bl      _cursor_load
@@ -1290,6 +1307,30 @@ _bs_done
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
         NEXT
+_bs_block
+        adrp    x0, to_in
+        add     x0, x0, to_in
+        ldr     x1, [x0]
+        adrp    x2, source_base
+        add     x2, x2, source_base
+        ldr     x3, [x2]
+        adrp    x2, source_end
+        add     x2, x2, source_end
+        ldr     x2, [x2]
+        sub     x2, x2, x3
+        lsr     x5, x1, #6
+        add     x5, x5, #1
+        lsl     x5, x5, #6
+        cmp     x5, x2
+        b.ls    _bs_blk_ok
+        mov     x5, x2
+_bs_blk_ok
+        str     x5, [x0]
+        add     x3, x3, x5
+        adrp    x0, source_cur
+        add     x0, x0, source_cur
+        str     x3, [x0]
+        NEXT
 
         BOOT_WORD (, ( -- ) comment until ) (immediate), FLAG_IMM, XPAREN, 0
 XPAREN
@@ -1302,15 +1343,32 @@ XPAREN
         ldr     x9, [x3]
 _par_loop
         cmp     x10, x9
-        b.hs    _par_store
+        b.hs    _par_eol
         ldrb    w4, [x10]
-        cbz     w4, _par_store
+        cbz     w4, _par_eol
         cmp     w4, #41
         b.eq    _par_found
         add     x10, x10, #1
         b       _par_loop
 _par_found
         add     x10, x10, #1
+        b       _par_store
+_par_eol
+        adrp    x0, line_mode
+        add     x0, x0, line_mode
+        ldr     x0, [x0]
+        cbz     x0, _par_store
+        bl      _take_line
+        cbz     x0, _par_eof
+        bl      _cursor_load
+        mov     x10, x0
+        adrp    x3, source_end
+        add     x3, x3, source_end
+        ldr     x9, [x3]
+        b       _par_loop
+_par_eof
+        bl      _cursor_load
+        mov     x10, x0
 _par_store
         mov     x0, x10
         bl      _cursor_commit

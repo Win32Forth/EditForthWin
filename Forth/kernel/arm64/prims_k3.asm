@@ -65,6 +65,8 @@ LOCAL_FRAME_MAX EQU 16
         EXTERN host_oop_call
         EXTERN cfa_slit
         EXTERN slit_esc_buf
+        EXTERN slit_esc_buf2
+        EXTERN slit_esc_which
         EXTERN _putchar
         EXTERN emit_str
         EXTERN emit_cstr
@@ -888,8 +890,20 @@ XSESCAPE
         adrp    x6, source_end
         add     x6, x6, source_end
         ldr     x6, [x6]
+        adrp    x8, slit_esc_which
+        add     x8, x8, slit_esc_which
+        ldr     x4, [x8]
+        cbnz    x4, _se_buf2
         adrp    x7, slit_esc_buf
         add     x7, x7, slit_esc_buf
+        mov     x4, #1
+        str     x4, [x8]
+        b       _se_ready
+_se_buf2
+        adrp    x7, slit_esc_buf2
+        add     x7, x7, slit_esc_buf2
+        str     xzr, [x8]
+_se_ready
         mov     x5, #0
 _se_loop
         cmp     x1, x6
@@ -902,29 +916,105 @@ _se_loop
         cmp     x1, x6
         b.hs    _se_done
         ldrb    w2, [x1], #1
+        cmp     w2, #'a'
+        b.eq    _se_a
+        cmp     w2, #'b'
+        b.eq    _se_b
+        cmp     w2, #'e'
+        b.eq    _se_e
+        cmp     w2, #'f'
+        b.eq    _se_f
+        cmp     w2, #'l'
+        b.eq    _se_l
+        cmp     w2, #'m'
+        b.eq    _se_m
+        cmp     w2, #'n'
+        b.eq    _se_n
+        cmp     w2, #'q'
+        b.eq    _se_q
+        cmp     w2, #'r'
+        b.eq    _se_r
+        cmp     w2, #'t'
+        b.eq    _se_t
+        cmp     w2, #'v'
+        b.eq    _se_v
+        cmp     w2, #'z'
+        b.eq    _se_z
         cmp     w2, #34
-        b.eq    _se_quote
+        b.eq    _se_q
         cmp     w2, #92
         b.eq    _se_put
-        cmp     w2, #'n'
-        b.ne    _se_r
+        cmp     w2, #'x'
+        b.eq    _se_hex
+        b       _se_put
+_se_a
+        mov     w2, #7
+        b       _se_put
+_se_b
+        mov     w2, #8
+        b       _se_put
+_se_e
+        mov     w2, #27
+        b       _se_put
+_se_f
+        mov     w2, #12
+        b       _se_put
+_se_l
         mov     w2, #10
         b       _se_put
+_se_n
+        mov     w2, #10
+        b       _se_put
+_se_q
+        mov     w2, #34
+        b       _se_put
 _se_r
-        cmp     w2, #'r'
-        b.ne    _se_t
         mov     w2, #13
         b       _se_put
 _se_t
-        cmp     w2, #'t'
-        b.ne    _se_q
         mov     w2, #9
         b       _se_put
-_se_q
-        cmp     w2, #'q'
-        b.ne    _se_put
-_se_quote
-        mov     w2, #34
+_se_v
+        mov     w2, #11
+        b       _se_put
+_se_z
+        mov     w2, #0
+        b       _se_put
+_se_m
+        cmp     x5, #254
+        b.hs    _se_loop
+        mov     w2, #13
+        strb    w2, [x7, x5]
+        add     x5, x5, #1
+        mov     w2, #10
+        b       _se_put
+_se_hex
+        mov     w3, #0
+        mov     x4, #2
+_se_hx
+        cbz     x4, _se_hexput
+        cmp     x1, x6
+        b.hs    _se_hexput
+        ldrb    w2, [x1]
+        sub     w8, w2, #'0'
+        cmp     w8, #9
+        b.ls    _se_hok
+        sub     w8, w2, #'A'
+        cmp     w8, #5
+        b.ls    _se_hu
+        sub     w8, w2, #'a'
+        cmp     w8, #5
+        b.hi    _se_hexput
+_se_hu
+        add     w8, w8, #10
+_se_hok
+        add     x1, x1, #1
+        lsl     w3, w3, #4
+        orr     w3, w3, w8
+        sub     x4, x4, #1
+        b       _se_hx
+_se_hexput
+        mov     w2, w3
 _se_put
         cmp     x5, #255
         b.hs    _se_loop

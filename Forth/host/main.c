@@ -77,13 +77,111 @@ static int reg_n;
 static char last_path[256];
 static int last_len;
 
+static void host_slashes(char *s);
+
+/* ~ and ~/name expand to USERPROFILE. ~someone is left unchanged. */
+static int host_expand_home(char *dst, size_t cap, const char *src)
+{
+    char *home = NULL;
+    size_t home_n = 0;
+    size_t rest_n;
+    const char *rest;
+    int sep;
+
+    if (src == NULL)
+        return 0;
+    if (src[0] != '~') {
+        rest_n = strlen(src);
+        if (rest_n >= cap)
+            return 0;
+        memcpy(dst, src, rest_n + 1);
+        return 1;
+    }
+    rest = src + 1;
+    if (*rest == '/' || *rest == '\\')
+        rest++;
+    else if (*rest != '\0') {
+        rest_n = strlen(src);
+        if (rest_n >= cap)
+            return 0;
+        memcpy(dst, src, rest_n + 1);
+        return 1;
+    }
+    if (_dupenv_s(&home, &home_n, "USERPROFILE") != 0 || home == NULL || home[0] == '\0') {
+        free(home);
+        return 0;
+    }
+    home_n = strlen(home);
+    rest_n = strlen(rest);
+    sep = (rest_n > 0 && home[home_n - 1] != '\\' && home[home_n - 1] != '/') ? 1 : 0;
+    if (home_n + (size_t)sep + rest_n >= cap) {
+        free(home);
+        return 0;
+    }
+    memcpy(dst, home, home_n);
+    if (sep)
+        dst[home_n++] = '\\';
+    memcpy(dst + home_n, rest, rest_n + 1);
+    free(home);
+    return 1;
+}
+
 static int host_copy_path(const char *p, long long n, char *dst, size_t cap)
 {
-    if (p == NULL || n <= 0 || (unsigned long long)n >= cap)
+    char raw[HOST_PATH];
+    char expanded[HOST_PATH];
+    size_t nout;
+
+    if (p == NULL || n <= 0 || (unsigned long long)n >= sizeof raw || dst == NULL)
         return 0;
-    memcpy(dst, p, (size_t)n);
-    dst[n] = '\0';
+    memcpy(raw, p, (size_t)n);
+    raw[n] = '\0';
+    if (!host_expand_home(expanded, sizeof expanded, raw))
+        return 0;
+    host_slashes(expanded);
+    nout = strlen(expanded);
+    if (nout >= cap)
+        return 0;
+    memcpy(dst, expanded, nout + 1);
     return 1;
+}
+
+static void host_mkdir_parents(const char *path)
+{
+    char buf[HOST_PATH];
+    char *p;
+    size_t n;
+
+    if (path == NULL)
+        return;
+    n = strlen(path);
+    if (n == 0 || n >= sizeof buf)
+        return;
+    memcpy(buf, path, n + 1);
+    p = buf;
+    if (p[0] == '\\' && p[1] == '\\') {
+        p += 2;
+        p = strchr(p, '\\');
+        if (p == NULL)
+            return;
+        p++;
+        p = strchr(p, '\\');
+        if (p == NULL)
+            return;
+        p++;
+    } else if (((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) && p[1] == ':') {
+        p += 2;
+        if (*p == '\\')
+            p++;
+    }
+    for (; *p != '\0'; p++) {
+        if (*p != '\\')
+            continue;
+        *p = '\0';
+        if (buf[0] != '\0')
+            CreateDirectoryA(buf, NULL);
+        *p = '\\';
+    }
 }
 
 static int host_slot(void)
@@ -104,7 +202,7 @@ static FILE *host_lookup(long long id)
 
 static int host_abs(const char *s, long long n)
 {
-    if (n >= 1 && (s[0] == '\\' || s[0] == '/'))
+    if (n >= 1 && (s[0] == '\\' || s[0] == '/' || s[0] == '~'))
         return 1;
     if (n >= 2 && s[1] == ':' &&
         ((s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= 'a' && s[0] <= 'z')))
@@ -140,6 +238,7 @@ long long host_create(const char *p, long long n, long long fam)
     (void)fam;
     if (!host_copy_path(p, n, path, sizeof path))
         return 0;
+    host_mkdir_parents(path);
     slot = host_slot();
     if (slot == 0)
         return 0;
@@ -480,6 +579,9 @@ long long host_resolve(const char *p, long long n, char *out, long long cap)
     if (n > 0)
         memcpy(tmp, p, (size_t)n);
     tmp[n] = '\0';
+    if (!host_expand_home(joined, sizeof joined, tmp))
+        return 0;
+    memcpy(tmp, joined, strlen(joined) + 1);
     host_slashes(tmp);
     src = tmp;
     if (!host_abs(tmp, (long long)strlen(tmp)) && fromlib_armed) {

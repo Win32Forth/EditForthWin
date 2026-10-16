@@ -2,16 +2,16 @@
 
 Windows sibling of [EditForth](https://github.com/Win32Forth/EditForth). This tree holds the Forth console and the Qt editor.
 
-**Version 1.1.0** on ARM64 and **1.1.0-x64** on x64, built Oct 16, 2026 7:06 AM.
+**Version 1.2.0** on ARM64 and **1.2.0-x64** on x64, built Oct 16, 2026 10:43 AM.
 
 Starting `fortharm64.exe` or `forthx64.exe` opens a window. The cold-load lines appear, then the banner, then a prompt:
 
 ```
-=== EditForthWin 1.1.0 === Oct 16, 2026 7:06 AM ===
+=== EditForthWin 1.2.0 === Oct 16, 2026 10:43 AM ===
 ok(0)>
 ```
 
-The banner matches the Mac EditForth console. The version, the date and time, and the console window title live in the kernel assembly, so the ARM64 and x64 images can differ. ARM64 is `Forth\kernel\arm64\identity.asm` (`1.1.0`, `Oct 16, 2026 7:06 AM`, window title `EditForthWin Arm64`). x64 is `Forth\kernel\x64\identity.asm` (`1.1.0-x64`, `Oct 16, 2026 7:06 AM`, window title `EditForthWin x64`). The console prints the version and the date, and Help > About EditForthWin shows that pair after the engine reports it. Return evaluates the line at the prompt. Up and Down recall earlier lines. `BYE` closes the window.
+The banner matches the Mac EditForth console. The version, the date and time, and the console window title live in the kernel assembly, so the ARM64 and x64 images can differ. ARM64 is `Forth\kernel\arm64\identity.asm` (`1.2.0`, `Oct 16, 2026 10:43 AM`, window title `EditForthWin Arm64`). x64 is `Forth\kernel\x64\identity.asm` (`1.2.0-x64`, `Oct 16, 2026 10:43 AM`, window title `EditForthWin x64`). The console prints the version and the date, and Help > About EditForthWin shows that pair after the engine reports it. The Hayes suite passes on both executables. `REMAINING.md` records that run and the boot words that are still absent. Return evaluates the line at the prompt. Up and Down recall earlier lines. `BYE` closes the window.
 
 `--agent` runs the same kernel with no window and writes the transcript to the console that launched it:
 
@@ -27,7 +27,7 @@ fortharm64.exe --agent --help
 
 The ARM64 kernel under `Forth\kernel\arm64` is indirect-threaded code with TOS in `x20`, the same register map as the Mac kernel. `NEXT` loads a code field and jumps to it. Assembly words use `BOOT_WORD` rows and the Mac header: counted help, counted name, link, flags, code field. `Forth\host\main.c` is the C host. Windows calls stay there. `Forth\include\kernel_api.h` exposes `kernel_init`, `kernel_eval`, `kernel_set_emit`, and `kernel_set_key`.
 
-Cold start interprets one blob of `kernel1.fth`, `kernel2.fth`, `vocemit.fth`, `app-output.fth`, `app-points.fth`, `vocsys.fth`, and `xref.fth`. Other files load with `INCLUDE`. The x64 kernel is that same machine. Hand-written x64 sources are `Forth\kernel\x64\identity.asm` and `Forth\kernel\x64\vmregs.asm`. `GrokTools\arm64_to_ml64.py` translates the ARM64 sources and writes ml64 into `Forth\kernel\x64\asm`. Those assembly files are in this repository, so a clone can be read and built without a private tools folder. `build-x64.bat` runs the translator, then assembles that directory and links `forthx64.exe` and the x64 editor. Object files and executables under `Forth\build` and `Edit\build` are not kept in git. The x64 Qt kit on this machine is `C:\Qt\6.11.3\msvc2022_64`.
+Cold start interprets one blob of `kernel1.fth`, `kernel2.fth`, `vocemit.fth`, `app-output.fth`, `app-points.fth`, `vocsys.fth`, and `xref.fth`, then the Windows suffix `Forth\boot-fix.fth`. Those seven files stay byte-identical to the Mac sources. Other files load with `INCLUDE`. The x64 kernel is that same machine. Hand-written x64 sources are `Forth\kernel\x64\identity.asm` and `Forth\kernel\x64\vmregs.asm`. `GrokTools\arm64_to_ml64.py` translates the ARM64 sources and writes ml64 into `Forth\kernel\x64\asm`. Those assembly files are in this repository, so a clone can be read and built without a private tools folder. `build-x64.bat` runs the translator, then assembles that directory and links `forthx64.exe` and the x64 editor. Object files and executables under `Forth\build` and `Edit\build` are not kept in git. The x64 Qt kit on this machine is `C:\Qt\6.11.3\msvc2022_64`.
 
 ## Build
 

@@ -86,6 +86,8 @@ PUBLIC local_frames
 PUBLIC local_frame_rsp
 PUBLIC local_frame_n
 PUBLIC slit_esc_buf
+PUBLIC slit_esc_buf2
+PUBLIC slit_esc_which
 PUBLIC line_mode
 PUBLIC line_origin
 PUBLIC line_limit
@@ -271,6 +273,12 @@ local_frame_n:
 slit_esc_buf:
     ; SPACE  256
     DB 256 DUP(0)
+slit_esc_buf2:
+    ; SPACE 256
+    DB 256 DUP(0)
+slit_esc_which:
+    ; DCQ  0
+    DQ 0
 line_mode:
     ; DCQ     0
     DQ 0

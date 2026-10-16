@@ -2,7 +2,9 @@
 ; An end argument of 0 means the Mac catalog has no end label.
 ; File, block, debug, and float words are present so the file can compile.
 ; OPEN-FILE and the other file words call the C host. REFILL returns false
-; on a whole-buffer eval. In (LINE-SOURCE) it advances to the next line.
+; on EVALUATE. In (LINE-SOURCE) it advances to the next line. When BLK is
+; set, backslash ends at the next 64-character boundary and REFILL loads
+; the following block.
 
         INCLUDE Forth/kernel/arm64/vm.inc
 
@@ -1164,10 +1166,71 @@ XPARSE_NAME
         mov     x20, x5
         NEXT
 
+; x0 = block number. Read that block into block_buf. No file, or a
+; failed seek, blanks the buffer. Updates block_nr and clears block_upd.
+_block_load_nr
+        stp     x29, x30, [sp, #-32]!
+        str     x19, [sp, #16]
+        mov     x19, x0
+        adrp    x0, block_nr
+        add     x0, x0, block_nr
+        str     x19, [x0]
+        adrp    x0, block_file
+        add     x0, x0, block_file
+        ldr     x0, [x0]
+        cbz     x0, _bln_blank
+        lsl     x1, x19, #10
+        mov     x2, #0
+        bl      host_repos
+        cbnz    x0, _bln_blank
+        adrp    x0, block_buf
+        add     x0, x0, block_buf
+        mov     x1, #1024
+        adrp    x2, block_file
+        add     x2, x2, block_file
+        ldr     x2, [x2]
+        bl      host_read
+        cmp     x0, #0
+        b.lt    _bln_blank
+        cmp     x0, #1024
+        b.hs    _bln_done
+        adrp    x1, block_buf
+        add     x1, x1, block_buf
+        add     x1, x1, x0
+        mov     x2, #1024
+        sub     x2, x2, x0
+        mov     w3, #32
+_bln_pad
+        cbz     x2, _bln_done
+        strb    w3, [x1], #1
+        sub     x2, x2, #1
+        b       _bln_pad
+_bln_blank
+        adrp    x0, block_buf
+        add     x0, x0, block_buf
+        mov     x1, #1024
+        mov     w2, #32
+_bln_fill
+        cbz     x1, _bln_done
+        strb    w2, [x0], #1
+        sub     x1, x1, #1
+        b       _bln_fill
+_bln_done
+        adrp    x0, block_upd
+        add     x0, x0, block_upd
+        str     xzr, [x0]
+        ldr     x19, [sp, #16]
+        ldp     x29, x30, [sp], #32
+        ret
+
         BOOT_WORD REFILL, REFILL ( -- flag ) next line when a file is the source, 0, XREFILL, 0
 XREFILL
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
+        adrp    x0, blk_var
+        add     x0, x0, blk_var
+        ldr     x0, [x0]
+        cbnz    x0, _refill_block
         adrp    x0, line_mode
         add     x0, x0, line_mode
         ldr     x0, [x0]
@@ -1184,6 +1247,34 @@ _refill_no
         add     sp, sp, #64
         str     x20, [x22, #-8]!
         mov     x20, #0
+        NEXT
+_refill_block
+        adrp    x0, blk_var
+        add     x0, x0, blk_var
+        ldr     x1, [x0]
+        add     x1, x1, #1
+        str     x1, [x0]
+        mov     x0, x1
+        bl      _block_load_nr
+        adrp    x0, block_buf
+        add     x0, x0, block_buf
+        adrp    x2, source_base
+        add     x2, x2, source_base
+        str     x0, [x2]
+        adrp    x2, source_cur
+        add     x2, x2, source_cur
+        str     x0, [x2]
+        add     x0, x0, #1024
+        adrp    x2, source_end
+        add     x2, x2, source_end
+        str     x0, [x2]
+        adrp    x2, to_in
+        add     x2, x2, to_in
+        str     xzr, [x2]
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #64
+        str     x20, [x22, #-8]!
+        mov     x20, #-1
         NEXT
 
         BOOT_WORD EXIT-ADDR, EXIT-ADDR ( -- xt ) xt of EXIT, 0, XEXIT_ADDR, 0
@@ -3229,7 +3320,9 @@ XSAVE_INPUT
         add     x0, x0, source_id
         ldr     x20, [x0]
         str     x20, [x22, #-8]!
-        mov     x20, #0
+        adrp    x0, blk_var
+        add     x0, x0, blk_var
+        ldr     x20, [x0]
         str     x20, [x22, #-8]!
         mov     x20, #5
         NEXT
@@ -3250,6 +3343,24 @@ _ri_common
         ldr     x2, [x22], #8
         ldr     x3, [x22], #8
         ldr     x20, [x22], #8
+        adrp    x4, blk_var
+        add     x4, x4, blk_var
+        str     x5, [x4]
+        cbz     x5, _ri_apply
+        sub     sp, sp, #64
+        stp     x29, x30, [sp, #16]
+        stp     x0, x1, [sp, #32]
+        str     x20, [sp, #48]
+        mov     x0, x5
+        bl      _block_load_nr
+        ldp     x0, x1, [sp, #32]
+        ldr     x20, [sp, #48]
+        ldp     x29, x30, [sp, #16]
+        add     sp, sp, #64
+        adrp    x3, block_buf
+        add     x3, x3, block_buf
+        mov     x2, #1024
+_ri_apply
         adrp    x4, source_base
         add     x4, x4, source_base
         str     x3, [x4]
@@ -3718,7 +3829,7 @@ env_values
         DCQ     -1
         DCQ     -1
         DCQ     16
-        DCQ     0
+        DCQ     0x7FEFFFFFFFFFFFFF
         DCQ     -1
         DCQ     0
         DCQ     0

@@ -49,6 +49,8 @@
         EXPORT local_frame_rsp
         EXPORT local_frame_n
         EXPORT slit_esc_buf
+        EXPORT slit_esc_buf2
+        EXPORT slit_esc_which
         EXPORT line_mode
         EXPORT line_origin
         EXPORT line_limit
@@ -150,6 +152,8 @@ local_frames SPACE  4096
 local_frame_rsp SPACE 128
 local_frame_n SPACE 128
 slit_esc_buf SPACE  256
+slit_esc_buf2 SPACE 256
+slit_esc_which DCQ  0
 line_mode   DCQ     0
 line_origin DCQ     0
 line_limit  DCQ     0
