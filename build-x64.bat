@@ -3,36 +3,38 @@ setlocal
 call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" arm64_x64
 if errorlevel 1 exit /b 1
 cd /d "%~dp0"
-"C:\Users\Win32Forth\AppData\Local\Programs\Python\Python313-arm64\python.exe" "C:\VSCodeProjects\GrokTools\arm64_to_ml64.py"
+set "PY=python"
+if exist "%LOCALAPPDATA%\Programs\Python\Python313-arm64\python.exe" set "PY=%LOCALAPPDATA%\Programs\Python\Python313-arm64\python.exe"
+"%PY%" "%~dp0GrokTools\arm64_to_ml64.py"
 if errorlevel 1 exit /b 1
 if not exist Forth\build\x64 mkdir Forth\build\x64
-ml64 /nologo /c /Fo Forth\build\x64\state.obj Forth\build\x64\asm\state.asm
+ml64 /nologo /c /Fo Forth\build\x64\state.obj Forth\kernel\x64\asm\state.asm
 if errorlevel 1 exit /b 1
-ml64 /nologo /c /Fo Forth\build\x64\emit.obj Forth\build\x64\asm\emit.asm
+ml64 /nologo /c /Fo Forth\build\x64\emit.obj Forth\kernel\x64\asm\emit.asm
 if errorlevel 1 exit /b 1
-ml64 /nologo /c /Fo Forth\build\x64\boot_begin.obj Forth\build\x64\asm\boot_begin.asm
+ml64 /nologo /c /Fo Forth\build\x64\boot_begin.obj Forth\kernel\x64\asm\boot_begin.asm
 if errorlevel 1 exit /b 1
-ml64 /nologo /c /Fo Forth\build\x64\prims.obj Forth\build\x64\asm\prims.asm
+ml64 /nologo /c /Fo Forth\build\x64\prims.obj Forth\kernel\x64\asm\prims.asm
 if errorlevel 1 exit /b 1
-ml64 /nologo /c /Fo Forth\build\x64\prims_k1.obj Forth\build\x64\asm\prims_k1.asm
+ml64 /nologo /c /Fo Forth\build\x64\prims_k1.obj Forth\kernel\x64\asm\prims_k1.asm
 if errorlevel 1 exit /b 1
-ml64 /nologo /c /Fo Forth\build\x64\prims_k2.obj Forth\build\x64\asm\prims_k2.asm
+ml64 /nologo /c /Fo Forth\build\x64\prims_k2.obj Forth\kernel\x64\asm\prims_k2.asm
 if errorlevel 1 exit /b 1
-ml64 /nologo /c /Fo Forth\build\x64\prims_k3.obj Forth\build\x64\asm\prims_k3.asm
+ml64 /nologo /c /Fo Forth\build\x64\prims_k3.obj Forth\kernel\x64\asm\prims_k3.asm
 if errorlevel 1 exit /b 1
-ml64 /nologo /c /Fo Forth\build\x64\prims_dbg.obj Forth\build\x64\asm\prims_dbg.asm
+ml64 /nologo /c /Fo Forth\build\x64\prims_dbg.obj Forth\kernel\x64\asm\prims_dbg.asm
 if errorlevel 1 exit /b 1
-ml64 /nologo /c /Fo Forth\build\x64\dict.obj Forth\build\x64\asm\dict.asm
+ml64 /nologo /c /Fo Forth\build\x64\dict.obj Forth\kernel\x64\asm\dict.asm
 if errorlevel 1 exit /b 1
-ml64 /nologo /c /Fo Forth\build\x64\entry.obj Forth\build\x64\asm\entry.asm
+ml64 /nologo /c /Fo Forth\build\x64\entry.obj Forth\kernel\x64\asm\entry.asm
 if errorlevel 1 exit /b 1
-ml64 /nologo /c /Fo Forth\build\x64\cold.obj Forth\build\x64\asm\cold.asm
+ml64 /nologo /c /Fo Forth\build\x64\cold.obj Forth\kernel\x64\asm\cold.asm
 if errorlevel 1 exit /b 1
 ml64 /nologo /c /Fo Forth\build\x64\vmregs.obj Forth\kernel\x64\vmregs.asm
 if errorlevel 1 exit /b 1
 ml64 /nologo /c /Fo Forth\build\x64\identity.obj Forth\kernel\x64\identity.asm
 if errorlevel 1 exit /b 1
-ml64 /nologo /c /Fo Forth\build\x64\boot_end.obj Forth\build\x64\asm\boot_end.asm
+ml64 /nologo /c /Fo Forth\build\x64\boot_end.obj Forth\kernel\x64\asm\boot_end.asm
 if errorlevel 1 exit /b 1
 cl /nologo /W3 /std:c11 /I Forth\include /Fe:Forth\build\x64\forthx64.exe /Fo:Forth\build\x64\ Forth\host\main.c Forth\host\console_win.c Forth\host\companion.c Forth\host\bigint.c Forth\host\gfx_win.c Forth\host\debug_win.c Forth\host\facility_win.c Forth\build\x64\state.obj Forth\build\x64\emit.obj Forth\build\x64\boot_begin.obj Forth\build\x64\prims.obj Forth\build\x64\prims_k1.obj Forth\build\x64\prims_k2.obj Forth\build\x64\prims_k3.obj Forth\build\x64\prims_dbg.obj Forth\build\x64\dict.obj Forth\build\x64\entry.obj Forth\build\x64\cold.obj Forth\build\x64\vmregs.obj Forth\build\x64\identity.obj Forth\build\x64\boot_end.obj /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib shell32.lib comdlg32.lib windowscodecs.lib ole32.lib
 if errorlevel 1 exit /b 1
