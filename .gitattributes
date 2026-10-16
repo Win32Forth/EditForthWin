@@ -1,0 +1,5 @@
+# The kernel embeds the cold-load files from disk. They must stay LF, matching the Mac repo.
+# core.autocrlf can stay on. These rules override it inside this repository.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.fth text eol=lf
