@@ -2,12 +2,12 @@
 
 Windows sibling of [EditForth](https://github.com/Win32Forth/EditForth). This tree holds the Forth console and the Qt editor.
 
-**Version 1.0.0**, released Oct 15, 2026 3:28 PM.
+**Version 1.1.0**, released Oct 15, 2026 6:05 PM.
 
 Starting `forth.exe` opens a window. The cold-load lines appear, then the banner, then a prompt:
 
 ```
-=== EditForthWin 1.0.0 === Oct 15, 2026 3:28 PM ===
+=== EditForthWin 1.1.0 === Oct 15, 2026 6:05 PM ===
 ok(0)>
 ```
 
@@ -38,8 +38,8 @@ build.bat
 
 The executables are `Forth\build\arm64\forth.exe` and `Edit\build\arm64\editforthwin.exe`. The editor build uses Qt 6.11.3 at `C:\Qt\6.11.3\msvc2022_arm64` and CMake at `C:\Qt\Tools\cmake-4.4.4-windows-arm64`. In VS Code, Ctrl+Shift+B builds both. F5 builds and opens the Forth window. Close a running `forth.exe` before rebuilding, or the linker cannot replace it.
 
-The editor opens one window with a tab per file, Consolas, line numbers, and New, Open, Save, and Save As. It does not talk to the Forth console yet.
+The editor opens one window with a tab per file, Consolas, line numbers, and New, Open, Save, and Save As. A Forth pane under the tabs launches `forth.exe --companion` and shows the cold-load lines, the banner, and `ok(n)>`. Return in that pane runs the line. `BYE` stops that Forth process and leaves the files open.
 
 ## Later
 
-The x64 kernel, the docked Forth console, the debugger, the facility screen, graphics windows, and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false.
+The x64 kernel, the debugger, the facility screen, graphics windows, and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false.

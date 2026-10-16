@@ -3,6 +3,8 @@
 #include <QMainWindow>
 
 class CodeEdit;
+class ForthConsole;
+class ForthPipe;
 class QTabWidget;
 
 // One workspace window: a tab per Forth source, line numbers, open and save.
@@ -32,6 +34,8 @@ private:
     void closeTab(int index);
 
     QTabWidget *m_tabs = nullptr;
+    ForthConsole *m_console = nullptr;
+    ForthPipe *m_pipe = nullptr;
     QAction *m_lineNumbersAction = nullptr;
     int m_untitled = 0;
 };

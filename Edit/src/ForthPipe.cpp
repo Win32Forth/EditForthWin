@@ -1,0 +1,283 @@
+#include "ForthPipe.h"
+
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QMutexLocker>
+#include <QProcess>
+#include <QThread>
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+namespace {
+
+QByteArray message(const char *op, const QString &text) {
+    QJsonObject obj;
+    obj.insert(QStringLiteral("op"), QString::fromLatin1(op));
+    if (!text.isNull())
+        obj.insert(QStringLiteral("text"), text);
+    return QJsonDocument(obj).toJson(QJsonDocument::Compact);
+}
+
+HANDLE openPipe(const QString &name, const ForthPipe *owner) {
+    const std::wstring path = (QStringLiteral("\\\\.\\pipe\\") + name).toStdWString();
+    for (int i = 0; i < 80; i++) {
+        if (owner->stopping())
+            return INVALID_HANDLE_VALUE;
+        HANDLE handle = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, NULL,
+                                    OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+        if (handle != INVALID_HANDLE_VALUE) {
+            DWORD mode = PIPE_READMODE_BYTE;
+            SetNamedPipeHandleState(handle, &mode, NULL, NULL);
+            return handle;
+        }
+        Sleep(100);
+    }
+    return INVALID_HANDLE_VALUE;
+}
+
+bool writeAll(HANDLE handle, const QByteArray &bytes) {
+    OVERLAPPED ov;
+    memset(&ov, 0, sizeof ov);
+    ov.hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (ov.hEvent == NULL)
+        return false;
+    const char *p = bytes.constData();
+    int left = bytes.size();
+    bool ok = true;
+    while (left > 0) {
+        ResetEvent(ov.hEvent);
+        DWORD wrote = 0;
+        if (!WriteFile(handle, p, static_cast<DWORD>(left), &wrote, &ov)) {
+            if (GetLastError() != ERROR_IO_PENDING ||
+                !GetOverlappedResult(handle, &ov, &wrote, TRUE)) {
+                ok = false;
+                break;
+            }
+        }
+        if (wrote == 0) {
+            ok = false;
+            break;
+        }
+        p += wrote;
+        left -= static_cast<int>(wrote);
+    }
+    CloseHandle(ov.hEvent);
+    return ok;
+}
+
+void flushOutgoing(ForthPipe *owner, HANDLE handle) {
+    const QList<QByteArray> batch = owner->takeOutgoing();
+    for (const QByteArray &frame : batch) {
+        if (!writeAll(handle, frame))
+            return;
+    }
+}
+
+class PipeReader : public QThread {
+public:
+    ForthPipe *owner = nullptr;
+    QString name;
+
+    void run() override {
+        HANDLE handle = openPipe(name, owner);
+        if (handle == INVALID_HANDLE_VALUE) {
+            if (!owner->stopping())
+                QMetaObject::invokeMethod(owner, "noteFailed", Qt::QueuedConnection,
+                                          Q_ARG(QString, QStringLiteral("Forth pipe did not open.")));
+            return;
+        }
+
+        OVERLAPPED ov;
+        memset(&ov, 0, sizeof ov);
+        ov.hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+        unsigned char hdr[4];
+        QByteArray body;
+        char *dst = reinterpret_cast<char *>(hdr);
+        int need = 4;
+        int got = 0;
+        bool readingBody = false;
+        bool readPending = false;
+        bool told = false;
+        HANDLE wake = static_cast<HANDLE>(owner->wakeHandle());
+
+        auto startRead = [&]() -> bool {
+            if (got >= need)
+                return true;
+            ResetEvent(ov.hEvent);
+            DWORD n = 0;
+            if (ReadFile(handle, dst + got, static_cast<DWORD>(need - got), &n, &ov)) {
+                got += static_cast<int>(n);
+                readPending = false;
+                return true;
+            }
+            if (GetLastError() == ERROR_IO_PENDING) {
+                readPending = true;
+                return true;
+            }
+            return false;
+        };
+
+        flushOutgoing(owner, handle);
+        while (!owner->stopping()) {
+            if (!readPending && got < need && !startRead())
+                break;
+            if (got >= need) {
+                readPending = false;
+                if (!readingBody) {
+                    const unsigned n = hdr[0] | (hdr[1] << 8) | (hdr[2] << 16) | (hdr[3] << 24);
+                    if (n == 0 || n > 4u * 1024u * 1024u)
+                        break;
+                    body.resize(static_cast<int>(n));
+                    dst = body.data();
+                    need = static_cast<int>(n);
+                    got = 0;
+                    readingBody = true;
+                    continue;
+                }
+                const QJsonObject obj = QJsonDocument::fromJson(body).object();
+                const QString op = obj.value(QStringLiteral("op")).toString();
+                if (op == QLatin1String("out"))
+                    QMetaObject::invokeMethod(owner, "noteOutput", Qt::QueuedConnection,
+                                              Q_ARG(QString, obj.value(QStringLiteral("text")).toString()));
+                else if (op == QLatin1String("bye")) {
+                    QMetaObject::invokeMethod(owner, "noteStopped", Qt::QueuedConnection);
+                    told = true;
+                    break;
+                }
+                dst = reinterpret_cast<char *>(hdr);
+                need = 4;
+                got = 0;
+                readingBody = false;
+                continue;
+            }
+
+            HANDLE waits[2] = {ov.hEvent, wake};
+            const DWORD w = WaitForMultipleObjects(2, waits, FALSE, INFINITE);
+            if (w == WAIT_OBJECT_0) {
+                DWORD n = 0;
+                if (!GetOverlappedResult(handle, &ov, &n, FALSE) || n == 0)
+                    break;
+                got += static_cast<int>(n);
+                readPending = false;
+            } else if (w == WAIT_OBJECT_0 + 1) {
+                flushOutgoing(owner, handle);
+            } else {
+                break;
+            }
+        }
+
+        CancelIoEx(handle, NULL);
+        if (readPending) {
+            DWORD n = 0;
+            GetOverlappedResult(handle, &ov, &n, TRUE);
+        }
+        CloseHandle(ov.hEvent);
+        CloseHandle(handle);
+        if (!told && !owner->stopping())
+            QMetaObject::invokeMethod(owner, "noteStopped", Qt::QueuedConnection);
+    }
+};
+
+} // namespace
+
+ForthPipe::ForthPipe(QObject *parent) : QObject(parent) {}
+
+ForthPipe::~ForthPipe() { shutdown(); }
+
+QString ForthPipe::forthPath() const {
+    const QStringList candidates = {
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("forth.exe")),
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("../../../Forth/build/arm64/forth.exe")),
+        QDir::current().filePath(QStringLiteral("Forth/build/arm64/forth.exe")),
+    };
+    for (const QString &path : candidates) {
+        if (QFileInfo::exists(path))
+            return QFileInfo(path).absoluteFilePath();
+    }
+    return candidates.last();
+}
+
+QList<QByteArray> ForthPipe::takeOutgoing() {
+    QMutexLocker lock(&m_mu);
+    QList<QByteArray> batch = m_outq;
+    m_outq.clear();
+    return batch;
+}
+
+void ForthPipe::post(const QByteArray &json) {
+    QByteArray frame(4 + json.size(), '\0');
+    const unsigned n = static_cast<unsigned>(json.size());
+    frame[0] = static_cast<char>(n);
+    frame[1] = static_cast<char>(n >> 8);
+    frame[2] = static_cast<char>(n >> 16);
+    frame[3] = static_cast<char>(n >> 24);
+    memcpy(frame.data() + 4, json.constData(), json.size());
+    QMutexLocker lock(&m_mu);
+    m_outq.append(frame);
+    if (m_wake != nullptr)
+        SetEvent(static_cast<HANDLE>(m_wake));
+}
+
+void ForthPipe::start() {
+    if (m_proc != nullptr)
+        return;
+    const QString path = forthPath();
+    if (!QFileInfo::exists(path)) {
+        emit engineFailed(QStringLiteral("Can't find forth.exe."));
+        return;
+    }
+    m_stop = false;
+    if (m_wake == nullptr)
+        m_wake = CreateEventW(NULL, FALSE, FALSE, NULL);
+    const QString pipeName = QStringLiteral("EditForthWin-%1").arg(QCoreApplication::applicationPid());
+    m_proc = new QProcess(this);
+    m_proc->setWorkingDirectory(QDir::currentPath());
+    m_proc->start(path, {QStringLiteral("--companion"), pipeName});
+    if (!m_proc->waitForStarted(5000)) {
+        emit engineFailed(QStringLiteral("forth.exe did not start."));
+        m_proc->deleteLater();
+        m_proc = nullptr;
+        return;
+    }
+    auto *reader = new PipeReader;
+    reader->owner = this;
+    reader->name = pipeName;
+    m_reader = reader;
+    reader->start();
+}
+
+void ForthPipe::shutdown() {
+    if (m_stop.load() && m_proc == nullptr && m_reader == nullptr)
+        return;
+    m_stop = true;
+    post(message("quit", QString()));
+    if (m_wake != nullptr)
+        SetEvent(static_cast<HANDLE>(m_wake));
+    if (m_proc != nullptr) {
+        if (!m_proc->waitForFinished(1500))
+            m_proc->kill();
+        m_proc->deleteLater();
+        m_proc = nullptr;
+    }
+    if (m_reader != nullptr) {
+        m_reader->wait(1500);
+        delete m_reader;
+        m_reader = nullptr;
+    }
+    if (m_wake != nullptr) {
+        CloseHandle(static_cast<HANDLE>(m_wake));
+        m_wake = nullptr;
+    }
+}
+
+void ForthPipe::eval(const QString &line) { post(message("eval", line)); }
+
+void ForthPipe::noteOutput(const QString &text) { emit outputReceived(text); }
+
+void ForthPipe::noteStopped() { emit engineStopped(); }
+
+void ForthPipe::noteFailed(const QString &message) { emit engineFailed(message); }

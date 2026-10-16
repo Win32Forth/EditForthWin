@@ -1,6 +1,8 @@
 #include "MainWindow.h"
 
 #include "CodeEdit.h"
+#include "ForthConsole.h"
+#include "ForthPipe.h"
 
 #include <QAction>
 #include <QCloseEvent>
@@ -10,6 +12,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QSettings>
+#include <QSplitter>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTextCursor>
@@ -35,7 +38,31 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_tabs->setDocumentMode(true);
     m_tabs->setTabsClosable(true);
     m_tabs->setMovable(true);
-    setCentralWidget(m_tabs);
+
+    m_console = new ForthConsole(this);
+    m_pipe = new ForthPipe(this);
+    connect(m_console, &ForthConsole::submitted, m_pipe, &ForthPipe::eval);
+    connect(m_pipe, &ForthPipe::outputReceived, m_console, [this](const QString &text) {
+        m_console->setEngineAlive(true);
+        m_console->appendOutput(text);
+    });
+    connect(m_pipe, &ForthPipe::engineStopped, m_console, [this] {
+        m_console->setEngineAlive(false);
+        m_console->appendOutput(QStringLiteral("\nForth stopped.\n"));
+    });
+    connect(m_pipe, &ForthPipe::engineFailed, m_console, [this](const QString &message) {
+        m_console->setEngineAlive(false);
+        m_console->appendOutput(message + QLatin1Char('\n'));
+    });
+
+    auto *split = new QSplitter(Qt::Vertical, this);
+    split->addWidget(m_tabs);
+    split->addWidget(m_console);
+    split->setStretchFactor(0, 3);
+    split->setStretchFactor(1, 1);
+    split->setSizes({520, 160});
+    m_console->setMinimumHeight(80);
+    setCentralWidget(split);
     connect(m_tabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     connect(m_tabs, &QTabWidget::currentChanged, this, [this](int) { refreshStatus(); });
 
@@ -78,6 +105,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     const QByteArray geo = settings.value(QStringLiteral("geometry")).toByteArray();
     if (!geo.isEmpty())
         restoreGeometry(geo);
+    m_pipe->start();
 }
 
 void MainWindow::newFile() {
@@ -115,6 +143,8 @@ void MainWindow::openFile(const QString &path) {
 int MainWindow::tabCount() const { return m_tabs->count(); }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
+    if (m_pipe != nullptr)
+        m_pipe->shutdown();
     for (int i = 0; i < m_tabs->count(); ++i) {
         m_tabs->setCurrentIndex(i);
         if (!maybeSave(editAt(i))) {

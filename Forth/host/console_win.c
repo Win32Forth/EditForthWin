@@ -1,7 +1,7 @@
 /* Public domain.
-   Windowed Forth console, and the headless agent channel.
-   The window is the interactive program. --agent evaluates with no window
-   and writes the transcript to the parent console or a redirected handle. */
+   Windowed Forth console, the editor companion pipe, and the headless agent.
+   The window is the interactive program. --companion serves the editor pane.
+   --agent evaluates with no window and writes the transcript to the parent. */
 
 #include "kernel_api.h"
 
@@ -19,8 +19,25 @@ int forth_eval(const char *text, size_t n);
 void forth_prompt(void);
 int forth_boot(void);
 int forth_eval_file(const char *path);
+int companion_run(const wchar_t *pipe_name);
 
-#define BANNER_MARK "=== EditForthWin 1.0.0 ==="
+static int companion_name(int argc, wchar_t **argv, wchar_t *dst, int cap)
+{
+    int i;
+
+    for (i = 1; i < argc; i++) {
+        if (wcscmp(argv[i], L"--companion") != 0)
+            continue;
+        if (i + 1 < argc && argv[i + 1][0] != L'-')
+            wcsncpy_s(dst, (size_t)cap, argv[i + 1], _TRUNCATE);
+        else
+            wcsncpy_s(dst, (size_t)cap, L"EditForthWin", _TRUNCATE);
+        return 1;
+    }
+    return 0;
+}
+
+#define BANNER_MARK "=== EditForthWin 1.1.0 ==="
 
 static int wide_to_utf8(const wchar_t *w, char *dst, int cap)
 {
@@ -1099,10 +1116,15 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
     argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (argv == NULL)
         return 1;
-    if (agent_requested(argc, argv))
-        rc = agent_run(argc, argv);
-    else
-        rc = window_run(argv, show);
+    {
+        wchar_t pipe_name[200];
+        if (companion_name(argc, argv, pipe_name, 200))
+            rc = companion_run(pipe_name);
+        else if (agent_requested(argc, argv))
+            rc = agent_run(argc, argv);
+        else
+            rc = window_run(argv, show);
+    }
     LocalFree(argv);
     return rc;
 }
