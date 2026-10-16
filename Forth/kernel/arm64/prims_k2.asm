@@ -5,6 +5,9 @@
 ; on a whole-buffer eval. In (LINE-SOURCE) it advances to the next line.
 
         INCLUDE Forth/kernel/arm64/vm.inc
+
+        EXTERN next_debug
+        EXTERN debug_break_asap
         INCLUDE Forth/kernel/arm64/boot_words.inc
 
         AREA |.text|, CODE, READONLY, ALIGN=4
@@ -118,8 +121,10 @@
         EXTERN msg_allot
         EXTERN msg_huh
 
+        EXPORT XCATCH
         EXPORT XCATCH_OK
         EXPORT XTW_CONTINUE
+        EXPORT XEXECUTE
         EXPORT _udivmod128
 
 ; ---------------------------------------------------------------------
@@ -1799,20 +1804,7 @@ XLOCAL_PAREN_END
 XTEXTEDIT
         NEXT
 
-        BOOT_WORD VIEW-PATH, VIEW-PATH ( id -- c-addr u ) no source path on this host, 0, XVIEW_PATH, 0
-XVIEW_PATH
-        mov     x20, #0
-        str     x20, [x22, #-8]!
-        mov     x20, #0
-        NEXT
-
-        BOOT_WORD DBG-ON, DBG-ON ( -- ) stepper is not armed yet, 0, XDBGON, 0
-XDBGON
-        NEXT
-
-        BOOT_WORD DBG-OFF, DBG-OFF ( -- ) stepper is not armed yet, 0, XDBGOFF, 0
-XDBGOFF
-        NEXT
+; VIEW-PATH, DBG-ON, and DBG-OFF live with the stepper in prims_dbg.asm.
 
 ; ---------------------------------------------------------------------
 ; File and block names. Stack effects match the Mac words.
@@ -2955,6 +2947,11 @@ XLIBRARY_PATH
         mov     x20, x1
 XLIBRARY_PATH_END
         NEXT
+
+next_debug_gate
+        adrp    x16, next_debug
+        add     x16, x16, next_debug
+        br      x16
 
         AREA |.rdata|, DATA, READONLY
 

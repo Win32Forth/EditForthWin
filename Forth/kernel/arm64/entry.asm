@@ -5,6 +5,9 @@
 
         INCLUDE Forth/kernel/arm64/vm.inc
 
+        EXTERN next_debug
+        EXTERN debug_break_asap
+
         AREA |.text|, CODE, READONLY, ALIGN=4
 
         EXTERN emit_hook
@@ -18,6 +21,7 @@
         EXTERN vm_tos
         EXTERN vm_dsp
         EXTERN vm_rsp
+        EXTERN debug_armed
         EXTERN source_cur
         EXTERN source_end
         EXTERN source_base
@@ -1094,7 +1098,9 @@ _vm_load
         adrp    x0, vm_rsp
         add     x0, x0, vm_rsp
         ldr     x23, [x0]
-        mov     x28, #0
+        adrp    x0, debug_armed
+        add     x0, x0, debug_armed
+        ldr     x28, [x0]
         cbnz    x22, _vm_load_ok
         b       _vm_reset_stacks
 _vm_load_ok
@@ -1114,6 +1120,11 @@ _vm_reset_stacks
         add     x0, x0, state_var
         str     xzr, [x0]
         ret
+
+next_debug_gate
+        adrp    x16, next_debug
+        add     x16, x16, next_debug
+        br      x16
 
         AREA |.rdata|, DATA, READONLY, ALIGN=8
 

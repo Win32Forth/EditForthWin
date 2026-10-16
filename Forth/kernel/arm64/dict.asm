@@ -9,6 +9,9 @@
 ; latest_var is DICT_THREADS (16) heads. x24 = &latest_var.
 
         INCLUDE Forth/kernel/arm64/vm.inc
+
+        EXTERN next_debug
+        EXTERN debug_break_asap
         INCLUDE Forth/kernel/arm64/boot_words.inc
 
         AREA |.text|, CODE, READONLY, ALIGN=4
@@ -600,6 +603,11 @@ XNONAME
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
         NEXT
+
+next_debug_gate
+        adrp    x16, next_debug
+        add     x16, x16, next_debug
+        br      x16
 
         AREA |.rdata|, DATA, READONLY
 

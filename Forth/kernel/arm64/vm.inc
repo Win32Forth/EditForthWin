@@ -8,7 +8,7 @@
 ;   x22 = DSP   data stack, grows down
 ;   x23 = RSP   return stack, grows down
 ;   x24 = &latest
-;   x28 = DBG   held at 0 until the stepper exists
+;   x28 = DBG   1 while DBG-ON is stepping. 0 takes the fast NEXT.
 ;
 ; Header, low to high, same as the Mac kernel:
 ;   HFA   counted help, padded to 8
@@ -19,10 +19,17 @@
 ;   CFA   code address
 ;   Colon words allot one cell at CFA+8 so the body starts at CFA+16.
 ;
-; NEXT: W = CFA from *IP; br *W.
+; NEXT: when the stepper is armed, or Break ASAP is set, go to next_debug.
+; Otherwise W = CFA from *IP and br *W.
+; Every file except prims_dbg.asm must EXTERN next_debug and debug_break_asap.
 
         MACRO
         NEXT
+        cbnz    x28, next_debug_gate
+        adrp    x1, debug_break_asap
+        add     x1, x1, debug_break_asap
+        ldr     x1, [x1]
+        cbnz    x1, next_debug_gate
         ldr     x21, [x19], #8
         ldr     x1, [x21]
         br      x1

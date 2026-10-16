@@ -80,6 +80,18 @@ FROMLIB FLOAD PI/pi-test.fth
 
 `(OOP-CALL)` is the separate window, menu, and button host used by the class library. It is not the GRAPHICS window.
 
+## Debugger
+
+`DBG-ON` arms the stepper. At the prompt the return stack is already at the debug floor, so that line does not wait. A colon word called while the stepper is armed pauses on the first step inside that word and waits for a key. `DBG-OFF` prints `DEBUG done` and disarms it.
+
+While paused, Space or `o` steps over, `i` steps into, `u` steps out, `g` runs, `q` or Esc aborts, and `h` shows the key line. The tagged keys are F6, F7, and F8 when a host sends them as `(2<<24)|16`, `|17`, and `|18`. The console key hook delivers characters.
+
+`BREAK-TABLE` holds eight xt slots. `BREAK-ENABLES` is the matching flag table, 64 bytes later. `(BP-GO)` runs until an enabled slot matches. `(RUNTO-IP)` pauses at one threaded cell.
+
+`VIEW-REG` records a source path and returns an id. `VIEW-PATH` returns that path. `VIEW-STAMP` stores a file id and line in the word header.
+
+The other `DBG-*` hooks live in `SYSVOC`. `DBG-HOST-SPAN` remembers an editor span. Nothing paints that span yet.
+
 ## Later
 
-The x64 kernel, the debugger, the facility screen, and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false.
+The x64 kernel, the facility screen, and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false.

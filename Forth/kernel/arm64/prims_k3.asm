@@ -4,6 +4,9 @@
 ; definitions. The (APP-*) words call the graphics host.
 
         INCLUDE Forth/kernel/arm64/vm.inc
+
+        EXTERN next_debug
+        EXTERN debug_break_asap
         INCLUDE Forth/kernel/arm64/boot_words.inc
 
         AREA |.text|, CODE, READONLY, ALIGN=4
@@ -1444,6 +1447,11 @@ _pwn_done
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #80
         ret
+
+next_debug_gate
+        adrp    x16, next_debug
+        add     x16, x16, next_debug
+        br      x16
 
         AREA |.rdata|, DATA, READONLY, ALIGN=3
 

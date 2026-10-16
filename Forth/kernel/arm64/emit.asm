@@ -4,6 +4,10 @@
 
         EXTERN emit_fn
         EXTERN numbuf
+        EXTERN debug_field_count
+        EXTERN debug_field_len
+        EXTERN debug_armed
+        EXTERN _debug_note_byte
         EXPORT emit_char
         EXPORT _putchar
         EXPORT emit_str
@@ -20,6 +24,25 @@ _putchar
 emit_char   PROC
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
+        str     x0, [sp, #16]
+        adrp    x1, debug_field_count
+        add     x1, x1, debug_field_count
+        ldr     x1, [x1]
+        cbz     x1, emit_char_noted
+        adrp    x2, debug_field_len
+        add     x2, x2, debug_field_len
+        ldr     x3, [x2]
+        add     x3, x3, #1
+        str     x3, [x2]
+emit_char_noted
+        adrp    x1, debug_armed
+        add     x1, x1, debug_armed
+        ldr     x1, [x1]
+        cbz     x1, emit_char_hook
+        ldr     w0, [sp, #16]
+        bl      _debug_note_byte
+        ldr     x0, [sp, #16]
+emit_char_hook
         adrp    x16, emit_fn
         add     x16, x16, emit_fn
         ldr     x16, [x16]

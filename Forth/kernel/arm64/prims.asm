@@ -1,6 +1,9 @@
 ; ITC primitives. Labels and end marks match the Mac kernel.
 ; The end label is the address before NEXT, which is the emitter span.
 
+        EXTERN next_debug
+        EXTERN debug_break_asap
+
         INCLUDE Forth/kernel/arm64/vm.inc
         INCLUDE Forth/kernel/arm64/boot_words.inc
 
@@ -13,6 +16,7 @@
         EXTERN dstack
         EXTERN return_stack
         EXTERN throw_handler
+        EXTERN debug_floor
         EXTERN bye_flag
         EXTERN _quit_exit
         EXTERN _interpret_loop
@@ -223,6 +227,16 @@ _print_rstack PROC
         adrp    x25, return_stack
         add     x25, x25, return_stack
         add     x25, x25, #1, lsl #12
+        adrp    x0, debug_floor
+        add     x0, x0, debug_floor
+        ldr     x0, [x0]
+        cbz     x0, _pr_floor_keep
+        cmp     x0, x25
+        b.hi    _pr_floor_keep
+        cmp     x0, x23
+        b.ls    _pr_floor_keep
+        mov     x25, x0
+_pr_floor_keep
         cmp     x23, x25
         b.hs    _pr_empty
         sub     x26, x25, x23
@@ -294,6 +308,11 @@ _pr_done
         add     sp, sp, #96
         ret
         ENDP
+
+next_debug_gate
+        adrp    x16, next_debug
+        add     x16, x16, next_debug
+        br      x16
 
         AREA |.rdata|, DATA, READONLY
 

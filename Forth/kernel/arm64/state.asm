@@ -197,6 +197,7 @@ dict_end
         AREA |.data|, DATA, READWRITE, ALIGN=8
 restart_cfa DCQ     XRESTART
 catch_ok_cfa DCQ    XCATCH_OK
+        EXPORT tw_continue_cfa
 tw_continue_cfa DCQ XTW_CONTINUE
 
         EXTERN XRESTART
