@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QString>
 
 class CodeEdit;
 class ForthConsole;
@@ -32,10 +33,12 @@ private:
     void refreshStatus();
     void applyLineNumbers();
     void closeTab(int index);
+    void presentSourceDialog(bool loadIntoForth);
 
     QTabWidget *m_tabs = nullptr;
     ForthConsole *m_console = nullptr;
     ForthPipe *m_pipe = nullptr;
+    QString m_forthDir;
     QAction *m_lineNumbersAction = nullptr;
     int m_untitled = 0;
 };

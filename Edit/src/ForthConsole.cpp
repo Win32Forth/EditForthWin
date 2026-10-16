@@ -57,8 +57,11 @@ void ForthConsole::submit() {
     QString line = toPlainText().mid(m_prot);
     while (line.endsWith(QLatin1Char('\n')) || line.endsWith(QLatin1Char('\r')))
         line.chop(1);
+    const QString committed = line + QStringLiteral("\n");
     replaceInput(QString());
-    appendOutput(line + QStringLiteral("\n"));
+    m_commit_at = m_prot;
+    appendOutput(committed);
+    m_commit_n = committed.size();
     if (!line.isEmpty()) {
         m_history.append(line);
         if (m_history.size() > 200)
@@ -67,6 +70,26 @@ void ForthConsole::submit() {
     m_history_at = -1;
     m_history_saved.clear();
     emit submitted(line);
+}
+
+void ForthConsole::retractSubmit() {
+    if (m_commit_n <= 0 || m_commit_at < 0 || m_commit_at + m_commit_n > m_prot)
+        return;
+    QString chunk = toPlainText().mid(m_commit_at, m_commit_n);
+    QTextCursor cursor(document());
+    cursor.setPosition(m_commit_at);
+    cursor.setPosition(m_commit_at + m_commit_n, QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+    m_prot -= m_commit_n;
+    m_commit_at = -1;
+    m_commit_n = 0;
+    while (chunk.endsWith(QLatin1Char('\n')) || chunk.endsWith(QLatin1Char('\r')))
+        chunk.chop(1);
+    if (!m_history.isEmpty() && m_history.last() == chunk)
+        m_history.removeLast();
+    m_history_at = -1;
+    m_history_saved.clear();
+    replaceInput(chunk);
 }
 
 void ForthConsole::keyPressEvent(QKeyEvent *event) {

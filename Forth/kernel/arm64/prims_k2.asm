@@ -82,6 +82,11 @@
         EXTERN host_sleep
         EXTERN host_time_date
         EXTERN host_chdir
+        EXTERN host_fromlib
+        EXTERN host_fromlib_off
+        EXTERN host_bi_mul
+        EXTERN host_bi_divmod
+        EXTERN host_bi_isqrt
         EXTERN host_pwd
         EXTERN host_cwd
         EXTERN host_dir
@@ -2274,6 +2279,67 @@ XPARSE_FILESPEC
         str     x20, [x22, #-8]!
         str     x0, [x22, #-8]!
         mov     x20, x1
+        NEXT
+
+        BOOT_WORD FROMLIB, FROMLIB ( -- ) arm the next relative load to use Library, 0, XFROMLIB, 0
+XFROMLIB
+        stp     x29, x30, [sp, #-16]!
+        bl      host_fromlib
+        ldp     x29, x30, [sp], #16
+        NEXT
+
+        BOOT_WORD FROM-LIBRARY, FROM-LIBRARY ( -- ) same as FROMLIB, 0, XFROM_LIBRARY, 0
+XFROM_LIBRARY
+        stp     x29, x30, [sp, #-16]!
+        bl      host_fromlib
+        ldp     x29, x30, [sp], #16
+        NEXT
+
+        BOOT_WORD FROMLIB-OFF, FROMLIB-OFF ( -- ) clear an armed FROMLIB, 0, XFROMLIB_OFF, 0
+XFROMLIB_OFF
+        stp     x29, x30, [sp, #-16]!
+        bl      host_fromlib_off
+        ldp     x29, x30, [sp], #16
+        NEXT
+
+        BOOT_WORD BI-MUL, BI-MUL ( a b r -- ) BIG-INTEGER host multiply, 0, XBIMUL, XBIMUL_END
+XBIMUL
+        mov     x2, x20
+        ldr     x1, [x22], #8
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_bi_mul
+        ldp     x29, x30, [sp], #16
+XBIMUL_END
+        NEXT
+
+        BOOT_WORD BI-DIVMOD, BI-DIVMOD ( num den quot rem work -- ) BIG-INTEGER host divmod, 0, XBIDIVMOD, XBIDIVMOD_END
+XBIDIVMOD
+        ldr     x3, [x22], #8
+        ldr     x2, [x22], #8
+        ldr     x1, [x22], #8
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_bi_divmod
+        ldp     x29, x30, [sp], #16
+XBIDIVMOD_END
+        NEXT
+
+        BOOT_WORD BI-ISQRT, BI-ISQRT ( a r quot rem work t1 t2 -- ) BIG-INTEGER host isqrt, 0, XBIISQRT, XBIISQRT_END
+XBIISQRT
+        ldr     x0, [x22], #8
+        ldr     x0, [x22], #8
+        ldr     x0, [x22], #8
+        ldr     x0, [x22], #8
+        ldr     x1, [x22], #8
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_bi_isqrt
+        ldp     x29, x30, [sp], #16
+XBIISQRT_END
         NEXT
 
         BOOT_WORD CHDIR, CHDIR ( -- ) change directory. a bare call waits for a dialog, 0, XCHDIR, 0

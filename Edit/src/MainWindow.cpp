@@ -6,6 +6,7 @@
 
 #include <QAction>
 #include <QCloseEvent>
+#include <QDir>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -13,6 +14,7 @@
 #include <QMessageBox>
 #include <QSettings>
 #include <QSplitter>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTextCursor>
@@ -20,6 +22,33 @@
 
 namespace {
 const char kPath[] = "path";
+
+// EditForth open panels: Forth source (.fth .fs .4th .f) plus plain text (.txt).
+const QString kSourceFilter =
+    QStringLiteral("Forth files (*.fth *.fs *.4th *.f *.txt);;All files (*.*)");
+
+bool isBye(const QString &line) {
+    return line.trimmed().compare(QLatin1String("BYE"), Qt::CaseInsensitive) == 0;
+}
+
+// Whole line is one of these words. A name after the word is a normal eval.
+enum class BareSource { None, Edit, Load };
+
+BareSource bareSource(const QString &line) {
+    const QString word = line.trimmed();
+    if (word.compare(QLatin1String("EDIT"), Qt::CaseInsensitive) == 0)
+        return BareSource::Edit;
+    if (word.compare(QLatin1String("FLOAD"), Qt::CaseInsensitive) == 0)
+        return BareSource::Load;
+    if (word.compare(QLatin1String("INCLUDE"), Qt::CaseInsensitive) == 0)
+        return BareSource::Load;
+    return BareSource::None;
+}
+
+// INCLUDE "path" — the quotes are the filespec delimiters. Backslashes stay literal.
+QString includedLine(const QString &path) {
+    return QStringLiteral("INCLUDE \"%1\"").arg(path);
+}
 
 QString tabLabel(const CodeEdit *edit) {
     const QString path = edit->property(kPath).toString();
@@ -41,7 +70,26 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
     m_console = new ForthConsole(this);
     m_pipe = new ForthPipe(this);
-    connect(m_console, &ForthConsole::submitted, m_pipe, &ForthPipe::eval);
+    connect(m_console, &ForthConsole::submitted, this, [this](const QString &line) {
+        if (isBye(line)) {
+            close();
+            if (isVisible())
+                m_console->retractSubmit();
+            return;
+        }
+        const BareSource bare = bareSource(line);
+        if (bare != BareSource::None) {
+            presentSourceDialog(bare == BareSource::Load);
+            return;
+        }
+        m_pipe->eval(line);
+    });
+    m_forthDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) +
+                 QStringLiteral("/EditForthWin");
+    connect(m_pipe, &ForthPipe::directoryChanged, this, [this](const QString &path) {
+        if (!path.isEmpty())
+            m_forthDir = path;
+    });
     connect(m_pipe, &ForthPipe::outputReceived, m_console, [this](const QString &text) {
         m_console->setEngineAlive(true);
         m_console->appendOutput(text);
@@ -70,8 +118,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     fileMenu->addAction(QStringLiteral("&New"), QKeySequence::New, this, &MainWindow::newFile);
     fileMenu->addAction(QStringLiteral("&Open..."), QKeySequence::Open, this, [this] {
         const QString path = QFileDialog::getOpenFileName(
-            this, QStringLiteral("Open"), QString(),
-            QStringLiteral("Forth files (*.fth *.FTH *.fs *.4th);;All files (*.*)"));
+            this, QStringLiteral("Open"), m_forthDir, kSourceFilter);
         if (!path.isEmpty())
             openFile(path);
     });
@@ -106,6 +153,25 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     if (!geo.isEmpty())
         restoreGeometry(geo);
     m_pipe->start();
+}
+
+void MainWindow::presentSourceDialog(bool loadIntoForth) {
+    const QString path = QFileDialog::getOpenFileName(
+        this, loadIntoForth ? QStringLiteral("FLOAD") : QStringLiteral("EDIT"),
+        m_forthDir, kSourceFilter);
+    if (loadIntoForth && !path.isEmpty()) {
+        if (path.size() > 255 || path.contains(QLatin1Char('"'))) {
+            QMessageBox::warning(this, QStringLiteral("EditForthWin"),
+                                 QStringLiteral("That path cannot be FLOADed."));
+            m_pipe->eval(QString());
+            return;
+        }
+        m_pipe->eval(includedLine(path));
+        return;
+    }
+    if (!path.isEmpty())
+        openFile(path);
+    m_pipe->eval(QString());
 }
 
 void MainWindow::newFile() {
@@ -143,8 +209,6 @@ void MainWindow::openFile(const QString &path) {
 int MainWindow::tabCount() const { return m_tabs->count(); }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
-    if (m_pipe != nullptr)
-        m_pipe->shutdown();
     for (int i = 0; i < m_tabs->count(); ++i) {
         m_tabs->setCurrentIndex(i);
         if (!maybeSave(editAt(i))) {
@@ -152,6 +216,8 @@ void MainWindow::closeEvent(QCloseEvent *event) {
             return;
         }
     }
+    if (m_pipe != nullptr)
+        m_pipe->shutdown();
     QSettings().setValue(QStringLiteral("geometry"), saveGeometry());
     event->accept();
 }

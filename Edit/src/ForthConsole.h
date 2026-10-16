@@ -11,6 +11,8 @@ public:
 
     void appendOutput(const QString &text);
     void setEngineAlive(bool alive);
+    // Put the line just submitted back into the input area.
+    void retractSubmit();
 
 signals:
     void submitted(const QString &line);
@@ -25,6 +27,8 @@ private:
     bool inputOnly(const QTextCursor &cursor) const;
 
     int m_prot = 0;
+    int m_commit_at = -1;
+    int m_commit_n = 0;
     bool m_alive = false;
     QStringList m_history;
     int m_history_at = -1;

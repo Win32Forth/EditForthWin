@@ -143,6 +143,9 @@ public:
                 if (op == QLatin1String("out"))
                     QMetaObject::invokeMethod(owner, "noteOutput", Qt::QueuedConnection,
                                               Q_ARG(QString, obj.value(QStringLiteral("text")).toString()));
+                else if (op == QLatin1String("cwd"))
+                    QMetaObject::invokeMethod(owner, "noteDirectory", Qt::QueuedConnection,
+                                              Q_ARG(QString, obj.value(QStringLiteral("text")).toString()));
                 else if (op == QLatin1String("bye")) {
                     QMetaObject::invokeMethod(owner, "noteStopped", Qt::QueuedConnection);
                     told = true;
@@ -277,6 +280,8 @@ void ForthPipe::shutdown() {
 void ForthPipe::eval(const QString &line) { post(message("eval", line)); }
 
 void ForthPipe::noteOutput(const QString &text) { emit outputReceived(text); }
+
+void ForthPipe::noteDirectory(const QString &path) { emit directoryChanged(path); }
 
 void ForthPipe::noteStopped() { emit engineStopped(); }
 

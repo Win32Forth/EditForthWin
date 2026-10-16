@@ -28,11 +28,13 @@ public:
 public slots:
     void eval(const QString &line);
     void noteOutput(const QString &text);
+    void noteDirectory(const QString &path);
     void noteStopped();
     void noteFailed(const QString &message);
 
 signals:
     void outputReceived(const QString &text);
+    void directoryChanged(const QString &path);
     void engineStopped();
     void engineFailed(const QString &message);
 

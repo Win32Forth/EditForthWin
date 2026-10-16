@@ -64,8 +64,12 @@ unsigned long long host_ms(void)
 
 static FILE *host_fp[HOST_FILES];
 static char load_dir[HOST_LOADS][HOST_PATH];
+static char load_prev[HOST_LOADS][HOST_PATH];
 static int load_len[HOST_LOADS];
 static int load_n;
+static int fromlib_armed;
+static char user_root[HOST_PATH];
+static char library_root[HOST_PATH];
 static char reg_path[HOST_REGS][256];
 static int reg_len[HOST_REGS];
 static int reg_n;
@@ -229,6 +233,202 @@ void host_free(void *p)
     free(p);
 }
 
+static void host_slashes(char *s)
+{
+    for (; s != NULL && *s != '\0'; s++) {
+        if (*s == '/')
+            *s = '\\';
+    }
+}
+
+static int host_is_dir(const char *path)
+{
+    DWORD attr = GetFileAttributesA(path);
+    return attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY) != 0;
+}
+
+static int host_join(char *dst, int cap, const char *dir, const char *rel)
+{
+    int n;
+    int m;
+
+    if (dst == NULL || cap < 4 || dir == NULL || rel == NULL)
+        return 0;
+    n = (int)strlen(dir);
+    m = (int)strlen(rel);
+    if (n <= 0 || n + 1 + m >= cap)
+        return 0;
+    memcpy(dst, dir, (size_t)n);
+    if (dst[n - 1] != '\\')
+        dst[n++] = '\\';
+    memcpy(dst + n, rel, (size_t)m + 1);
+    return 1;
+}
+
+/* Copy files that are not already in dst. Existing files stay as the user left them. */
+static void host_copy_missing(const char *src, const char *dst, int depth)
+{
+    char wild[HOST_PATH];
+    char from[HOST_PATH];
+    char to[HOST_PATH];
+    WIN32_FIND_DATAA fd;
+    HANDLE h;
+    int n;
+
+    if (depth > 24 || src == NULL || dst == NULL)
+        return;
+    CreateDirectoryA(dst, NULL);
+    n = snprintf(wild, sizeof wild, "%s\\*", src);
+    if (n <= 0 || n >= (int)sizeof wild)
+        return;
+    h = FindFirstFileA(wild, &fd);
+    if (h == INVALID_HANDLE_VALUE)
+        return;
+    do {
+        if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
+            continue;
+        if (snprintf(from, sizeof from, "%s\\%s", src, fd.cFileName) >= (int)sizeof from)
+            continue;
+        if (snprintf(to, sizeof to, "%s\\%s", dst, fd.cFileName) >= (int)sizeof to)
+            continue;
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+            host_copy_missing(from, to, depth + 1);
+        else if (GetFileAttributesA(to) == INVALID_FILE_ATTRIBUTES)
+            CopyFileA(from, to, TRUE);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+}
+
+static int host_has_marker(const char *dir)
+{
+    char marker[HOST_PATH];
+    if (!host_join(marker, (int)sizeof marker, dir, "BigInteger\\big-int.fth"))
+        return 0;
+    return GetFileAttributesA(marker) != INVALID_FILE_ATTRIBUTES;
+}
+
+static int host_find_ship(char *out, int cap)
+{
+    char mod[HOST_PATH];
+    char dir[HOST_PATH];
+    char trial[HOST_PATH];
+    int i;
+    DWORD n;
+
+    n = GetModuleFileNameA(NULL, mod, (DWORD)sizeof mod);
+    if (n == 0 || n >= sizeof mod)
+        return 0;
+    for (i = (int)n - 1; i >= 0; i--) {
+        if (mod[i] == '\\' || mod[i] == '/') {
+            mod[i] = '\0';
+            break;
+        }
+    }
+    if (snprintf(dir, sizeof dir, "%s", mod) >= (int)sizeof dir)
+        return 0;
+    for (i = 0; i < 8; i++) {
+        if (host_join(trial, (int)sizeof trial, dir, "Forth\\Resources\\Library") &&
+            host_has_marker(trial)) {
+            if ((int)strlen(trial) >= cap)
+                return 0;
+            memcpy(out, trial, strlen(trial) + 1);
+            return 1;
+        }
+        if (host_join(trial, (int)sizeof trial, dir, "Resources\\Library") &&
+            host_has_marker(trial)) {
+            if ((int)strlen(trial) >= cap)
+                return 0;
+            memcpy(out, trial, strlen(trial) + 1);
+            return 1;
+        }
+        if (host_join(trial, (int)sizeof trial, dir, "EditForth\\Forth\\Resources\\Library") &&
+            host_has_marker(trial)) {
+            if ((int)strlen(trial) >= cap)
+                return 0;
+            memcpy(out, trial, strlen(trial) + 1);
+            return 1;
+        }
+        for (n = (DWORD)strlen(dir); n > 0; n--) {
+            if (dir[n - 1] == '\\' || dir[n - 1] == '/') {
+                dir[n - 1] = '\0';
+                break;
+            }
+        }
+        if (n == 0)
+            break;
+    }
+    return 0;
+}
+
+static void host_install_user_tree(void)
+{
+    char *home = NULL;
+    char ship_lib[HOST_PATH];
+    char ship_root[HOST_PATH];
+    char src[HOST_PATH];
+    char dst[HOST_PATH];
+    const char *names[] = {"Library", "AutoLoad", "Docs"};
+    size_t home_len = 0;
+    int i;
+    int slash;
+
+    if (_dupenv_s(&home, &home_len, "USERPROFILE") != 0 || home == NULL || home[0] == '\0') {
+        free(home);
+        return;
+    }
+    if (snprintf(user_root, sizeof user_root, "%s\\Documents\\EditForthWin", home) >=
+        (int)sizeof user_root) {
+        free(home);
+        return;
+    }
+    free(home);
+    CreateDirectoryA(user_root, NULL);
+    if (snprintf(library_root, sizeof library_root, "%s\\Library", user_root) >=
+        (int)sizeof library_root)
+        library_root[0] = '\0';
+    if (!host_find_ship(ship_lib, (int)sizeof ship_lib)) {
+        if (!host_has_marker(library_root))
+            host_outs("Library source was not found. Documents\\EditForthWin has no Library yet.\n");
+        if (snprintf(dst, sizeof dst, "%s\\Config", user_root) < (int)sizeof dst)
+            CreateDirectoryA(dst, NULL);
+        SetCurrentDirectoryA(user_root);
+        return;
+    }
+    slash = (int)strlen(ship_lib);
+    while (slash > 0 && ship_lib[slash - 1] != '\\')
+        slash--;
+    if (slash <= 1) {
+        SetCurrentDirectoryA(user_root);
+        return;
+    }
+    memcpy(ship_root, ship_lib, (size_t)slash - 1);
+    ship_root[slash - 1] = '\0';
+    for (i = 0; i < 3; i++) {
+        if (!host_join(src, (int)sizeof src, ship_root, names[i]))
+            continue;
+        if (!host_is_dir(src))
+            continue;
+        if (!host_join(dst, (int)sizeof dst, user_root, names[i]))
+            continue;
+        host_copy_missing(src, dst, 0);
+    }
+    if (snprintf(dst, sizeof dst, "%s\\Config", user_root) < (int)sizeof dst)
+        CreateDirectoryA(dst, NULL);
+    if (host_has_marker(library_root))
+        host_outs("EditForthWin folder: Documents\\EditForthWin\n");
+    SetCurrentDirectoryA(user_root);
+}
+
+void host_fromlib(void)
+{
+    fromlib_armed = 1;
+}
+
+void host_fromlib_off(void)
+{
+    fromlib_armed = 0;
+}
+
 long long host_resolve(const char *p, long long n, char *out, long long cap)
 {
     char tmp[HOST_PATH];
@@ -246,8 +446,17 @@ long long host_resolve(const char *p, long long n, char *out, long long cap)
     if (n > 0)
         memcpy(tmp, p, (size_t)n);
     tmp[n] = '\0';
+    host_slashes(tmp);
     src = tmp;
-    if (!host_abs(tmp, n) && load_n > 0 && load_len[load_n - 1] > 0) {
+    if (!host_abs(tmp, (long long)strlen(tmp)) && fromlib_armed) {
+        fromlib_armed = 0;
+        if (library_root[0] == '\0' || !host_is_dir(library_root) ||
+            !host_join(joined, (int)sizeof joined, library_root, tmp)) {
+            host_outs("FROMLIB: Documents\\EditForthWin\\Library is missing\n");
+            return 0;
+        }
+        src = joined;
+    } else if (!host_abs(tmp, (long long)strlen(tmp)) && load_n > 0 && load_len[load_n - 1] > 0) {
         int dl = load_len[load_n - 1];
         size_t room;
         size_t cn;
@@ -303,14 +512,23 @@ void host_begin_load(const char *p, long long n)
     if (len > 0)
         memcpy(load_dir[load_n], p, (size_t)len);
     load_dir[load_n][len] = '\0';
+    host_slashes(load_dir[load_n]);
+    len = (int)strlen(load_dir[load_n]);
     load_len[load_n] = len;
+    load_prev[load_n][0] = '\0';
+    GetCurrentDirectoryA((DWORD)sizeof load_prev[load_n], load_prev[load_n]);
     load_n++;
+    if (len > 0)
+        SetCurrentDirectoryA(load_dir[load_n - 1]);
 }
 
 void host_end_load(void)
 {
-    if (load_n > 0)
-        load_n--;
+    if (load_n <= 0)
+        return;
+    load_n--;
+    if (load_prev[load_n][0] != '\0')
+        SetCurrentDirectoryA(load_prev[load_n]);
 }
 
 static int host_eq(const char *a, int an, const char *b, int bn)
@@ -679,6 +897,8 @@ void forth_prompt(void)
         host_out(buf, (size_t)n);
 }
 
+int host_bi_selftest(void);
+
 int forth_boot(void)
 {
     kernel_set_emit(emit_c);
@@ -688,6 +908,8 @@ int forth_boot(void)
         return 1;
     }
     host_outs("=== EditForthWin 1.1.0 === Oct 15, 2026 6:05 PM ===\n");
+    host_install_user_tree();
+    host_bi_selftest();
     return 0;
 }
 

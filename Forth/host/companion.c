@@ -80,7 +80,7 @@ static int pipe_send(const char *json)
     return pipe_write(hdr, 4) && pipe_write(json, n);
 }
 
-static int pipe_send_out(const char *text, int n)
+static int pipe_send_text(const char *op, const char *text, int n)
 {
     static const char hex[] = "0123456789abcdef";
     char *json;
@@ -88,13 +88,18 @@ static int pipe_send_out(const char *text, int n)
     int cap;
     int k;
     int rc;
+    int op_n;
 
-    cap = 32 + n * 6;
+    op_n = (int)strlen(op);
+    cap = 32 + op_n + n * 6;
     json = (char *)malloc((size_t)cap);
     if (json == NULL)
         return 0;
-    memcpy(json, "{\"op\":\"out\",\"text\":\"", 20);
-    k = 20;
+    k = snprintf(json, (size_t)cap, "{\"op\":\"%s\",\"text\":\"", op);
+    if (k < 0 || k >= cap) {
+        free(json);
+        return 0;
+    }
     for (i = 0; i < n; i++) {
         unsigned char c = (unsigned char)text[i];
         if (c == '"' || c == '\\') {
@@ -126,6 +131,21 @@ static int pipe_send_out(const char *text, int n)
     rc = pipe_send(json);
     free(json);
     return rc;
+}
+
+static int pipe_send_out(const char *text, int n)
+{
+    return pipe_send_text("out", text, n);
+}
+
+static void companion_send_cwd(void)
+{
+    char buf[1024];
+    DWORD n = GetCurrentDirectoryA((DWORD)sizeof buf, buf);
+
+    if (n == 0 || n >= sizeof buf)
+        return;
+    pipe_send_text("cwd", buf, (int)n);
 }
 
 static void companion_flush_n(int n)
@@ -332,6 +352,7 @@ int companion_run(const wchar_t *pipe_name)
         goto done;
     }
     companion_flush();
+    companion_send_cwd();
     forth_prompt();
     companion_flush();
 
@@ -375,6 +396,8 @@ int companion_run(const wchar_t *pipe_name)
                 break;
             }
             forth_eval(text, strlen(text));
+            companion_flush();
+            companion_send_cwd();
             forth_prompt();
             companion_flush();
             continue;
