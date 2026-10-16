@@ -45,6 +45,8 @@ EXTRN _print_unsigned:PROC
 EXTRN _putchar:PROC
 EXTRN _record_words_user_base_once:PROC
 EXTRN _strlen:PROC
+EXTRN blk_stack:BYTE
+EXTRN blk_var:BYTE
 EXTRN bootptr_end:BYTE
 EXTRN bootptr_start:BYTE
 EXTRN bye_flag:BYTE
@@ -1586,6 +1588,12 @@ _do_quit:
     ; str     xzr, [x0]
     mov r10, QWORD PTR arm_x0
     mov QWORD PTR [r10], 0
+    ; lea x0, blk_var
+    lea rax, blk_var
+    mov QWORD PTR arm_x0, rax
+    ; str     xzr, [x0]
+    mov r10, QWORD PTR arm_x0
+    mov QWORD PTR [r10], 0
     ; lea x0, local_frame_depth
     lea rax, local_frame_depth
     mov QWORD PTR arm_x0, rax
@@ -2865,6 +2873,23 @@ _push_source:
     add r10, rax
     mov rax, QWORD PTR arm_x3
     mov QWORD PTR [r10], rax
+    ; lea x3, blk_var
+    lea rax, blk_var
+    mov QWORD PTR arm_x3, rax
+    ; ldr     x3, [x3]
+    mov r10, QWORD PTR arm_x3
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x3, rax
+    ; lea x2, blk_stack
+    lea rax, blk_stack
+    mov QWORD PTR arm_x2, rax
+    ; str     x3, [x2, x1, lsl #3]
+    mov r10, QWORD PTR arm_x2
+    mov rax, QWORD PTR arm_x1
+    shl rax, 3
+    add r10, rax
+    mov rax, QWORD PTR arm_x3
+    mov QWORD PTR [r10], rax
     ; add     x1, x1, #1
     mov rax, QWORD PTR arm_x1
     add rax, 1
@@ -3052,6 +3077,23 @@ _pop_source:
     mov QWORD PTR arm_x3, rax
     ; lea x0, file_echo_pos
     lea rax, file_echo_pos
+    mov QWORD PTR arm_x0, rax
+    ; str     x3, [x0]
+    mov r10, QWORD PTR arm_x0
+    mov rax, QWORD PTR arm_x3
+    mov QWORD PTR [r10], rax
+    ; lea x2, blk_stack
+    lea rax, blk_stack
+    mov QWORD PTR arm_x2, rax
+    ; ldr     x3, [x2, x1, lsl #3]
+    mov r10, QWORD PTR arm_x2
+    mov rax, QWORD PTR arm_x1
+    shl rax, 3
+    add r10, rax
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x3, rax
+    ; lea x0, blk_var
+    lea rax, blk_var
     mov QWORD PTR arm_x0, rax
     ; str     x3, [x0]
     mov r10, QWORD PTR arm_x0

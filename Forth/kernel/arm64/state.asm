@@ -27,6 +27,11 @@
         EXPORT block_nr
         EXPORT block_buf
         EXPORT scr_var
+        EXPORT blk_var
+        EXPORT blk_stack
+        EXPORT forget_cut
+        EXPORT native_dsp_end
+        EXPORT jit_exec_mode
         EXPORT cfa_flit
         EXPORT cfa_local_init
         EXPORT cfa_local_at
@@ -165,6 +170,12 @@ block_file  DCQ     0
 block_upd   DCQ     0
 block_nr    DCQ     -1
 scr_var     DCQ     0
+blk_var     DCQ     0
+blk_stack   SPACE   64
+forget_cut  DCQ     0
+jit_exec_mode DCQ   0
+native_dsp_mem SPACE 8192
+native_dsp_end
 block_buf   SPACE   1024
 catch_ok_cell DCQ   catch_ok_cfa
 tw_continue_cell DCQ tw_continue_cfa

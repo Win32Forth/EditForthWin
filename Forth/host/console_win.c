@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
+#include <commdlg.h>
 
 void host_set_sink(void (*fn)(const void *, size_t));
 void host_set_cls(void (*fn)(void));
@@ -412,8 +413,66 @@ done:
 #define WM_APP_TEXT (WM_APP + 1)
 #define WM_APP_READY (WM_APP + 2)
 #define WM_APP_CLS (WM_APP + 3)
+#define WM_APP_INCLUDE (WM_APP + 4)
 
 static HWND g_hwnd;
+static HANDLE g_pick_ev;
+static char g_pick_path[1024];
+static long g_pick_len;
+
+/* Bare INCLUDE / FLOAD. No console window (agent or companion) returns 0
+   and does not open a dialog. The window thread runs the picker. */
+long long host_include_dialog(void **out_ptr)
+{
+    if (out_ptr != NULL)
+        *out_ptr = NULL;
+    if (g_hwnd == NULL || g_pick_ev == NULL)
+        return 0;
+    g_pick_len = 0;
+    g_pick_path[0] = '\0';
+    ResetEvent(g_pick_ev);
+    if (!PostMessageW(g_hwnd, WM_APP_INCLUDE, 0, 0))
+        return 0;
+    if (WaitForSingleObject(g_pick_ev, 120000) != WAIT_OBJECT_0)
+        return 0;
+    if (g_pick_len <= 0)
+        return 0;
+    if (out_ptr != NULL)
+        *out_ptr = g_pick_path;
+    return g_pick_len;
+}
+
+static void include_dialog_now(void)
+{
+    wchar_t file[1024];
+    OPENFILENAMEW ofn;
+    int n;
+
+    file[0] = 0;
+    memset(&ofn, 0, sizeof ofn);
+    ofn.lStructSize = sizeof ofn;
+    ofn.hwndOwner = g_hwnd;
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = 1024;
+    ofn.lpstrFilter = L"Forth files\0*.fth;*.fs;*.4th;*.f;*.txt\0All files\0*.*\0";
+    ofn.nFilterIndex = 1;
+    ofn.lpstrTitle = L"Include";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
+    if (!GetOpenFileNameW(&ofn)) {
+        g_pick_len = 0;
+        SetEvent(g_pick_ev);
+        return;
+    }
+    n = WideCharToMultiByte(CP_UTF8, 0, file, -1, g_pick_path, (int)sizeof g_pick_path, NULL, NULL);
+    if (n <= 1) {
+        g_pick_len = 0;
+        g_pick_path[0] = '\0';
+        SetEvent(g_pick_ev);
+        return;
+    }
+    g_pick_len = n - 1;
+    SetEvent(g_pick_ev);
+}
 static HFONT g_font;
 static CRITICAL_SECTION g_text_cs;
 static CRITICAL_SECTION g_key_cs;
@@ -1043,6 +1102,9 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             g_prot[0] = 0;
         InvalidateRect(hwnd, NULL, TRUE);
         return 0;
+    case WM_APP_INCLUDE:
+        include_dialog_now();
+        return 0;
     case WM_APP_READY:
         SetForegroundWindow(hwnd);
         SetFocus(hwnd);
@@ -1057,6 +1119,8 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         g_quit = 1;
         SetEvent(g_line_ev);
         SetEvent(g_key_ev);
+        if (g_pick_ev != NULL)
+            SetEvent(g_pick_ev);
         PostQuitMessage(0);
         return 0;
     default:
@@ -1078,6 +1142,7 @@ static int window_run(wchar_t **argv, int show)
     InitializeCriticalSection(&g_line_cs);
     g_key_ev = CreateEventW(NULL, FALSE, FALSE, NULL);
     g_line_ev = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_pick_ev = CreateEventW(NULL, FALSE, FALSE, NULL);
     g_busy = 1;
 
     memset(&wc, 0, sizeof wc);

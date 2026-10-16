@@ -54,6 +54,7 @@
         EXTERN eval_resume_sp
 
         EXPORT DOVAR
+        EXPORT DOCON
         EXPORT DODOES
         EXPORT XTHROW
         EXPORT XBranch
@@ -856,6 +857,13 @@ XDOCOL_ADDR
         DPUSH
         NEXT
 
+        BOOT_WORD DOCON-ADDR, DOCON-ADDR ( -- addr ) address of DOCON code, 0, XDOCON_ADDR, 0
+XDOCON_ADDR
+        adrp    x0, DOCON
+        add     x0, x0, DOCON
+        DPUSH
+        NEXT
+
         BOOT_WORD BRANCH, BRANCH ( -- ) unconditional branch, 0, XBranch, XBranch_END
 XBranch
         ldr     x0, [x19]
@@ -898,6 +906,13 @@ DOVAR
         str     x20, [x22, #-8]!
         add     x20, x21, #16
 DOVAR_END
+        NEXT
+
+        BOOT_WORD (DOCON), (DOCON) CONSTANT runtime, 0, DOCON, DOCON_END
+DOCON
+        str     x20, [x22, #-8]!
+        ldr     x20, [x21, #16]
+DOCON_END
         NEXT
 
         BOOT_WORD (DODOES), (DODOES) DOES> runtime, 0, DODOES, DODOES_END

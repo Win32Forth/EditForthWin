@@ -109,10 +109,10 @@ The other `DBG-*` hooks live in `SYSVOC`. `DBG-HOST-SPAN` remembers an editor sp
 
 Core, Core Ext, Search-Order, String, Facility, Exception, Memory-Allocation, Double, Locals, Programming-Tools, and File-Access finished with an empty stack and no failures. `123.` is a double literal. `LOCALS|` compiles its locals.
 
-Block then stopped the run. `LOAD` does not interpret the block, so the suite printed `BL-T ?` and `FAIL: LOAD`. `BLK` is not defined, so the next line printed `BLK ?` and the process faulted. XChar, Float, and Host did not run. There is no final pass count.
+Block then stopped that run. It printed `BL-T ?` and `FAIL: LOAD`, then `BLK ?`, and the process faulted. XChar, Float, and Host did not run. There is no final pass count. That suite has not been run again. `LOAD`, `THRU`, and `BLK` have since been checked with a small script on both architectures.
 
 The assembly words still open are listed in `REMAINING.md`.
 
 ## Later
 
-Native code is not in this tree yet. The x64 console matches the ARM64 word set, including the stubs listed in `REMAINING.md`. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false. Emitter and Hyper stay commented out of autoload.
+`ALLOCATE-EXEC`, `FREE-EXEC`, `MPROTECT`, `ICACHE-INVAL`, `CALL-NATIVE`, `CALL-NATIVE-LEAF`, `NATIVE-SMOKE`, `JIT-WPROTECT`, `DOCON-ADDR`, and `(DOCON)` are in the kernel. On ARM64, `CALL-NATIVE` runs the buffer with the argument in x0 and the data stack in x19. On x64 the same word calls host machine code. The x64 console matches the ARM64 word set. `FILE-EXT`, `FLOATING`, and `BLOCK` report true. `FACILITY` and `FACILITY-EXT` report false. Emitter and Hyper stay commented out of autoload.

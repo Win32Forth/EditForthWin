@@ -64,6 +64,11 @@ PUBLIC block_upd
 PUBLIC block_nr
 PUBLIC block_buf
 PUBLIC scr_var
+PUBLIC blk_var
+PUBLIC blk_stack
+PUBLIC forget_cut
+PUBLIC native_dsp_end
+PUBLIC jit_exec_mode
 PUBLIC cfa_flit
 PUBLIC cfa_local_init
 PUBLIC cfa_local_at
@@ -326,6 +331,22 @@ block_nr:
 scr_var:
     ; DCQ     0
     DQ 0
+blk_var:
+    ; DCQ     0
+    DQ 0
+blk_stack:
+    ; SPACE   64
+    DB 64 DUP(0)
+forget_cut:
+    ; DCQ     0
+    DQ 0
+jit_exec_mode:
+    ; DCQ   0
+    DQ 0
+native_dsp_mem:
+    ; SPACE 8192
+    DB 8192 DUP(0)
+native_dsp_end:
 block_buf:
     ; SPACE   1024
     DB 1024 DUP(0)

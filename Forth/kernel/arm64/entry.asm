@@ -36,6 +36,8 @@
         EXTERN file_echo
         EXTERN file_echo_pos
         EXTERN file_echo_stack
+        EXTERN blk_var
+        EXTERN blk_stack
         EXTERN source_sp
         EXTERN source_stack
         EXTERN local_frame_depth
@@ -615,6 +617,9 @@ _do_quit
         adrp    x0, line_mode
         add     x0, x0, line_mode
         str     xzr, [x0]
+        adrp    x0, blk_var
+        add     x0, x0, blk_var
+        str     xzr, [x0]
         adrp    x0, local_frame_depth
         add     x0, x0, local_frame_depth
         str     xzr, [x0]
@@ -995,6 +1000,12 @@ _push_source
         adrp    x2, file_echo_stack
         add     x2, x2, file_echo_stack
         str     x3, [x2, x1, lsl #3]
+        adrp    x3, blk_var
+        add     x3, x3, blk_var
+        ldr     x3, [x3]
+        adrp    x2, blk_stack
+        add     x2, x2, blk_stack
+        str     x3, [x2, x1, lsl #3]
         add     x1, x1, #1
         str     x1, [x0]
         mov     x0, #1
@@ -1056,6 +1067,12 @@ _pop_source
         ldr     x3, [x2, x1, lsl #3]
         adrp    x0, file_echo_pos
         add     x0, x0, file_echo_pos
+        str     x3, [x0]
+        adrp    x2, blk_stack
+        add     x2, x2, blk_stack
+        ldr     x3, [x2, x1, lsl #3]
+        adrp    x0, blk_var
+        add     x0, x0, blk_var
         str     x3, [x0]
         mov     x0, #1
         ret

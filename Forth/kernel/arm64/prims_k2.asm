@@ -115,6 +115,19 @@
         EXTERN host_dir
         EXTERN host_last_included
         EXTERN host_dot_included
+        EXTERN host_float_op
+        EXTERN host_include_dialog
+        EXTERN host_alloc_exec
+        EXTERN host_free_exec
+        EXTERN host_mprotect
+        EXTERN host_icache_inval
+        EXTERN host_native_ret7
+        EXTERN native_dsp_end
+        EXTERN jit_exec_mode
+        EXTERN current_var
+        EXTERN words_user_base
+        EXTERN blk_var
+        EXTERN forget_cut
         EXTERN _quit_exit
         EXTERN _do_quit
         EXTERN _interpret_loop
@@ -1797,9 +1810,23 @@ XBW_TABLE_LIM
 XBW_TABLE_LIM_END
         NEXT
 
-        BOOT_WORD FLIT, FLIT ( -- ) skip an inline float bit pattern, 0, XFLIT, XFLIT_END
+        BOOT_WORD FLIT, FLIT ( -- ) push the inline float bits, 0, XFLIT, XFLIT_END
 XFLIT
-        add     x19, x19, #8
+        ldr     x1, [x19], #8
+        mov     x0, #101
+        mov     x2, #0
+        mov     x3, #0
+        mov     x4, #0
+        mov     x5, #0
+        sub     sp, sp, #80
+        stp     x29, x30, [sp, #32]
+        add     x6, sp, #48
+        str     xzr, [sp, #48]
+        str     xzr, [sp, #56]
+        str     xzr, [sp, #64]
+        bl      host_float_op
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #80
 XFLIT_END
         NEXT
 
@@ -1813,9 +1840,159 @@ XFLIT_ADDR
 XFLIT_ADDR_END
         NEXT
 
-        BOOT_WORD (F-OP), (F-OP) ( i*x op -- j*x ) float ops are not wired on this host yet, 0, XFLOAT_OP, XFLOAT_OP_END
+        BOOT_WORD (F-OP), (F-OP) ( i*x op -- j*x ) float host multiplex, 0, XFLOAT_OP, XFLOAT_OP_END
 XFLOAT_OP
+        mov     x9, x20
         ldr     x20, [x22], #8
+        mov     x1, #0
+        mov     x2, #0
+        mov     x3, #0
+        mov     x4, #0
+        mov     x5, #0
+        cmp     x9, #22
+        b.eq    _fo_a1
+        cmp     x9, #23
+        b.eq    _fo_a1
+        cmp     x9, #24
+        b.eq    _fo_a1
+        cmp     x9, #25
+        b.eq    _fo_a1
+        cmp     x9, #26
+        b.eq    _fo_a1
+        cmp     x9, #27
+        b.eq    _fo_a1
+        cmp     x9, #28
+        b.eq    _fo_a1
+        cmp     x9, #37
+        b.eq    _fo_a1
+        cmp     x9, #39
+        b.eq    _fo_a1
+        cmp     x9, #40
+        b.eq    _fo_a1
+        cmp     x9, #41
+        b.eq    _fo_a1
+        cmp     x9, #42
+        b.eq    _fo_a1
+        cmp     x9, #43
+        b.eq    _fo_a1
+        cmp     x9, #44
+        b.eq    _fo_a1
+        cmp     x9, #70
+        b.eq    _fo_a1
+        cmp     x9, #71
+        b.eq    _fo_a1
+        cmp     x9, #72
+        b.eq    _fo_a1
+        cmp     x9, #73
+        b.eq    _fo_a1
+        cmp     x9, #74
+        b.eq    _fo_a1
+        cmp     x9, #75
+        b.eq    _fo_a1
+        cmp     x9, #30
+        b.eq    _fo_d2
+        cmp     x9, #32
+        b.eq    _fo_cu
+        cmp     x9, #38
+        b.eq    _fo_cu
+        b       _fo_go
+_fo_a1
+        mov     x1, x20
+        ldr     x20, [x22], #8
+        b       _fo_go
+_fo_d2
+        mov     x2, x20
+        ldr     x1, [x22], #8
+        ldr     x20, [x22], #8
+        b       _fo_go
+_fo_cu
+        mov     x2, x20
+        ldr     x5, [x22], #8
+        ldr     x20, [x22], #8
+_fo_go
+        sub     sp, sp, #96
+        stp     x29, x30, [sp, #32]
+        str     x9, [sp, #80]
+        str     xzr, [sp, #48]
+        str     xzr, [sp, #56]
+        str     xzr, [sp, #64]
+        mov     x0, x9
+        add     x6, sp, #48
+        bl      host_float_op
+        ldr     x6, [sp, #48]
+        ldr     x7, [sp, #56]
+        ldr     x8, [sp, #64]
+        ldr     x9, [sp, #80]
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #96
+        cmp     x9, #31
+        b.eq    _fo_push2
+        cmp     x9, #38
+        b.eq    _fo_push3
+        cmp     x9, #1
+        b.eq    _fo_push1
+        cmp     x9, #15
+        b.eq    _fo_push1
+        cmp     x9, #16
+        b.eq    _fo_push1
+        cmp     x9, #17
+        b.eq    _fo_push1
+        cmp     x9, #18
+        b.eq    _fo_push1
+        cmp     x9, #19
+        b.eq    _fo_push1
+        cmp     x9, #20
+        b.eq    _fo_push1
+        cmp     x9, #21
+        b.eq    _fo_push1
+        cmp     x9, #29
+        b.eq    _fo_push1
+        cmp     x9, #32
+        b.eq    _fo_push1
+        cmp     x9, #36
+        b.eq    _fo_push1
+        cmp     x9, #39
+        b.eq    _fo_push1
+        cmp     x9, #40
+        b.eq    _fo_push1
+        cmp     x9, #41
+        b.eq    _fo_push1
+        cmp     x9, #42
+        b.eq    _fo_push1
+        cmp     x9, #43
+        b.eq    _fo_push1
+        cmp     x9, #44
+        b.eq    _fo_push1
+        cmp     x9, #70
+        b.eq    _fo_push1
+        cmp     x9, #71
+        b.eq    _fo_push1
+        cmp     x9, #72
+        b.eq    _fo_push1
+        cmp     x9, #73
+        b.eq    _fo_push1
+        cmp     x9, #74
+        b.eq    _fo_push1
+        cmp     x9, #75
+        b.eq    _fo_push1
+        cmp     x9, #102
+        b.eq    _fo_push1
+        b       _fo_none
+_fo_push1
+        str     x20, [x22, #-8]!
+        mov     x20, x6
+        b       _fo_none
+_fo_push2
+        str     x20, [x22, #-8]!
+        str     x6, [x22, #-8]!
+        mov     x20, x7
+        b       _fo_none
+_fo_push3
+        str     x20, [x22, #-8]!
+        str     x6, [x22, #-8]!
+        str     x7, [x22, #-8]!
+        mov     x20, x8
+_fo_none
 XFLOAT_OP_END
         NEXT
 
@@ -2218,6 +2395,9 @@ XLINE_SOURCE
         mov     x1, #2
         neg     x1, x1
         str     x1, [x0]
+        adrp    x0, blk_var
+        add     x0, x0, blk_var
+        str     xzr, [x0]
         bl      _eval_resume_push
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
@@ -2503,8 +2683,34 @@ XDOT_INCLUDED
         ldp     x29, x30, [sp], #16
         NEXT
 
-        BOOT_WORD (INCLUDE), (INCLUDE) ( -- ) file dialog is not wired, 0, XINCLUDE_PAREN, 0
+        BOOT_WORD (INCLUDE), (INCLUDE) ( -- ) bare INCLUDE opens a file dialog, 0, XINCLUDE_PAREN, 0
 XINCLUDE_PAREN
+        sub     sp, sp, #80
+        stp     x29, x30, [sp, #32]
+        add     x0, sp, #48
+        bl      host_include_dialog
+        cbz     x0, _inc_none
+        str     x0, [sp, #56]
+        ldr     x1, [sp, #48]
+        str     x1, [sp, #64]
+        adrp    x0, req_included_name
+        add     x0, x0, req_included_name
+        mov     x1, #8
+        bl      _find_word
+        cbz     x0, _inc_none
+        ldr     x2, [sp, #64]
+        ldr     x3, [sp, #56]
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #80
+        str     x20, [x22, #-8]!
+        str     x2, [x22, #-8]!
+        mov     x20, x3
+        mov     x21, x0
+        ldr     x5, [x21]
+        br      x5
+_inc_none
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #80
         NEXT
 
         BOOT_WORD REQUIRED, REQUIRED ( c-addr u -- ) INCLUDED unless this path was loaded, 0, XREQUIRED, 0
@@ -2546,14 +2752,135 @@ _req_drop
         add     sp, sp, #64
         NEXT
 
-        BOOT_WORD FORGET, FORGET ( name -- ) name is parsed and left in the dictionary, 0, XFORGET, 0
+        BOOT_WORD FORGET, FORGET ( name -- ) remove that word and everything newer, 0, XFORGET, 0
 XFORGET
-        sub     sp, sp, #64
+        sub     sp, sp, #80
         stp     x29, x30, [sp, #32]
         bl      _next_word
+        cbz     x1, _forget_empty
+        stp     x0, x1, [sp, #48]
+        bl      _find_word
+        cbz     x0, _forget_undef
+        adrp    x1, words_user_base
+        add     x1, x1, words_user_base
+        ldr     x1, [x1]
+        cbnz    x1, _forget_fence
+        adrp    x1, user_dict_area
+        add     x1, x1, user_dict_area
+_forget_fence
+        cmp     x0, x1
+        b.lo    _forget_prot
+        adrp    x2, forget_cut
+        add     x2, x2, forget_cut
+        str     x0, [x2]
+        adrp    x1, here_ptr
+        add     x1, x1, here_ptr
+        str     x0, [x1]
+        adrp    x0, latest_var
+        add     x0, x0, latest_var
+        ldr     x1, [x2]
+        bl      _prune_wid
+        adrp    x3, current_var
+        add     x3, x3, current_var
+        ldr     x0, [x3]
+        cbz     x0, _forget_search
+        adrp    x2, forget_cut
+        add     x2, x2, forget_cut
+        ldr     x1, [x2]
+        bl      _prune_wid
+_forget_search
+        adrp    x2, search_order_n
+        add     x2, x2, search_order_n
+        ldr     x2, [x2]
+        adrp    x3, search_order
+        add     x3, x3, search_order
+        mov     x4, #0
+_forget_sloop
+        cmp     x4, x2
+        b.hs    _forget_regs
+        ldr     x0, [x3, x4, lsl #3]
+        cbz     x0, _forget_snext
+        stp     x2, x3, [sp, #-16]!
+        stp     x4, xzr, [sp, #-16]!
+        adrp    x1, forget_cut
+        add     x1, x1, forget_cut
+        ldr     x1, [x1]
+        bl      _prune_wid
+        ldp     x4, xzr, [sp], #16
+        ldp     x2, x3, [sp], #16
+_forget_snext
+        add     x4, x4, #1
+        b       _forget_sloop
+_forget_regs
+        adrp    x2, wordlist_reg_n
+        add     x2, x2, wordlist_reg_n
+        ldr     x2, [x2]
+        adrp    x3, wordlist_reg
+        add     x3, x3, wordlist_reg
+        mov     x4, #0
+_forget_rloop
+        cmp     x4, x2
+        b.hs    _forget_done
+        ldr     x0, [x3, x4, lsl #3]
+        cbz     x0, _forget_rnext
+        stp     x2, x3, [sp, #-16]!
+        stp     x4, xzr, [sp, #-16]!
+        adrp    x1, forget_cut
+        add     x1, x1, forget_cut
+        ldr     x1, [x1]
+        bl      _prune_wid
+        ldp     x4, xzr, [sp], #16
+        ldp     x2, x3, [sp], #16
+_forget_rnext
+        add     x4, x4, #1
+        b       _forget_rloop
+_forget_done
         ldp     x29, x30, [sp, #32]
-        add     sp, sp, #64
+        add     sp, sp, #80
         NEXT
+_forget_prot
+        adrp    x0, str_protected
+        add     x0, x0, str_protected
+        bl      emit_cstr
+        b       _forget_done
+_forget_empty
+        adrp    x0, msg_huh
+        add     x0, x0, msg_huh
+        bl      emit_cstr
+        b       _forget_done
+_forget_undef
+        ldp     x0, x1, [sp, #48]
+        bl      emit_str
+        adrp    x0, msg_huh
+        add     x0, x0, msg_huh
+        bl      emit_cstr
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #80
+        b       _quit_exit
+
+; x0 = wid base. x1 = cut CFA. Unlink heads whose CFA is at or past the cut.
+_prune_wid
+        cbz     x0, _prune_ret
+        mov     x3, x0
+        mov     x4, x1
+        mov     x5, #0
+_prune_thread
+        cmp     x5, #16
+        b.hs    _prune_ret
+        add     x0, x3, x5, lsl #3
+_prune_head
+        ldr     x2, [x0]
+        cbz     x2, _prune_next
+        cmp     x2, x4
+        b.lo    _prune_next
+        ldr     x2, [x2, #-16]
+        str     x2, [x0]
+        b       _prune_head
+_prune_next
+        add     x5, x5, #1
+        b       _prune_thread
+_prune_ret
+        ret
 
         BOOT_WORD BLOCK-FILE, BLOCK-FILE ( -- addr ) current block fileid, 0, XBLOCK_FILE, 0
 XBLOCK_FILE
@@ -2587,6 +2914,14 @@ XBLOCK_NR
         mov     x20, x0
         NEXT
 
+        BOOT_WORD BLK, BLK ( -- addr ) block being loaded or zero, 0, XBLK, 0
+XBLK
+        str     x20, [x22, #-8]!
+        adrp    x0, blk_var
+        add     x0, x0, blk_var
+        mov     x20, x0
+        NEXT
+
         BOOT_WORD SCR, SCR ( -- addr ) last listed block number, 0, XSCR, 0
 XSCR
         str     x20, [x22, #-8]!
@@ -2595,16 +2930,49 @@ XSCR
         mov     x20, x0
         NEXT
 
-        BOOT_WORD (LOAD-ENTER), (LOAD-ENTER) ( u -- ) block load is not wired, 0, XLOAD_ENTER, 0
+        BOOT_WORD (LOAD-ENTER), (LOAD-ENTER) ( u -- u ) save SOURCE and set BLK, 0, XLOAD_ENTER, 0
 XLOAD_ENTER
-        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      _push_source
+        ldp     x29, x30, [sp], #16
+        adrp    x0, blk_var
+        add     x0, x0, blk_var
+        str     x20, [x0]
         NEXT
 
-        BOOT_WORD (LOAD-RUN), (LOAD-RUN) ( c-addr u -- ) block load is not wired, 0, XLOAD_RUN, 0
+        BOOT_WORD (LOAD-RUN), (LOAD-RUN) ( c-addr u -- ) interpret a block buffer, 0, XLOAD_RUN, 0
 XLOAD_RUN
+        mov     x1, x20
+        ldr     x0, [x22], #8
         ldr     x20, [x22], #8
-        ldr     x20, [x22], #8
-        NEXT
+        sub     sp, sp, #80
+        stp     x29, x30, [sp, #32]
+        stp     x0, x1, [sp, #48]
+        ldp     x0, x1, [sp, #48]
+        adrp    x2, source_base
+        add     x2, x2, source_base
+        str     x0, [x2]
+        adrp    x2, source_cur
+        add     x2, x2, source_cur
+        str     x0, [x2]
+        add     x0, x0, x1
+        adrp    x2, source_end
+        add     x2, x2, source_end
+        str     x0, [x2]
+        adrp    x2, to_in
+        add     x2, x2, to_in
+        str     xzr, [x2]
+        adrp    x2, line_mode
+        add     x2, x2, line_mode
+        str     xzr, [x2]
+        adrp    x2, source_id
+        add     x2, x2, source_id
+        mov     x3, #-1
+        str     x3, [x2]
+        bl      _eval_resume_push
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #80
+        b       _interpret_loop
 
         BOOT_WORD ], ] ( -- ) enter compile mode, 0, XRBRA, 0
 XRBRA
@@ -2652,6 +3020,9 @@ XEVALUATE
         add     x2, x2, source_id
         mov     x3, #-1
         str     x3, [x2]
+        adrp    x2, blk_var
+        add     x2, x2, blk_var
+        str     xzr, [x2]
         bl      _eval_resume_push
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #80
@@ -3128,6 +3499,162 @@ fac_op_done
 XFACILITY_OP_GO_END
         NEXT
 
+; x0 = arg, x1 = dsp, x2 = code. Returns the native x0. Restores the VM
+; registers a leaf is allowed to scratch, including x19.
+_call_native_regs
+        stp     x29, x30, [sp, #-128]!
+        stp     x19, x20, [sp, #16]
+        stp     x21, x22, [sp, #32]
+        stp     x23, x24, [sp, #48]
+        stp     x28, x18, [sp, #64]
+        stp     x0, x1, [sp, #80]
+        str     x2, [sp, #96]
+        mov     x0, x2
+        mov     x1, #64
+        bl      host_icache_inval
+        ldp     x0, x1, [sp, #80]
+        ldr     x2, [sp, #96]
+        mov     x19, x1
+        blr     x2
+        ldp     x28, x18, [sp, #64]
+        ldp     x23, x24, [sp, #48]
+        ldp     x21, x22, [sp, #32]
+        ldp     x19, x20, [sp, #16]
+        ldp     x29, x30, [sp], #128
+        ret
+
+        BOOT_WORD MPROTECT, MPROTECT ( addr u prot -- ior ) protect pages prot 1=R 2=W 4=X, 0, XMPROTECT, 0
+XMPROTECT
+        mov     x2, x20
+        ldr     x1, [x22], #8
+        ldr     x0, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_mprotect
+        ldp     x29, x30, [sp], #16
+        mov     x20, x0
+        NEXT
+
+        BOOT_WORD ICACHE-INVAL, ICACHE-INVAL ( addr u -- ) flush the instruction cache for a range, 0, XICACHE_INVAL, 0
+XICACHE_INVAL
+        mov     x1, x20
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_icache_inval
+        ldp     x29, x30, [sp], #16
+        NEXT
+
+        BOOT_WORD CALL-NATIVE, CALL-NATIVE ( x0 dsp code -- x0' ) call native code and save the VM, 0, XCALL_NATIVE, 0
+XCALL_NATIVE
+        mov     x2, x20
+        ldr     x1, [x22], #8
+        ldr     x0, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      _call_native_regs
+        ldp     x29, x30, [sp], #16
+        mov     x20, x0
+        NEXT
+
+        BOOT_WORD CALL-NATIVE-LEAF, CALL-NATIVE-LEAF ( code -- x0' ) call code with x0=0 and a BSS DSP, 0, XCALL_NATIVE_LEAF, 0
+XCALL_NATIVE_LEAF
+        mov     x2, x20
+        adrp    x1, native_dsp_end
+        add     x1, x1, native_dsp_end
+        sub     x1, x1, #64
+        mov     x0, #0
+        stp     x29, x30, [sp, #-16]!
+        bl      _call_native_regs
+        ldp     x29, x30, [sp], #16
+        mov     x20, x0
+        NEXT
+
+        BOOT_WORD ALLOCATE-EXEC, ALLOCATE-EXEC ( u -- a-addr ior ) RW buffer for later R+X, 0, XALLOCATE_EXEC, 0
+XALLOCATE_EXEC
+        mov     x0, x20
+        cbnz    x0, _ax_size
+        mov     x0, #0x1000
+_ax_size
+        sub     sp, sp, #80
+        stp     x29, x30, [sp, #32]
+        add     x1, sp, #48
+        str     xzr, [sp, #48]
+        bl      host_alloc_exec
+        ldr     x1, [sp, #48]
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #80
+        str     x1, [x22, #-8]!
+        mov     x20, x0
+        NEXT
+
+        BOOT_WORD FREE-EXEC, FREE-EXEC ( a-addr u -- ior ) release an ALLOCATE-EXEC buffer, 0, XFREE_EXEC, 0
+XFREE_EXEC
+        mov     x1, x20
+        ldr     x0, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_free_exec
+        ldp     x29, x30, [sp], #16
+        mov     x20, x0
+        NEXT
+
+        BOOT_WORD JIT-WPROTECT, JIT-WPROTECT ( f -- ) record write or execute mode for this thread, 0, XJIT_WPROTECT, 0
+XJIT_WPROTECT
+        cmp     x20, #0
+        cset    x1, ne
+        adrp    x0, jit_exec_mode
+        add     x0, x0, jit_exec_mode
+        str     x1, [x0]
+        ldr     x20, [x22], #8
+        NEXT
+
+        BOOT_WORD NATIVE-SMOKE, NATIVE-SMOKE ( -- ior ) test RW map then RX call, 0, XNATIVE_SMOKE, 0
+XNATIVE_SMOKE
+        sub     sp, sp, #96
+        stp     x29, x30, [sp, #32]
+        mov     x0, #0x1000
+        add     x1, sp, #48
+        str     xzr, [sp, #48]
+        bl      host_alloc_exec
+        cbnz    x0, _ns_bad
+        ldr     x0, [sp, #48]
+        str     x0, [sp, #56]
+        bl      host_native_ret7
+        ldr     x0, [sp, #56]
+        mov     x1, #0x1000
+        mov     x2, #5
+        bl      host_mprotect
+        cbnz    x0, _ns_free
+        ldr     x0, [sp, #56]
+        mov     x1, #0x1000
+        bl      host_icache_inval
+        mov     x0, #0
+        adrp    x1, native_dsp_end
+        add     x1, x1, native_dsp_end
+        sub     x1, x1, #64
+        ldr     x2, [sp, #56]
+        bl      _call_native_regs
+        str     x0, [sp, #64]
+        ldr     x0, [sp, #56]
+        mov     x1, #0x1000
+        bl      host_free_exec
+        cbnz    x0, _ns_bad
+        ldr     x0, [sp, #64]
+        cmp     x0, #7
+        b.ne    _ns_bad
+        mov     x0, #0
+        b       _ns_out
+_ns_free
+        ldr     x0, [sp, #56]
+        mov     x1, #0x1000
+        bl      host_free_exec
+_ns_bad
+        mov     x0, #-1
+_ns_out
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #96
+        str     x20, [x22, #-8]!
+        mov     x20, x0
+        NEXT
+
 next_debug_gate
         adrp    x16, next_debug
         add     x16, x16, next_debug
@@ -3136,6 +3663,7 @@ next_debug_gate
         AREA |.rdata|, DATA, READONLY
 
 req_included_name DCB   "INCLUDED"
+str_protected   DCB     "protected (system word)", 10, 0
 str_bang        DCB     "!", 0
 str_twostore    DCB     "2!", 0
 str_twofetch    DCB     "2@", 0
@@ -3187,9 +3715,9 @@ env_values
         DCQ     -1
         DCQ     512
         DCQ     512
-        DCQ     0
-        DCQ     0
-        DCQ     0
+        DCQ     -1
+        DCQ     -1
+        DCQ     16
         DCQ     0
         DCQ     -1
         DCQ     0
@@ -3205,7 +3733,7 @@ env_values
         DCQ     -1
         DCQ     -1
         DCQ     8
-        DCQ     0
+        DCQ     -1
         DCQ     -1
         DCQ     -1
 env_kinds

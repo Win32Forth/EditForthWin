@@ -1,21 +1,27 @@
 # Remaining assembly words
 
-Compared on Oct 16, 2026. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel has 361. Forty Mac names have no Windows header. Four Windows words are still stubs, and `FORGET` parses a name without removing it. `(LOCAL)` and trailing-dot doubles were fixed after this list was taken. The x64 kernel is a translation of this ARM64 set, so it has the same words and the same stubs.
+Updated Oct 16, 2026. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel has 372. Twenty-nine Mac names have no Windows header. The x64 kernel is a translation of this ARM64 set, so it has the same words.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
-## Present, body does not do the work
+## Done
 
-| Word | What the body does |
-| --- | --- |
-| `(F-OP)` | Drops the opcode. Every `FLOATING` word (`F+`, `FDEPTH`, and the rest) goes through this. |
-| `(LOCAL)` | Was a stub: while compiling it dropped the name and did not record it, so `LOCALS\|` failed. It now declares the local and compiles `LOCAL-INIT`. `{: :}` was already implemented. |
-| `(INCLUDE)` | Returns immediately. A bare `INCLUDE` or `FLOAD` never opens the file dialog. A named include works through the colon word. |
-| `(LOAD-ENTER)` | Drops the block number. |
-| `(LOAD-RUN)` | Drops the block text. `LOAD` and `THRU` in the cold load call these two. |
-| `FORGET` | Parses the name and leaves the word in the dictionary. |
+These bodies are in the kernel and were checked on both `fortharm64.exe` and `forthx64.exe`. The Qt editors were not rebuilt.
 
-## No Windows boot word
+- `(LOCAL)` declares locals for `LOCALS|` and compiles `LOCAL-INIT` when the count is zero. `{: :}` is unchanged.
+- A token that ends in `.` is a double literal. `123.` leaves 123 under 0. The high cell is the sign extension.
+- `(F-OP)` runs the floating-point opcode. The IEEE stack is in `Forth/host/float_win.c`, depth 16, default precision 6. `FLIT` pushes the inline bits that `FLITERAL` compiles. `S" FLOATING" ENVIRONMENT?` and `S" BLOCK" ENVIRONMENT?` are true. `S" FLOATING-STACK" ENVIRONMENT?` is 16. `MAX-FLOAT` is still 0. A token such as `1.5E0` is still not a float literal. Use `S>F`, `>FLOAT`, or `FLITERAL`.
+- `(INCLUDE)` calls `host_include_dialog`. The standalone console shows the Windows open-file dialog. Cancel returns without loading a file. `--agent` and the Qt companion have no console window, so a bare `INCLUDE` or `FLOAD` there returns at once. A named include still goes through the colon word `INCLUDED`. The windowed dialog has not been clicked in a test.
+- `(LOAD-ENTER)` saves the outer source and stores the block number in `BLK`. `(LOAD-RUN)` interprets the block text and restores that source when the buffer ends. `BLK` is the cell those words use. With no block file, `BLOCK` blanks the buffer. A short program moved into block 1, then `1 LOAD`, ran and left `BLK` at 0. `2 3 THRU` loads blocks 2 and 3.
+- `FORGET` parses the name and removes that word and everything newer. An unknown name prints `name ?` and abandons the rest of the line. A word below the cold-load fence prints `protected (system word)` and stays. Checked for a colon word, an empty colon word, a newer word defined after the forgotten one, `CONSTANT`, and `VALUE`.
+- `ALLOCATE-EXEC` reserves a read/write page with `VirtualAlloc`. `FREE-EXEC` releases that base address. A null address returns ior 0. `MPROTECT` uses the Mac bits: 1=read, 2=write, 4=execute. Prot 5 is read/execute. `ICACHE-INVAL` flushes the instruction cache for the range. The host side is `Forth/host/exec_win.c`.
+- `CALL-NATIVE` saves the Forth registers and calls the code. On ARM64, x0 is the argument and x19 is the data-stack pointer. `CALL-NATIVE-LEAF` passes x0=0 and a built-in data stack. On x64 the translated call uses the Windows argument registers, so it runs x64 machine code. It does not run ARM64 opcodes. `NATIVE-SMOKE` maps a page, writes a leaf that returns 7, protects it, calls it, and frees it. It returned 0 on both builds. A direct `CALL-NATIVE` and `CALL-NATIVE-LEAF` of that same leaf also returned 7.
+- `JIT-WPROTECT` drops the flag and records 0 or 1. Windows has no per-thread `MAP_JIT` switch, so this word does not change page protection. The assembler uses `MPROTECT`.
+- `(DOCON)` pushes the cell at CFA+16. `DOCON-ADDR` is that code address. The colon word `CONSTANT` is still `CREATE , DOES> @`, so a normal constant uses `DOES>` rather than `(DOCON)`. Patching a `CREATE` word's code field to `DOCON-ADDR` made it push 42. `' (DOCON) @` matches `DOCON-ADDR`. `(DOCON)` is moved into `EMITTER` by the cold load. `DOCON-ADDR` stays in `FORTH`.
+
+The assembler and the emitter were not loaded. A full ANS-VALIDATE pass was not re-run after this work.
+
+## Still no Windows boot word
 
 Editor and host:
 
@@ -23,29 +29,10 @@ Editor and host:
 - `SYSTEM` runs a command string and returns the exit code.
 - `XEMIT` emits one xchar as UTF-8. `XC@+` and `XC!+` are already there.
 
-Blocks:
-
-- `BLK` is the block-number variable. `SCR`, `BLOCK-FILE`, and the block buffer words exist. `LOAD` still dies in the two stubs above.
-
 Dictionary:
 
 - `USER-DICT` is the base of the user dictionary.
 - `GROWMEMORYMB` grows that dictionary once per session.
-
-Native code, used by the assembler and the emitter:
-
-- `ALLOCATE-EXEC`
-- `FREE-EXEC`
-- `MPROTECT`
-- `ICACHE-INVAL`
-- `JIT-WPROTECT`
-- `CALL-NATIVE`
-- `CALL-NATIVE-LEAF`
-- `NATIVE-SMOKE`
-- `DOCON-ADDR`
-- `(DOCON)`
-
-Windows `CONSTANT` is `CREATE , DOES> @`, so there is no separate constant runtime for `DOCON-ADDR` to return.
 
 ## Names that are not missing features
 
@@ -53,17 +40,10 @@ Windows `CONSTANT` is `CREATE , DOES> @`, so there is no separate constant runti
 
 The other 22 Mac-only names are `FLAG_EMM` labels on internal stand-alone code, not words you type: `(SA-FILES)`, `(SA-PRINT)`, `(SA-FLOAT)`, `(FILE-OP-CALL)`, `(PUTCHAR)`, `(GETCHAR)`, `(WRITE-STDOUT)`, `(READ-LINE)`, `(NEXT-WORD)`, `(FIND-WORD)`, `(COMPILE-CELL)`, `(CURSOR-LOAD)`, `(CURSOR-STORE)`, `(SOURCE-END)`, `(LOAD-BASE)`, `(DIGIT-CHAR)`, `(I64>STR)`, `(U64>STR)`, `(PRINT-STRING)`, `(UDIVMOD128)`, `(.)`, `(U.)`. File access, printing, and parsing are already ordinary Windows words.
 
-One behavior gap was not a missing word: a trailing dot was not a double literal, which is why `123.` failed in the Oct 16 ANS-VALIDATE run. The number parser now accepts it.
+## ANS-VALIDATE
 
-## Fixed after this list
-
-- `(LOCAL)` now declares locals for `LOCALS|` and compiles `LOCAL-INIT` when the count is zero. `{: :}` is unchanged.
-- A token that ends in `.` is a double literal. `123.` leaves 123 under 0. The high cell is the sign extension.
-
-## ANS-VALIDATE after those fixes
-
-The same `FROMLIB FLOAD Testing/ANSValidate/ANS-VALIDATE.fth` run, after the normal boot, was repeated on Oct 16, 2026.
+`FROMLIB FLOAD Testing/ANSValidate/ANS-VALIDATE.fth` was run after the normal boot on Oct 16, 2026, before the words in Done were finished.
 
 Core through File-Access finished with an empty stack and no failures. Double and Locals are in that stretch.
 
-Block printed `BL-T ?`, `FAIL: LOAD`, then `BLK ?`. The process then faulted. XChar, Float, and Host did not run. There is no final pass count.
+Block printed `BL-T ?`, `FAIL: LOAD`, then `BLK ?`. The process then faulted. XChar, Float, and Host did not run. There is no final pass count. That suite has not been run again.

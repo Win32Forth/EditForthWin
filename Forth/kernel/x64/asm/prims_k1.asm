@@ -81,6 +81,7 @@ EXTRN wordlist_reg:BYTE
 EXTRN wordlist_reg_n:BYTE
 .CODE
 PUBLIC DOVAR
+PUBLIC DOCON
 PUBLIC DODOES
 PUBLIC XTHROW
 PUBLIC XBranch
@@ -5519,6 +5520,75 @@ XDOCOL_ADDR:
     mov rax, QWORD PTR arm_x1
     jmp rax
 BWSTR SEGMENT ALIGN(1) READ
+nm_XDOCON_ADDR:
+    ; DCB "DOCON-ADDR", 0
+    DB "DOCON-ADDR", 0
+hl_XDOCON_ADDR:
+    ; DCB "DOCON-ADDR ( -- addr ) address of DOCON code", 0
+    DB "DOCON-ADDR ( -- addr ) address of DOCON code", 0
+BWSTR ENDS
+BOOTWORD SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+row_XDOCON_ADDR:
+    ; DCQ     nm_XDOCON_ADDR, hl_XDOCON_ADDR
+    DQ OFFSET nm_XDOCON_ADDR, OFFSET hl_XDOCON_ADDR
+    ; DCQ     0
+    DQ 0
+    ; DCQ     XDOCON_ADDR, 0
+    DQ OFFSET XDOCON_ADDR, 0
+BOOTWORD ENDS
+BOOTPTR SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+    ; DCQ     row_XDOCON_ADDR
+    DQ OFFSET row_XDOCON_ADDR
+BOOTPTR ENDS
+.CODE
+XDOCON_ADDR:
+    ; lea x0, DOCON
+    lea rax, DOCON
+    mov QWORD PTR arm_x0, rax
+    ; str     x20, [x22, #-8]!
+    mov rax, QWORD PTR arm_x22
+    add rax, -8
+    mov QWORD PTR arm_x22, rax
+    mov r10, QWORD PTR arm_x22
+    mov rax, QWORD PTR arm_x20
+    mov QWORD PTR [r10], rax
+    ; mov     x20, x0
+    mov rax, QWORD PTR arm_x0
+    mov QWORD PTR arm_x20, rax
+    ; cbnz    x28, next_debug_gate
+    mov rax, QWORD PTR arm_x28
+    cmp rax, 0
+    jne next_debug_gate
+    ; lea x1, debug_break_asap
+    lea rax, debug_break_asap
+    mov QWORD PTR arm_x1, rax
+    ; ldr     x1, [x1]
+    mov r10, QWORD PTR arm_x1
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; cbnz    x1, next_debug_gate
+    mov rax, QWORD PTR arm_x1
+    cmp rax, 0
+    jne next_debug_gate
+    ; ldr     x21, [x19], #8
+    mov r10, QWORD PTR arm_x19
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x21, rax
+    mov rax, QWORD PTR arm_x19
+    add rax, 8
+    mov QWORD PTR arm_x19, rax
+    ; ldr     x1, [x21]
+    mov r10, QWORD PTR arm_x21
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; br      x1
+    mov rax, QWORD PTR arm_x1
+    jmp rax
+BWSTR SEGMENT ALIGN(1) READ
 nm_XBranch:
     ; DCB "BRANCH", 0
     DB "BRANCH", 0
@@ -5790,6 +5860,75 @@ DOVAR:
     add rax, 10h
     mov QWORD PTR arm_x20, rax
 DOVAR_END:
+    ; cbnz    x28, next_debug_gate
+    mov rax, QWORD PTR arm_x28
+    cmp rax, 0
+    jne next_debug_gate
+    ; lea x1, debug_break_asap
+    lea rax, debug_break_asap
+    mov QWORD PTR arm_x1, rax
+    ; ldr     x1, [x1]
+    mov r10, QWORD PTR arm_x1
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; cbnz    x1, next_debug_gate
+    mov rax, QWORD PTR arm_x1
+    cmp rax, 0
+    jne next_debug_gate
+    ; ldr     x21, [x19], #8
+    mov r10, QWORD PTR arm_x19
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x21, rax
+    mov rax, QWORD PTR arm_x19
+    add rax, 8
+    mov QWORD PTR arm_x19, rax
+    ; ldr     x1, [x21]
+    mov r10, QWORD PTR arm_x21
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; br      x1
+    mov rax, QWORD PTR arm_x1
+    jmp rax
+BWSTR SEGMENT ALIGN(1) READ
+nm_DOCON:
+    ; DCB "(DOCON)", 0
+    DB "(DOCON)", 0
+hl_DOCON:
+    ; DCB "(DOCON) CONSTANT runtime", 0
+    DB "(DOCON) CONSTANT runtime", 0
+BWSTR ENDS
+BOOTWORD SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+row_DOCON:
+    ; DCQ     nm_DOCON, hl_DOCON
+    DQ OFFSET nm_DOCON, OFFSET hl_DOCON
+    ; DCQ     0
+    DQ 0
+    ; DCQ     DOCON, DOCON_END
+    DQ OFFSET DOCON, OFFSET DOCON_END
+BOOTWORD ENDS
+BOOTPTR SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+    ; DCQ     row_DOCON
+    DQ OFFSET row_DOCON
+BOOTPTR ENDS
+.CODE
+DOCON:
+    ; str     x20, [x22, #-8]!
+    mov rax, QWORD PTR arm_x22
+    add rax, -8
+    mov QWORD PTR arm_x22, rax
+    mov r10, QWORD PTR arm_x22
+    mov rax, QWORD PTR arm_x20
+    mov QWORD PTR [r10], rax
+    ; ldr     x20, [x21, #16]
+    mov r10, QWORD PTR arm_x21
+    add r10, 10h
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x20, rax
+DOCON_END:
     ; cbnz    x28, next_debug_gate
     mov rax, QWORD PTR arm_x28
     cmp rax, 0
