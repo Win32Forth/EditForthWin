@@ -1029,7 +1029,13 @@ int forth_boot(void)
         host_outs("kernel_init failed\n");
         return 1;
     }
-    host_outs("=== EditForthWin 1.1.0 === Oct 15, 2026 6:05 PM ===\n");
+    {
+        char ban[192];
+        int bn = snprintf(ban, sizeof ban, "=== EditForthWin %s === %s ===\n",
+                          kernel_version, kernel_built);
+        if (bn > 0)
+            host_outs(ban);
+    }
     host_install_user_tree();
     host_bi_selftest();
     return 0;

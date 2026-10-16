@@ -173,6 +173,9 @@ public:
                 } else if (op == QLatin1String("edit")) {
                     QMetaObject::invokeMethod(owner, "noteEdit", Qt::QueuedConnection,
                                               Q_ARG(QString, obj.value(QStringLiteral("text")).toString()));
+                } else if (op == QLatin1String("version")) {
+                    QMetaObject::invokeMethod(owner, "noteVersion", Qt::QueuedConnection,
+                                              Q_ARG(QString, obj.value(QStringLiteral("text")).toString()));
                 }
                 dst = reinterpret_cast<char *>(hdr);
                 need = 4;
@@ -215,10 +218,19 @@ ForthPipe::ForthPipe(QObject *parent) : QObject(parent) {}
 ForthPipe::~ForthPipe() { shutdown(); }
 
 QString ForthPipe::forthPath() const {
+#if defined(_M_X64)
+    const QString forthName = QStringLiteral("forthx64.exe");
+    const QString archForth = QStringLiteral("Forth/build/x64/forthx64.exe");
+    const QString archRel = QStringLiteral("../../../Forth/build/x64/forthx64.exe");
+#else
+    const QString forthName = QStringLiteral("fortharm64.exe");
+    const QString archForth = QStringLiteral("Forth/build/arm64/fortharm64.exe");
+    const QString archRel = QStringLiteral("../../../Forth/build/arm64/fortharm64.exe");
+#endif
     const QStringList candidates = {
-        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("forth.exe")),
-        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("../../../Forth/build/arm64/forth.exe")),
-        QDir::current().filePath(QStringLiteral("Forth/build/arm64/forth.exe")),
+        QDir(QCoreApplication::applicationDirPath()).filePath(forthName),
+        QDir(QCoreApplication::applicationDirPath()).filePath(archRel),
+        QDir::current().filePath(archForth),
     };
     for (const QString &path : candidates) {
         if (QFileInfo::exists(path))
@@ -232,6 +244,10 @@ QList<QByteArray> ForthPipe::takeOutgoing() {
     QList<QByteArray> batch = m_outq;
     m_outq.clear();
     return batch;
+}
+
+void ForthPipe::noteVersion(const QString &text) {
+    emit versionReceived(text);
 }
 
 void ForthPipe::post(const QByteArray &json) {
@@ -253,7 +269,7 @@ void ForthPipe::start() {
         return;
     const QString path = forthPath();
     if (!QFileInfo::exists(path)) {
-        emit engineFailed(QStringLiteral("Can't find forth.exe."));
+        emit engineFailed(QStringLiteral("Can't find %1.").arg(QFileInfo(path).fileName()));
         return;
     }
     m_stop = false;
@@ -264,7 +280,7 @@ void ForthPipe::start() {
     m_proc->setWorkingDirectory(QDir::currentPath());
     m_proc->start(path, {QStringLiteral("--companion"), pipeName});
     if (!m_proc->waitForStarted(5000)) {
-        emit engineFailed(QStringLiteral("forth.exe did not start."));
+        emit engineFailed(QStringLiteral("%1 did not start.").arg(QFileInfo(path).fileName()));
         m_proc->deleteLater();
         m_proc = nullptr;
         return;

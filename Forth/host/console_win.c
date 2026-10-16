@@ -41,8 +41,6 @@ static int companion_name(int argc, wchar_t **argv, wchar_t *dst, int cap)
     return 0;
 }
 
-#define BANNER_MARK "=== EditForthWin 1.1.0 ==="
-
 static int wide_to_utf8(const wchar_t *w, char *dst, int cap)
 {
     int n;
@@ -193,9 +191,10 @@ static void agent_help(void)
         "  EDITFORTH_AGENT=1       Same as --agent\r\n"
         "\r\n"
         "Examples:\r\n"
-        "  forth.exe --agent -e \"2 3 + .\"\r\n"
-        "  forth.exe --agent -f smoke.fth -o out.txt\r\n"
-        "  forth.exe --agent --repl\r\n"
+        "  fortharm64.exe --agent -e \"2 3 + .\"\r\n"
+        "  forthx64.exe --agent -e \"2 3 + .\"\r\n"
+        "  fortharm64.exe --agent -f smoke.fth -o out.txt\r\n"
+        "  fortharm64.exe --agent --repl\r\n"
         "\r\n"
         "Exit 0 means every step returned 0. Exit 1 means a step failed.\r\n";
     host_out(help, sizeof help - 1);
@@ -390,7 +389,7 @@ static int agent_run(int argc, wchar_t **argv)
 
     if (nsteps == 0 && !repl) {
         host_outs("[EditForthWin agent] nothing to do (use -e, -f, or --repl)\n");
-        host_outs("Try: forth.exe --agent --help\n");
+        host_outs("Try: fortharm64.exe --agent --help\n");
         failed = 1;
     }
 
@@ -1098,11 +1097,17 @@ static int window_run(wchar_t **argv, int show)
     rc.right = MulDiv(rc.right, dpi, 96);
     rc.bottom = MulDiv(rc.bottom, dpi, 96);
     AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW | WS_VSCROLL, FALSE);
-    g_hwnd = CreateWindowExW(0, L"EditForthWinConsole", L"EditForthWin",
+    {
+        wchar_t title[128];
+        title[0] = L'\0';
+        if (MultiByteToWideChar(CP_UTF8, 0, kernel_console, -1, title, 128) <= 0)
+            wcsncpy_s(title, 128, L"EditForthWin", _TRUNCATE);
+        g_hwnd = CreateWindowExW(0, L"EditForthWinConsole", title,
                               WS_OVERLAPPEDWINDOW | WS_VSCROLL | WS_CLIPCHILDREN,
                               CW_USEDEFAULT, CW_USEDEFAULT,
                               rc.right - rc.left, rc.bottom - rc.top,
                               NULL, NULL, wc.hInstance, NULL);
+    }
     g_font = CreateFontW(-MulDiv(13, dpi, 72), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                           DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                           CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");

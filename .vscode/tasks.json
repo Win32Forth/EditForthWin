@@ -14,12 +14,27 @@
     {
       "label": "run ARM64",
       "type": "shell",
-      "command": "${workspaceFolder}\\Forth\\build\\arm64\\forth.exe",
+      "command": "${workspaceFolder}\\Forth\\build\\arm64\\fortharm64.exe",
       "dependsOn": "build ARM64",
       "group": {
         "kind": "test",
         "isDefault": true
       },
+      "problemMatcher": []
+    },
+    {
+      "label": "build x64",
+      "type": "shell",
+      "command": "${workspaceFolder}\\build-x64.bat",
+      "group": "build",
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "run x64",
+      "type": "shell",
+      "command": "${workspaceFolder}\\Forth\\build\\x64\\forthx64.exe",
+      "dependsOn": "build x64",
+      "group": "test",
       "problemMatcher": []
     }
   ]

@@ -5,7 +5,7 @@
       "name": "Run ARM64 Forth",
       "type": "cppvsdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/Forth/build/arm64/forth.exe",
+      "program": "${workspaceFolder}/Forth/build/arm64/fortharm64.exe",
       "args": [],
       "cwd": "${workspaceFolder}",
       "console": "internalConsole",
@@ -15,11 +15,31 @@
       "name": "Run Editor",
       "type": "cppvsdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/Edit/build/arm64/editforthwin.exe",
+      "program": "${workspaceFolder}/Edit/build/arm64/editforthwinarm64.exe",
       "args": [],
       "cwd": "${workspaceFolder}",
       "console": "internalConsole",
       "preLaunchTask": "build ARM64"
+    },
+    {
+      "name": "Run x64 Forth",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/Forth/build/x64/forthx64.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "preLaunchTask": "build x64"
+    },
+    {
+      "name": "Run x64 Editor",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/Edit/build/x64/editforthwinx64.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "preLaunchTask": "build x64"
     }
   ]
 }

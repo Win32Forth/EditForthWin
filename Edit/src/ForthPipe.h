@@ -10,7 +10,7 @@
 class QProcess;
 class QThread;
 
-// Launches forth.exe --companion and carries eval / output messages on a named pipe.
+// Launches fortharm64.exe or forthx64.exe --companion and carries eval / output messages on a named pipe.
 // One thread owns the pipe. A synchronous read and write on the same handle from
 // two threads deadlocks, and Return never reaches Forth.
 class ForthPipe : public QObject {
@@ -43,6 +43,7 @@ public slots:
     void noteBreaks(const QString &text);
     void noteError(const QString &text);
     void noteEdit(const QString &path);
+    void noteVersion(const QString &text);
 
 signals:
     void outputReceived(const QString &text);
@@ -54,6 +55,7 @@ signals:
     void breaksReceived(const QString &text);
     void statusError(const QString &text);
     void editReceived(const QString &path);
+    void versionReceived(const QString &text);
 
 private:
     QString forthPath() const;

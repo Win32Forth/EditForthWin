@@ -18,7 +18,19 @@ qt_add_executable(editforthwin WIN32
 
 target_link_libraries(editforthwin PRIVATE Qt6::Widgets)
 
+# build.bat passes arm64. build-x64.bat passes x64. The name is
+# editforthwinarm64.exe or editforthwinx64.exe.
+set(EDITFORTH_ARCH "" CACHE STRING "arm64 or x64 suffix for the editor executable")
+if(NOT EDITFORTH_ARCH)
+    if(CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "ARM64")
+        set(EDITFORTH_ARCH "arm64")
+    else()
+        set(EDITFORTH_ARCH "x64")
+    endif()
+endif()
+message(STATUS "EditForthWin editor executable: editforthwin${EDITFORTH_ARCH}.exe")
+
 set_target_properties(editforthwin PROPERTIES
-    OUTPUT_NAME editforthwin
+    OUTPUT_NAME "editforthwin${EDITFORTH_ARCH}"
     WIN32_EXECUTABLE TRUE
 )

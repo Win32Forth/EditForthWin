@@ -1,0 +1,57 @@
+@echo off
+setlocal
+call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" arm64_x64
+if errorlevel 1 exit /b 1
+cd /d "%~dp0"
+"C:\Users\Win32Forth\AppData\Local\Programs\Python\Python313-arm64\python.exe" "C:\VSCodeProjects\GrokTools\arm64_to_ml64.py"
+if errorlevel 1 exit /b 1
+if not exist Forth\build\x64 mkdir Forth\build\x64
+ml64 /nologo /c /Fo Forth\build\x64\state.obj Forth\build\x64\asm\state.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\emit.obj Forth\build\x64\asm\emit.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\boot_begin.obj Forth\build\x64\asm\boot_begin.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\prims.obj Forth\build\x64\asm\prims.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\prims_k1.obj Forth\build\x64\asm\prims_k1.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\prims_k2.obj Forth\build\x64\asm\prims_k2.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\prims_k3.obj Forth\build\x64\asm\prims_k3.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\prims_dbg.obj Forth\build\x64\asm\prims_dbg.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\dict.obj Forth\build\x64\asm\dict.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\entry.obj Forth\build\x64\asm\entry.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\cold.obj Forth\build\x64\asm\cold.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\vmregs.obj Forth\kernel\x64\vmregs.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\identity.obj Forth\kernel\x64\identity.asm
+if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\boot_end.obj Forth\build\x64\asm\boot_end.asm
+if errorlevel 1 exit /b 1
+cl /nologo /W3 /std:c11 /I Forth\include /Fe:Forth\build\x64\forthx64.exe /Fo:Forth\build\x64\ Forth\host\main.c Forth\host\console_win.c Forth\host\companion.c Forth\host\bigint.c Forth\host\gfx_win.c Forth\host\debug_win.c Forth\host\facility_win.c Forth\build\x64\state.obj Forth\build\x64\emit.obj Forth\build\x64\boot_begin.obj Forth\build\x64\prims.obj Forth\build\x64\prims_k1.obj Forth\build\x64\prims_k2.obj Forth\build\x64\prims_k3.obj Forth\build\x64\prims_dbg.obj Forth\build\x64\dict.obj Forth\build\x64\entry.obj Forth\build\x64\cold.obj Forth\build\x64\vmregs.obj Forth\build\x64\identity.obj Forth\build\x64\boot_end.obj /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib shell32.lib comdlg32.lib windowscodecs.lib ole32.lib
+if errorlevel 1 exit /b 1
+
+set QTDIR=C:\Qt\6.11.3\msvc2022_64
+set CMAKE=C:\Qt\Tools\cmake-4.4.4-windows-arm64\bin\cmake.exe
+if not exist "%QTDIR%\lib\cmake\Qt6\Qt6Config.cmake" (
+  echo Qt 6.11.3 for x64 is not installed at %QTDIR%
+  exit /b 1
+)
+if not exist "%CMAKE%" (
+  echo CMake is not installed at %CMAKE%
+  exit /b 1
+)
+if not exist Edit\build\x64 mkdir Edit\build\x64
+"%CMAKE%" -S Edit -B Edit\build\x64 -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%QTDIR%" -DEDITFORTH_ARCH=x64
+if errorlevel 1 exit /b 1
+"%CMAKE%" --build Edit\build\x64
+if errorlevel 1 exit /b 1
+"%QTDIR%\bin\windeployqt.exe" --release --no-translations Edit\build\x64\editforthwinx64.exe
+if errorlevel 1 exit /b 1
+exit /b 0

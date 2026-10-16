@@ -26,9 +26,11 @@ armasm64 -nologo -o Forth\build\arm64\entry.obj Forth\kernel\arm64\entry.asm
 if errorlevel 1 exit /b 1
 armasm64 -nologo -o Forth\build\arm64\cold.obj Forth\kernel\arm64\cold.asm
 if errorlevel 1 exit /b 1
+armasm64 -nologo -o Forth\build\arm64\identity.obj Forth\kernel\arm64\identity.asm
+if errorlevel 1 exit /b 1
 armasm64 -nologo -o Forth\build\arm64\boot_end.obj Forth\kernel\arm64\boot_end.asm
 if errorlevel 1 exit /b 1
-cl /nologo /W3 /std:c11 /I Forth\include /Fe:Forth\build\arm64\forth.exe /Fo:Forth\build\arm64\ Forth\host\main.c Forth\host\console_win.c Forth\host\companion.c Forth\host\bigint.c Forth\host\gfx_win.c Forth\host\debug_win.c Forth\host\facility_win.c Forth\build\arm64\state.obj Forth\build\arm64\emit.obj Forth\build\arm64\boot_begin.obj Forth\build\arm64\prims.obj Forth\build\arm64\prims_k1.obj Forth\build\arm64\prims_k2.obj Forth\build\arm64\prims_k3.obj Forth\build\arm64\prims_dbg.obj Forth\build\arm64\dict.obj Forth\build\arm64\entry.obj Forth\build\arm64\cold.obj Forth\build\arm64\boot_end.obj /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib shell32.lib comdlg32.lib windowscodecs.lib ole32.lib
+cl /nologo /W3 /std:c11 /I Forth\include /Fe:Forth\build\arm64\fortharm64.exe /Fo:Forth\build\arm64\ Forth\host\main.c Forth\host\console_win.c Forth\host\companion.c Forth\host\bigint.c Forth\host\gfx_win.c Forth\host\debug_win.c Forth\host\facility_win.c Forth\build\arm64\state.obj Forth\build\arm64\emit.obj Forth\build\arm64\boot_begin.obj Forth\build\arm64\prims.obj Forth\build\arm64\prims_k1.obj Forth\build\arm64\prims_k2.obj Forth\build\arm64\prims_k3.obj Forth\build\arm64\prims_dbg.obj Forth\build\arm64\dict.obj Forth\build\arm64\entry.obj Forth\build\arm64\cold.obj Forth\build\arm64\identity.obj Forth\build\arm64\boot_end.obj /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib shell32.lib comdlg32.lib windowscodecs.lib ole32.lib
 if errorlevel 1 exit /b 1
 
 set QTDIR=C:\Qt\6.11.3\msvc2022_arm64
@@ -42,10 +44,10 @@ if not exist "%CMAKE%" (
   exit /b 1
 )
 if not exist Edit\build\arm64 mkdir Edit\build\arm64
-"%CMAKE%" -S Edit -B Edit\build\arm64 -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%QTDIR%"
+"%CMAKE%" -S Edit -B Edit\build\arm64 -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%QTDIR%" -DEDITFORTH_ARCH=arm64
 if errorlevel 1 exit /b 1
 "%CMAKE%" --build Edit\build\arm64
 if errorlevel 1 exit /b 1
-"%QTDIR%\bin\windeployqt.exe" --release --no-translations Edit\build\arm64\editforthwin.exe
+"%QTDIR%\bin\windeployqt.exe" --release --no-translations Edit\build\arm64\editforthwinarm64.exe
 if errorlevel 1 exit /b 1
 exit /b 0

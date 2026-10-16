@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Compared on Oct 16, 2026. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel has 361. Forty Mac names have no Windows header. Four Windows words are still stubs, and `FORGET` parses a name without removing it. `(LOCAL)` and trailing-dot doubles were fixed after this list was taken.
+Compared on Oct 16, 2026. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel has 361. Forty Mac names have no Windows header. Four Windows words are still stubs, and `FORGET` parses a name without removing it. `(LOCAL)` and trailing-dot doubles were fixed after this list was taken. The x64 kernel is a translation of this ARM64 set, so it has the same words and the same stubs.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 

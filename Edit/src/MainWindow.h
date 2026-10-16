@@ -59,6 +59,7 @@ private:
     void hideConsole();
     void ensureFloat();
     void syncConsoleChrome();
+    void showAbout();
 
     QTabWidget *m_tabs = nullptr;
     QSplitter *m_split = nullptr;
@@ -85,4 +86,7 @@ private:
     bool m_armed = false;
     bool m_paused = false;
     int m_untitled = 0;
+    QString m_engineVersion;
+    QString m_engineBuilt;
+    QString m_consoleName;
 };

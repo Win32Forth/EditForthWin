@@ -2,31 +2,32 @@
 
 Windows sibling of [EditForth](https://github.com/Win32Forth/EditForth). This tree holds the Forth console and the Qt editor.
 
-**Version 1.1.0**, released Oct 15, 2026 6:05 PM.
+**Version 1.1.0** on ARM64 and **1.1.0-x64** on x64, built Oct 16, 2026 7:06 AM.
 
-Starting `forth.exe` opens a window. The cold-load lines appear, then the banner, then a prompt:
+Starting `fortharm64.exe` or `forthx64.exe` opens a window. The cold-load lines appear, then the banner, then a prompt:
 
 ```
-=== EditForthWin 1.1.0 === Oct 15, 2026 6:05 PM ===
+=== EditForthWin 1.1.0 === Oct 16, 2026 7:06 AM ===
 ok(0)>
 ```
 
-The banner matches the Mac EditForth console. The version and the release date and time are fixed in `Forth\host\main.c` and change when the version changes. Return evaluates the line at the prompt. Up and Down recall earlier lines. `BYE` closes the window.
+The banner matches the Mac EditForth console. The version, the date and time, and the console window title live in the kernel assembly, so the ARM64 and x64 images can differ. ARM64 is `Forth\kernel\arm64\identity.asm` (`1.1.0`, `Oct 16, 2026 7:06 AM`, window title `EditForthWin Arm64`). x64 is `Forth\kernel\x64\identity.asm` (`1.1.0-x64`, `Oct 16, 2026 7:06 AM`, window title `EditForthWin x64`). The console prints the version and the date, and Help > About EditForthWin shows that pair after the engine reports it. Return evaluates the line at the prompt. Up and Down recall earlier lines. `BYE` closes the window.
 
 `--agent` runs the same kernel with no window and writes the transcript to the console that launched it:
 
 ```bat
-forth.exe --agent -e "2 3 + ."
-forth.exe --agent --help
+fortharm64.exe --agent -e "2 3 + ."
+forthx64.exe --agent -e "2 3 + ."
+fortharm64.exe --agent --help
 ```
 
 ## Layout
 
-`Forth` is the interpreter. `Edit` is the Qt editor. `build.bat` at the project root builds both. Forth objects and `forth.exe` go in `Forth\build\arm64\`. The editor executable is `Edit\build\arm64\editforthwin.exe`.
+`Forth` is the interpreter. `Edit` is the Qt editor. `build.bat` at the project root builds the ARM64 pair. Forth objects and `fortharm64.exe` go in `Forth\build\arm64\`. The editor executable is `Edit\build\arm64\editforthwinarm64.exe`. `build-x64.bat` builds `Forth\build\x64\forthx64.exe` and `Edit\build\x64\editforthwinx64.exe`. Each editor starts the Forth executable for its own architecture.
 
 The ARM64 kernel under `Forth\kernel\arm64` is indirect-threaded code with TOS in `x20`, the same register map as the Mac kernel. `NEXT` loads a code field and jumps to it. Assembly words use `BOOT_WORD` rows and the Mac header: counted help, counted name, link, flags, code field. `Forth\host\main.c` is the C host. Windows calls stay there. `Forth\include\kernel_api.h` exposes `kernel_init`, `kernel_eval`, `kernel_set_emit`, and `kernel_set_key`.
 
-Cold start interprets one blob of `kernel1.fth`, `kernel2.fth`, `vocemit.fth`, `app-output.fth`, `app-points.fth`, `vocsys.fth`, and `xref.fth`. Other files load with `INCLUDE`. The x64 kernel is the same ITC design and is not started.
+Cold start interprets one blob of `kernel1.fth`, `kernel2.fth`, `vocemit.fth`, `app-output.fth`, `app-points.fth`, `vocsys.fth`, and `xref.fth`. Other files load with `INCLUDE`. The x64 kernel is that same machine. Hand-written x64 sources are `Forth\kernel\x64\identity.asm` and `Forth\kernel\x64\vmregs.asm`. `C:\VSCodeProjects\GrokTools\arm64_to_ml64.py` translates the ARM64 sources. `build-x64.bat` writes the generated ml64 under `Forth\build\x64\asm`, which is not kept in git, then links `forthx64.exe` and the x64 editor. The x64 Qt kit is `C:\Qt\6.11.3\msvc2022_64`.
 
 ## Build
 
@@ -36,11 +37,11 @@ From this directory:
 build.bat
 ```
 
-The executables are `Forth\build\arm64\forth.exe` and `Edit\build\arm64\editforthwin.exe`. The editor build uses Qt 6.11.3 at `C:\Qt\6.11.3\msvc2022_arm64` and CMake at `C:\Qt\Tools\cmake-4.4.4-windows-arm64`. In VS Code, Ctrl+Shift+B builds both. F5 builds and opens the Forth window. Close a running `forth.exe` before rebuilding, or the linker cannot replace it.
+`build.bat` writes `Forth\build\arm64\fortharm64.exe` and `Edit\build\arm64\editforthwinarm64.exe`. It uses Qt 6.11.3 at `C:\Qt\6.11.3\msvc2022_arm64` and CMake at `C:\Qt\Tools\cmake-4.4.4-windows-arm64`. `build-x64.bat` writes `Forth\build\x64\forthx64.exe` and `Edit\build\x64\editforthwinx64.exe`, using Qt at `C:\Qt\6.11.3\msvc2022_64`. In VS Code, Ctrl+Shift+B builds the ARM64 pair. The **build x64** task runs `build-x64.bat`. F5 uses the selected launch entry: Run ARM64 Forth, Run Editor, Run x64 Forth, or Run x64 Editor. Close a running `fortharm64.exe` or `forthx64.exe` before rebuilding that one, or the linker cannot replace it.
 
 ## Editor
 
-The editor opens one window with a tab per file, Consolas, line numbers, and New, Open, Save, and Save As. A Forth pane under the tabs launches `forth.exe --companion` and shows the cold-load lines, the banner, and `ok(n)>`. Return in that pane runs the line. Above that pane, the status strip shows whether Forth is connected and, while the stepper is armed, the paused word. The debug bar under it steps, continues, and stops. Letter keys stay in the editor. Undock moves that same console into a window titled Forth. Dock puts it back. Closing the Forth window hides the transcript and leaves the engine running. Unhide Forth shows it again. The choice is remembered.
+The editor opens one window with a tab per file, Consolas, line numbers, and New, Open, Save, and Save As. A Forth pane under the tabs launches `fortharm64.exe` or `forthx64.exe` with `--companion`, matching the editor that is running, and shows the cold-load lines, the banner, and `ok(n)>`. Return in that pane runs the line. Above that pane, the status strip shows whether Forth is connected and, while the stepper is armed, the paused word. The debug bar under it steps, continues, and stops. Letter keys stay in the editor. Undock moves that same console into a window titled with the engine's console name, `EditForthWin Arm64` or `EditForthWin x64`. Dock puts it back. Closing the Forth window hides the transcript and leaves the engine running. Unhide Forth shows it again. The choice is remembered.
 
 Bare `EDIT` opens a file into a tab. `EDIT` with a name opens that file, and `FROMLIB EDIT sample\clock.fth` opens the copy under `Documents\EditForthWin\Library`. Quotes around the name are optional. `FROMLIB` does not change the Forth directory. Bare `FLOAD` or `INCLUDE` loads the file you pick. Those dialogs, and File > Open, list `.fth`, `.fs`, `.4th`, `.f`, and `.txt`. They start in the current Forth directory, and you can navigate from there. A path that contains a quote, or is longer than 255 characters, is not loaded.
 
@@ -52,7 +53,7 @@ Forth starts in `Documents\EditForthWin`. `CHDIR` with a path changes that direc
 
 ## Library
 
-The shipped copies live in `Forth\Resources`: `Library`, `AutoLoad`, `Docs`, and `Config`. The first run copies `Library`, `AutoLoad`, and `Docs` into `Documents\EditForthWin` and creates an empty `Config` folder. Files already present are left as they are. The copy looks for `Forth\Resources\Library\BigInteger\big-int.fth` by walking up from `forth.exe`.
+The shipped copies live in `Forth\Resources`: `Library`, `AutoLoad`, `Docs`, and `Config`. The first run copies `Library`, `AutoLoad`, and `Docs` into `Documents\EditForthWin` and creates an empty `Config` folder. Files already present are left as they are. The copy looks for `Forth\Resources\Library\BigInteger\big-int.fth` by walking up from the Forth executable.
 
 `FROMLIB` and `FROM-LIBRARY` make the next relative load or `EDIT` start in `Documents\EditForthWin\Library`, then clear. `FROMLIB?` is true while that arm is set, and asking does not clear it. `FROMLIB-OFF` clears it without loading. `LIBRARY-PATH` returns that absolute Library directory. An absolute path is left unchanged. The PI demo is:
 
@@ -114,4 +115,4 @@ The assembly words still open are listed in `REMAINING.md`.
 
 ## Later
 
-The x64 kernel and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false. The open assembly gaps are in `REMAINING.md`. Emitter and Hyper stay commented out of autoload.
+Native code is not in this tree yet. The x64 console matches the ARM64 word set, including the stubs listed in `REMAINING.md`. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false. Emitter and Hyper stay commented out of autoload.

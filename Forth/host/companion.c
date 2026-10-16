@@ -664,6 +664,13 @@ int companion_run(const wchar_t *pipe_name)
         companion_flush();
         goto done;
     }
+    {
+        char msg[256];
+        int n = snprintf(msg, sizeof msg, "%s\n%s\n%s",
+                         kernel_version, kernel_built, kernel_console);
+        if (n > 0)
+            pipe_send_text("version", msg, n);
+    }
     forth_autoload();
     companion_flush();
     companion_send_cwd();

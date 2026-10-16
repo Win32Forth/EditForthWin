@@ -18,6 +18,7 @@
 #include <QPushButton>
 #include <QMessageBox>
 #include <QSettings>
+#include <QStringList>
 #include <QShortcut>
 #include <QSplitter>
 #include <QStringList>
@@ -215,6 +216,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(m_pipe, &ForthPipe::breaksReceived, m_debug, &DebugBar::setBreaks);
     connect(m_pipe, &ForthPipe::statusError, m_debug, &DebugBar::setError);
     connect(m_pipe, &ForthPipe::editReceived, this, &MainWindow::openRequestedFile);
+    connect(m_pipe, &ForthPipe::versionReceived, this, [this](const QString &text) {
+        const QStringList lines = text.split(QLatin1Char('\n'));
+        m_engineVersion = lines.value(0).trimmed();
+        m_engineBuilt = lines.value(1).trimmed();
+        const QString consoleName = lines.value(2).trimmed();
+        if (!consoleName.isEmpty()) {
+            m_consoleName = consoleName;
+            m_console->setAccessibleName(consoleName);
+            if (m_float != nullptr)
+                m_float->setWindowTitle(consoleName);
+        }
+    });
     connect(m_debug, &DebugBar::pauseRequested, this, &MainWindow::pauseNow);
     connect(m_debug, &DebugBar::breakpointsRequested, m_pipe, &ForthPipe::requestBreaks);
     connect(m_debug, &DebugBar::armRequested, this, &MainWindow::armDebug);
@@ -279,6 +292,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     });
     m_dockAction = viewMenu->addAction(QStringLiteral("Undock Forth Console"));
     connect(m_dockAction, &QAction::triggered, this, &MainWindow::toggleConsolePlace);
+
+    auto *helpMenu = menuBar()->addMenu(QStringLiteral("&Help"));
+    helpMenu->addAction(QStringLiteral("&About EditForthWin"), this, &MainWindow::showAbout);
 
     statusBar();
 
@@ -427,6 +443,8 @@ void MainWindow::ensureFloat() {
     if (m_float != nullptr)
         return;
     m_float = new ForthFloat;
+    if (!m_consoleName.isEmpty())
+        m_float->setWindowTitle(m_consoleName);
     m_float->onDock = [this] { dockConsole(); };
     m_float->onUserHide = [this] { hideConsole(); };
     const QByteArray geo = QSettings().value(QStringLiteral("undockedGeometry")).toByteArray();
@@ -675,6 +693,18 @@ void MainWindow::toggleCaretBreak() {
     }
     m_debug->setError(QString());
     m_pipe->toggleBreak(word);
+}
+
+void MainWindow::showAbout() {
+    QString body = QStringLiteral("EditForthWin");
+    if (m_engineVersion.isEmpty()) {
+        body += QStringLiteral("\n\nThe Forth engine has not reported its version yet.");
+    } else {
+        body += QStringLiteral("\n\nEngine %1").arg(m_engineVersion);
+        if (!m_engineBuilt.isEmpty())
+            body += QStringLiteral("\n%1").arg(m_engineBuilt);
+    }
+    QMessageBox::about(this, QStringLiteral("About EditForthWin"), body);
 }
 
 void MainWindow::updateDebugKeys() {
