@@ -11,6 +11,8 @@ public:
 
     void appendOutput(const QString &text);
     void setEngineAlive(bool alive);
+    // While the stepper is armed, copy and navigation stay. Typing does not.
+    void setInputLocked(bool locked);
     // Put the line just submitted back into the input area.
     void retractSubmit();
 
@@ -30,6 +32,7 @@ private:
     int m_commit_at = -1;
     int m_commit_n = 0;
     bool m_alive = false;
+    bool m_locked = false;
     QStringList m_history;
     int m_history_at = -1;
     QString m_history_saved;

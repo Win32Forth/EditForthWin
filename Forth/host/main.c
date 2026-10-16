@@ -68,6 +68,7 @@ static char load_prev[HOST_LOADS][HOST_PATH];
 static int load_len[HOST_LOADS];
 static int load_n;
 static int fromlib_armed;
+static void (*host_edit_fn)(const char *path, int kind);
 static char user_root[HOST_PATH];
 static char library_root[HOST_PATH];
 static char reg_path[HOST_REGS][256];
@@ -517,6 +518,88 @@ long long host_resolve(const char *p, long long n, char *out, long long cap)
     return (long long)strlen(out);
 }
 
+void host_set_edit(void (*fn)(const char *path, int kind))
+{
+    host_edit_fn = fn;
+}
+
+static int host_is_file(const char *path)
+{
+    DWORD attr = GetFileAttributesA(path);
+
+    return attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+
+/* kind 0 opens a file. kind 1 asks the editor for a dialog at path (empty = cwd). */
+void host_edit(const char *p, long long n)
+{
+    int armed = fromlib_armed;
+    char resolved[HOST_PATH];
+    char alt[HOST_PATH];
+    long long rn;
+    const char *leaf;
+    char *slash;
+
+    if (p == NULL || n <= 0) {
+        if (armed)
+            fromlib_armed = 0;
+        if (armed && library_root[0] != '\0' && host_is_dir(library_root)) {
+            if (host_edit_fn != NULL)
+                host_edit_fn(library_root, 1);
+            else
+                host_outs("EDIT: choose a file in the editor\n");
+            return;
+        }
+        if (armed) {
+            host_outs("FROMLIB: Documents\\EditForthWin\\Library is missing\n");
+            return;
+        }
+        if (host_edit_fn != NULL)
+            host_edit_fn("", 1);
+        else
+            host_outs("EDIT: choose a file in the editor\n");
+        return;
+    }
+    rn = host_resolve(p, n, resolved, (long long)sizeof resolved);
+    if (rn <= 0) {
+        host_outs("can't edit: ");
+        host_out(p, (size_t)n);
+        host_outs(" (not found)\n");
+        return;
+    }
+    if (!host_is_file(resolved)) {
+        leaf = strrchr(resolved, '\\');
+        leaf = leaf != NULL ? leaf + 1 : resolved;
+        if (strchr(leaf, '.') == NULL && (size_t)rn + 5 < sizeof alt) {
+            memcpy(alt, resolved, (size_t)rn);
+            memcpy(alt + rn, ".fth", 5);
+            if (host_is_file(alt)) {
+                memcpy(resolved, alt, strlen(alt) + 1);
+                rn = (long long)strlen(resolved);
+            }
+        }
+    }
+    if (!host_is_file(resolved)) {
+        host_outs("can't edit: ");
+        host_outs(resolved);
+        host_outs(" (not found)\n");
+        return;
+    }
+    if (!armed) {
+        slash = strrchr(resolved, '\\');
+        if (slash != NULL && slash != resolved) {
+            *slash = '\0';
+            SetCurrentDirectoryA(resolved);
+            *slash = '\\';
+        }
+    }
+    if (host_edit_fn != NULL)
+        host_edit_fn(resolved, 0);
+    host_outs("EDIT: ");
+    host_outs(resolved);
+    host_outs("\n");
+}
+
 void host_begin_load(const char *p, long long n)
 {
     int len = 0;
@@ -950,6 +1033,38 @@ int forth_boot(void)
     host_install_user_tree();
     host_bi_selftest();
     return 0;
+}
+
+int forth_eval_file(const char *path);
+
+static int autoload_enabled = 1;
+
+void forth_autoload_set(int on)
+{
+    autoload_enabled = on ? 1 : 0;
+}
+
+/* Evaluate AutoLoad/autoload.fth as one buffer from Documents\EditForthWin.
+   Relative Library/ names then resolve against that folder. INCLUDE would
+   push AutoLoad\ and look for Library beside the script. */
+void forth_autoload(void)
+{
+    char path[HOST_PATH];
+    static const char main_line[] = "[DEFINED] MAIN [IF] MAIN [THEN]";
+    int rc;
+
+    if (!autoload_enabled || user_root[0] == '\0')
+        return;
+    if (snprintf(path, sizeof path, "%s\\AutoLoad\\autoload.fth", user_root) >= (int)sizeof path)
+        return;
+    if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES)
+        return;
+    SetCurrentDirectoryA(user_root);
+    rc = forth_eval_file(path);
+    if (rc != 0)
+        host_outs("autoload did not finish\n");
+    forth_eval(main_line, sizeof main_line - 1);
+    SetCurrentDirectoryA(user_root);
 }
 
 /* One kernel_eval of the whole file. kernel1.fth defines words across lines. */

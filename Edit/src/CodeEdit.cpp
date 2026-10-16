@@ -1,11 +1,13 @@
 #include "CodeEdit.h"
 
+#include <QColor>
 #include <QFont>
 #include <QFontMetrics>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QResizeEvent>
 #include <QTextBlock>
+#include <QTextCursor>
 
 class CodeEdit::Gutter : public QWidget {
 public:
@@ -68,6 +70,74 @@ void CodeEdit::resizeEvent(QResizeEvent *event) {
     const QRect cr = contentsRect();
     m_gutter->setGeometry(QRect(cr.left(), cr.top(), lineNumberWidth(), cr.height()));
 }
+
+namespace {
+
+bool selectToken(QTextDocument *document, int line, const QString &name, QTextCursor *hit) {
+    if (name.isEmpty() || document == nullptr)
+        return false;
+    QTextBlock block = line > 0 ? document->findBlockByNumber(line - 1) : document->firstBlock();
+    if (line > 0 && !block.isValid())
+        return false;
+    while (block.isValid()) {
+        const QString text = block.text();
+        int at = 0;
+        while (at < text.size()) {
+            while (at < text.size() && text.at(at).isSpace())
+                ++at;
+            int end = at;
+            while (end < text.size() && !text.at(end).isSpace())
+                ++end;
+            if (end > at && text.mid(at, end - at).compare(name, Qt::CaseInsensitive) == 0) {
+                hit->setPosition(block.position() + at);
+                hit->setPosition(block.position() + end, QTextCursor::KeepAnchor);
+                return true;
+            }
+            at = end;
+        }
+        if (line > 0)
+            break;
+        block = block.next();
+    }
+    return false;
+}
+
+} // namespace
+
+void CodeEdit::showDebugHit(int line, int utf8Off, int utf8Len, const QString &name, bool useSpan) {
+    QTextCursor hit(document());
+    bool found = false;
+    if (useSpan && utf8Off >= 0 && utf8Len > 0) {
+        const QByteArray utf8 = toPlainText().toUtf8();
+        if (utf8Off <= utf8.size() && utf8Len <= utf8.size() - utf8Off) {
+            const int start = QString::fromUtf8(utf8.left(utf8Off)).size();
+            const int chars = QString::fromUtf8(utf8.mid(utf8Off, utf8Len)).size();
+            if (start >= 0 && start + chars <= toPlainText().size()) {
+                hit.setPosition(start);
+                if (line <= 0 || hit.blockNumber() + 1 == line) {
+                    hit.setPosition(start + chars, QTextCursor::KeepAnchor);
+                    found = true;
+                }
+            }
+        }
+    }
+    if (!found)
+        found = selectToken(document(), line, name, &hit);
+    if (!found) {
+        clearDebugHit();
+        return;
+    }
+    QTextEdit::ExtraSelection selection;
+    selection.cursor = hit;
+    selection.format.setBackground(QColor(255, 214, 102));
+    setExtraSelections({selection});
+    QTextCursor place = hit;
+    place.setPosition(hit.selectionStart());
+    setTextCursor(place);
+    ensureCursorVisible();
+}
+
+void CodeEdit::clearDebugHit() { setExtraSelections({}); }
 
 void CodeEdit::lineNumberPaint(QPaintEvent *event) {
     QPainter painter(m_gutter);

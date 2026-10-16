@@ -51,10 +51,20 @@ DBG_DSAVE_MAX   EQU 64
         EXPORT next_debug
         EXPORT debug_break_asap
         EXPORT debug_armed
+        EXPORT debug_busy
+        EXPORT debug_bp_go
+        EXPORT debug_bp_xts
+        EXPORT debug_bp_en
+        EXPORT debug_cfa
+        EXPORT debug_xt
+        EXPORT debug_name
+        EXPORT view_file_n
+        EXPORT view_paths
         EXPORT debug_floor
         EXPORT debug_field_count
         EXPORT debug_field_len
         EXPORT _debug_note_byte
+        EXPORT _getchar
 
         MACRO
         PUSH_ADDR $sym
@@ -155,6 +165,9 @@ nd_floor
         adrp    x3, debug_break_asap
         add     x3, x3, debug_break_asap
         str     xzr, [x3]
+        stp     x29, x30, [sp, #-16]!
+        bl      host_debug_paint
+        ldp     x29, x30, [sp], #16
         b       nd_exec
 nd_out
         adrp    x2, debug_out

@@ -11,6 +11,7 @@ qt_add_executable(editforthwin WIN32
     src/main.cpp
     src/MainWindow.cpp
     src/CodeEdit.cpp
+    src/DebugBar.cpp
     src/ForthConsole.cpp
     src/ForthPipe.cpp
 )

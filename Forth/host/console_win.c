@@ -22,6 +22,8 @@ void forth_prompt(void);
 int forth_boot(void);
 int forth_eval_file(const char *path);
 int companion_run(const wchar_t *pipe_name);
+void forth_autoload(void);
+void forth_autoload_set(int on);
 
 static int companion_name(int argc, wchar_t **argv, wchar_t *dst, int cap)
 {
@@ -183,6 +185,7 @@ static void agent_help(void)
         "  -c, --cwd <path>        Change directory before work\r\n"
         "  -o, --out <path>        Write the transcript to path (stdout always)\r\n"
         "  --repl                  Read further lines from stdin until EOF or BYE\r\n"
+        "  --no-autoload           Skip Documents\\EditForthWin\\AutoLoad\\autoload.fth\r\n"
         "  -h, --help              This help\r\n"
         "\r\n"
         "Environment:\r\n"
@@ -268,8 +271,12 @@ static int agent_run(int argc, wchar_t **argv)
             repl = 1;
             continue;
         }
-        if (wcscmp(a, L"--autoload") == 0 || wcscmp(a, L"--no-autoload") == 0)
+        if (wcscmp(a, L"--autoload") == 0)
             continue;
+        if (wcscmp(a, L"--no-autoload") == 0) {
+            forth_autoload_set(0);
+            continue;
+        }
         if (wcscmp(a, L"-e") == 0 || wcscmp(a, L"--eval") == 0 ||
             wcscmp(a, L"-f") == 0 || wcscmp(a, L"--file") == 0 ||
             wcscmp(a, L"--fload") == 0 || wcscmp(a, L"--include") == 0 ||
@@ -328,6 +335,7 @@ static int agent_run(int argc, wchar_t **argv)
         failed = 1;
         goto done;
     }
+    forth_autoload();
 
     if (have_cwd) {
         char msg[MAX_PATH * 3 + 64];
@@ -900,6 +908,7 @@ static DWORD WINAPI forth_thread(LPVOID arg)
         PostMessageW(g_hwnd, WM_CLOSE, 0, 0);
         return 1;
     }
+    forth_autoload();
     for (i = 1; i < argc; i++) {
         char path[MAX_PATH * 3];
         if (argv[i][0] == L'-')
@@ -1150,6 +1159,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
         return 1;
     {
         wchar_t pipe_name[200];
+        int i;
+        for (i = 1; i < argc; i++) {
+            if (wcscmp(argv[i], L"--no-autoload") == 0)
+                forth_autoload_set(0);
+        }
         if (companion_name(argc, argv, pipe_name, 200))
             rc = companion_run(pipe_name);
         else if (agent_requested(argc, argv))

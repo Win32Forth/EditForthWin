@@ -9,6 +9,8 @@
 #include <QProcess>
 #include <QThread>
 
+#include <string>
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
@@ -150,6 +152,27 @@ public:
                     QMetaObject::invokeMethod(owner, "noteStopped", Qt::QueuedConnection);
                     told = true;
                     break;
+                } else if (op == QLatin1String("debug")) {
+                    const bool armed = obj.value(QStringLiteral("armed")).toInt() != 0;
+                    const bool paused = obj.value(QStringLiteral("paused")).toInt() != 0;
+                    const int line = obj.value(QStringLiteral("line")).toInt();
+                    const int off = obj.value(QStringLiteral("off")).toInt();
+                    const int len = obj.value(QStringLiteral("len")).toInt();
+                    const QString name = obj.value(QStringLiteral("name")).toString();
+                    const QString path = obj.value(QStringLiteral("path")).toString();
+                    QMetaObject::invokeMethod(owner, "noteDebug", Qt::QueuedConnection,
+                                              Q_ARG(bool, armed), Q_ARG(bool, paused), Q_ARG(int, line),
+                                              Q_ARG(int, off), Q_ARG(int, len), Q_ARG(QString, name),
+                                              Q_ARG(QString, path));
+                } else if (op == QLatin1String("breaks")) {
+                    QMetaObject::invokeMethod(owner, "noteBreaks", Qt::QueuedConnection,
+                                              Q_ARG(QString, obj.value(QStringLiteral("text")).toString()));
+                } else if (op == QLatin1String("err")) {
+                    QMetaObject::invokeMethod(owner, "noteError", Qt::QueuedConnection,
+                                              Q_ARG(QString, obj.value(QStringLiteral("text")).toString()));
+                } else if (op == QLatin1String("edit")) {
+                    QMetaObject::invokeMethod(owner, "noteEdit", Qt::QueuedConnection,
+                                              Q_ARG(QString, obj.value(QStringLiteral("text")).toString()));
                 }
                 dst = reinterpret_cast<char *>(hdr);
                 need = 4;
@@ -279,6 +302,29 @@ void ForthPipe::shutdown() {
 
 void ForthPipe::eval(const QString &line) { post(message("eval", line)); }
 
+void ForthPipe::sendKey(int key) { post(message("key", QString::number(key))); }
+
+void ForthPipe::sendArm() { post(message("arm", QString())); }
+
+void ForthPipe::requestBreaks() { post(message("breaks", QString())); }
+
+void ForthPipe::enableBreak(int index, bool on) {
+    post(message("break-en", QStringLiteral("%1,%2").arg(index).arg(on ? 1 : 0)));
+}
+
+void ForthPipe::toggleBreak(const QString &name) { post(message("break-toggle", name)); }
+
+bool ForthPipe::signalBreak() {
+    const std::wstring name =
+        QStringLiteral("Local\\EditForthWin-%1-break").arg(QCoreApplication::applicationPid()).toStdWString();
+    HANDLE event = OpenEventW(EVENT_MODIFY_STATE, FALSE, name.c_str());
+    if (event == NULL)
+        return false;
+    SetEvent(event);
+    CloseHandle(event);
+    return true;
+}
+
 void ForthPipe::noteOutput(const QString &text) { emit outputReceived(text); }
 
 void ForthPipe::noteDirectory(const QString &path) { emit directoryChanged(path); }
@@ -286,3 +332,14 @@ void ForthPipe::noteDirectory(const QString &path) { emit directoryChanged(path)
 void ForthPipe::noteStopped() { emit engineStopped(); }
 
 void ForthPipe::noteFailed(const QString &message) { emit engineFailed(message); }
+
+void ForthPipe::noteDebug(bool armed, bool paused, int line, int off, int len, const QString &name,
+                          const QString &path) {
+    emit debugReceived(armed, paused, line, off, len, name, path);
+}
+
+void ForthPipe::noteBreaks(const QString &text) { emit breaksReceived(text); }
+
+void ForthPipe::noteError(const QString &text) { emit statusError(text); }
+
+void ForthPipe::noteEdit(const QString &path) { emit editReceived(path); }

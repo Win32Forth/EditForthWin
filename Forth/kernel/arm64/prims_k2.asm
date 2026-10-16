@@ -45,6 +45,8 @@
         EXTERN bootptr_start
         EXTERN bootptr_end
         EXTERN key_fn
+        EXTERN _getchar
+        EXTERN debug_busy
         EXTERN _next_word
         EXTERN _find_word
         EXTERN _compile_cell
@@ -85,6 +87,7 @@
         EXTERN host_sleep
         EXTERN host_time_date
         EXTERN host_chdir
+        EXTERN host_edit
         EXTERN host_fromlib
         EXTERN host_fromlib_off
         EXTERN host_fromlib_query
@@ -1005,6 +1008,24 @@ _key_push
 XKEY_END
         NEXT
 
+        BOOT_WORD EKEY, EKEY ( -- u ) next key event, 0, XEKEY, XEKEY_END
+XEKEY
+        sub     sp, sp, #64
+        stp     x29, x30, [sp, #32]
+        bl      _getchar
+        adrp    x1, debug_busy
+        add     x1, x1, debug_busy
+        ldr     x1, [x1]
+        cbz     x1, ekey_push
+        mov     x28, #0
+ekey_push
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #64
+        str     x20, [x22, #-8]!
+        mov     x20, x0
+XEKEY_END
+        NEXT
+
         BOOT_WORD KEY?, KEY? ( -- flag ) true if a key is waiting, 0, XKEYQ, XKEYQ_END
 XKEYQ
         str     x20, [x22, #-8]!
@@ -1803,8 +1824,12 @@ XLOCAL_PAREN
 XLOCAL_PAREN_END
         NEXT
 
-        BOOT_WORD TEXTEDIT, TEXTEDIT ( -- ) editor hook placeholder, 0, XTEXTEDIT, 0
+        BOOT_WORD TEXTEDIT, TEXTEDIT ( -- ) open the next file name in the editor, 0, XTEXTEDIT, 0
 XTEXTEDIT
+        stp     x29, x30, [sp, #-16]!
+        bl      _parse_filespec
+        bl      host_edit
+        ldp     x29, x30, [sp], #16
         NEXT
 
 ; VIEW-PATH, DBG-ON, and DBG-OFF live with the stepper in prims_dbg.asm.

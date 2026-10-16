@@ -25,18 +25,35 @@ public:
     void *wakeHandle() const { return m_wake; }
     QList<QByteArray> takeOutgoing();
 
+    void sendKey(int key);
+    void sendArm();
+    void requestBreaks();
+    void enableBreak(int index, bool on);
+    void toggleBreak(const QString &name);
+    bool signalBreak();
+
 public slots:
     void eval(const QString &line);
     void noteOutput(const QString &text);
     void noteDirectory(const QString &path);
     void noteStopped();
     void noteFailed(const QString &message);
+    void noteDebug(bool armed, bool paused, int line, int off, int len, const QString &name,
+                   const QString &path);
+    void noteBreaks(const QString &text);
+    void noteError(const QString &text);
+    void noteEdit(const QString &path);
 
 signals:
     void outputReceived(const QString &text);
     void directoryChanged(const QString &path);
     void engineStopped();
     void engineFailed(const QString &message);
+    void debugReceived(bool armed, bool paused, int line, int off, int len, const QString &name,
+                       const QString &path);
+    void breaksReceived(const QString &text);
+    void statusError(const QString &text);
+    void editReceived(const QString &path);
 
 private:
     QString forthPath() const;

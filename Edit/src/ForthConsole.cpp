@@ -22,6 +22,8 @@ void ForthConsole::setEngineAlive(bool alive) {
     setReadOnly(!alive);
 }
 
+void ForthConsole::setInputLocked(bool locked) { m_locked = locked; }
+
 void ForthConsole::appendOutput(const QString &text) {
     if (text.isEmpty())
         return;
@@ -99,6 +101,23 @@ void ForthConsole::keyPressEvent(QKeyEvent *event) {
     }
     if (!m_alive)
         return;
+    if (m_locked) {
+        switch (event->key()) {
+        case Qt::Key_Left:
+        case Qt::Key_Right:
+        case Qt::Key_Up:
+        case Qt::Key_Down:
+        case Qt::Key_Home:
+        case Qt::Key_End:
+        case Qt::Key_PageUp:
+        case Qt::Key_PageDown:
+            QPlainTextEdit::keyPressEvent(event);
+            break;
+        default:
+            break;
+        }
+        return;
+    }
 
     QTextCursor cursor = textCursor();
     if (event->matches(QKeySequence::Paste) || event->key() == Qt::Key_Return ||
@@ -156,7 +175,7 @@ void ForthConsole::keyPressEvent(QKeyEvent *event) {
 }
 
 void ForthConsole::insertFromMimeData(const QMimeData *source) {
-    if (!m_alive || source == NULL)
+    if (!m_alive || m_locked || source == NULL)
         return;
     QTextCursor cursor = textCursor();
     if (!inputOnly(cursor)) {

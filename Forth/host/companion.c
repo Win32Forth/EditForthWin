@@ -4,12 +4,26 @@
 
 #include "kernel_api.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
 
+void host_debug_set_notify(void (*flush)(void), void (*send)(const char *json));
+void forth_autoload(void);
+void forth_set_key_hook(int (*fn)(void));
+
+extern uint64_t debug_busy;
+extern uint64_t debug_armed;
+extern uint64_t debug_break_asap;
+extern uint64_t debug_bp_go;
+extern uint64_t debug_bp_xts[8];
+extern uint64_t debug_bp_en[8];
+extern uint64_t _find_word(const char *token, uint64_t len);
+
 void host_set_sink(void (*fn)(const void *, size_t));
+void host_set_edit(void (*fn)(const char *path, int kind));
 void host_outs(const char *s);
 int forth_eval(const char *text, size_t n);
 void forth_prompt(void);
@@ -326,11 +340,306 @@ static void trim_line(char *s)
         s[--n] = '\0';
 }
 
+static volatile LONG g_evaluating;
+static volatile LONG g_quit_req;
+static HANDLE g_break_ev = NULL;
+static HANDLE g_break_stop = NULL;
+static HANDLE g_break_thread = NULL;
+
+static int xt_name(uint64_t xt, char *dst, int cap)
+{
+    uint64_t flags;
+    uint64_t off;
+    const unsigned char *nfa;
+    int n;
+    int i;
+
+    dst[0] = '\0';
+    if (xt == 0 || (xt & 7) != 0 || cap < 2)
+        return 0;
+    flags = *(uint64_t *)(uintptr_t)(xt - 8);
+    off = flags & 0xFFFFULL;
+    if (off == 0 || off >= 4096)
+        return 0;
+    nfa = (const unsigned char *)(uintptr_t)(xt - off);
+    n = nfa[0] & 0x7F;
+    if (n <= 0 || n >= 64 || n >= cap)
+        return 0;
+    for (i = 0; i < n; i++) {
+        unsigned char c = nfa[1 + i];
+        if (c < 32 || c > 126)
+            return 0;
+        dst[i] = (char)c;
+    }
+    dst[n] = '\0';
+    return n;
+}
+
+static void send_breaks(void)
+{
+    char text[8 * 80];
+    int k = 0;
+    int i;
+
+    text[0] = '\0';
+    for (i = 0; i < 8; i++) {
+        char name[64];
+        int n;
+        if (debug_bp_xts[i] == 0)
+            continue;
+        if (!xt_name(debug_bp_xts[i], name, (int)sizeof name))
+            continue;
+        n = snprintf(text + k, sizeof text - (size_t)k, "%d\t%s\t%d\n",
+                     i, name, debug_bp_en[i] != 0);
+        if (n < 0 || k + n >= (int)sizeof text)
+            break;
+        k += n;
+    }
+    pipe_send_text("breaks", text, k);
+}
+
+static void break_enable(int index, int on)
+{
+    if (index < 0 || index >= 8)
+        return;
+    if (debug_bp_xts[index] == 0)
+        return;
+    debug_bp_en[index] = on ? ~(uint64_t)0 : 0;
+}
+
+static void break_clear(int index)
+{
+    if (index < 0 || index >= 8)
+        return;
+    debug_bp_xts[index] = 0;
+    debug_bp_en[index] = 0;
+}
+
+static int break_toggle(const char *name)
+{
+    uint64_t xt;
+    size_t n;
+    int i;
+    int empty = -1;
+
+    if (name == NULL)
+        return 0;
+    while (*name == ' ' || *name == '\t')
+        name++;
+    n = strlen(name);
+    while (n > 0 && (name[n - 1] == ' ' || name[n - 1] == '\t'))
+        n--;
+    if (n == 0 || n >= 64)
+        return 0;
+    xt = _find_word(name, (uint64_t)n);
+    if (xt == 0)
+        return 0;
+    for (i = 0; i < 8; i++) {
+        if (debug_bp_xts[i] == xt) {
+            debug_bp_xts[i] = 0;
+            debug_bp_en[i] = 0;
+            return 2;
+        }
+        if (debug_bp_xts[i] == 0 && empty < 0)
+            empty = i;
+    }
+    if (empty < 0)
+        return -1;
+    debug_bp_xts[empty] = xt;
+    debug_bp_en[empty] = ~(uint64_t)0;
+    return 1;
+}
+
+/* 1 = handled. The caller keeps reading. */
+static int handle_side(const char *op, const char *text)
+{
+    if (strcmp(op, "breaks") == 0) {
+        send_breaks();
+        return 1;
+    }
+    if (strcmp(op, "break-en") == 0) {
+        int index = 0;
+        int on = 0;
+        if (sscanf_s(text, "%d,%d", &index, &on) == 2)
+            break_enable(index, on);
+        send_breaks();
+        return 1;
+    }
+    if (strcmp(op, "break-clr") == 0) {
+        break_clear(atoi(text));
+        send_breaks();
+        return 1;
+    }
+    if (strcmp(op, "break-toggle") == 0) {
+        int rc = break_toggle(text);
+        char msg[96];
+        if (rc == 0) {
+            snprintf(msg, sizeof msg, "undefined: %.60s", text);
+            pipe_send_text("err", msg, (int)strlen(msg));
+        } else if (rc < 0) {
+            pipe_send_text("err", "BREAK table full", (int)strlen("BREAK table full"));
+        }
+        send_breaks();
+        return 1;
+    }
+    return 0;
+}
+
+/* 1 = a message, 0 = pipe closed, -1 = skip this body. */
+static int read_message(char *op, int opcap, char *text, int textcap)
+{
+    unsigned char hdr[4];
+    unsigned long n;
+    char *body;
+    int tn;
+
+    op[0] = '\0';
+    text[0] = '\0';
+    if (!read_full(hdr, 4))
+        return 0;
+    n = (unsigned long)hdr[0] | ((unsigned long)hdr[1] << 8) |
+        ((unsigned long)hdr[2] << 16) | ((unsigned long)hdr[3] << 24);
+    if (n == 0 || n > COMPANION_MSG)
+        return 0;
+    body = (char *)malloc(n + 1);
+    if (body == NULL)
+        return 0;
+    if (!read_full(body, (int)n)) {
+        free(body);
+        return 0;
+    }
+    body[n] = '\0';
+    if (json_string_field(body, "op", op, opcap) < 0) {
+        free(body);
+        return -1;
+    }
+    tn = json_string_field(body, "text", text, textcap);
+    if (tn < 0)
+        text[0] = '\0';
+    free(body);
+    return 1;
+}
+
+static int companion_key(void)
+{
+    char op[32];
+    char text[8192];
+    static const char paused[] = "debugger paused - use Step, Continue, or Stop";
+
+    if (debug_busy == 0)
+        return -1;
+    for (;;) {
+        int got;
+        if (g_quit_req)
+            return 27;
+        companion_flush();
+        got = read_message(op, (int)sizeof op, text, (int)sizeof text);
+        if (got == 0) {
+            g_quit_req = 1;
+            return 27;
+        }
+        if (got < 0)
+            continue;
+        if (strcmp(op, "quit") == 0) {
+            g_quit_req = 1;
+            return 27;
+        }
+        if (strcmp(op, "key") == 0)
+            return (int)strtol(text, NULL, 10);
+        if (strcmp(op, "arm") == 0) {
+            debug_bp_go = 1;
+            return 'g';
+        }
+        if (handle_side(op, text))
+            continue;
+        if (strcmp(op, "eval") == 0)
+            pipe_send_text("err", paused, (int)sizeof paused - 1);
+    }
+}
+
+static DWORD WINAPI break_waiter(LPVOID unused)
+{
+    HANDLE waits[2];
+
+    (void)unused;
+    waits[0] = g_break_ev;
+    waits[1] = g_break_stop;
+    for (;;) {
+        DWORD w = WaitForMultipleObjects(2, waits, FALSE, INFINITE);
+        if (w != WAIT_OBJECT_0)
+            break;
+        if (debug_busy == 0 && (g_evaluating != 0 || debug_armed != 0))
+            debug_break_asap = 1;
+    }
+    return 0;
+}
+
+static void break_start(const wchar_t *pipe_name)
+{
+    wchar_t name[320];
+
+    if (pipe_name == NULL || pipe_name[0] == L'\0')
+        pipe_name = L"EditForthWin";
+    _snwprintf_s(name, 320, _TRUNCATE, L"Local\\%s-break", pipe_name);
+    g_break_ev = CreateEventW(NULL, FALSE, FALSE, name);
+    g_break_stop = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (g_break_ev == NULL || g_break_stop == NULL)
+        return;
+    g_break_thread = CreateThread(NULL, 0, break_waiter, NULL, 0, NULL);
+}
+
+static void break_stop(void)
+{
+    if (g_break_stop != NULL)
+        SetEvent(g_break_stop);
+    if (g_break_thread != NULL) {
+        WaitForSingleObject(g_break_thread, 1000);
+        CloseHandle(g_break_thread);
+        g_break_thread = NULL;
+    }
+    if (g_break_ev != NULL) {
+        CloseHandle(g_break_ev);
+        g_break_ev = NULL;
+    }
+    if (g_break_stop != NULL) {
+        CloseHandle(g_break_stop);
+        g_break_stop = NULL;
+    }
+}
+
+static void companion_send_json(const char *json)
+{
+    pipe_send(json);
+}
+
+static void companion_edit(const char *path, int kind)
+{
+    char buf[1024];
+    int n;
+
+    if (path == NULL)
+        path = "";
+    n = (int)strlen(path);
+    if (kind == 0) {
+        pipe_send_text("edit", path, n);
+        return;
+    }
+    if (n <= 0) {
+        pipe_send_text("edit", "", 0);
+        return;
+    }
+    if (n >= (int)sizeof buf - 1)
+        n = (int)sizeof buf - 2;
+    memcpy(buf, path, (size_t)n);
+    if (buf[n - 1] != '\\' && buf[n - 1] != '/')
+        buf[n++] = '\\';
+    buf[n] = '\0';
+    pipe_send_text("edit", buf, n);
+}
+
 int companion_run(const wchar_t *pipe_name)
 {
     wchar_t path[300];
-    char op[32];
-    char *body = NULL;
     int rc = 1;
 
     if (pipe_name == NULL || pipe_name[0] == L'\0')
@@ -341,73 +650,72 @@ int companion_run(const wchar_t *pipe_name)
                               1, 65536, 65536, 0, NULL);
     if (g_pipe == INVALID_HANDLE_VALUE)
         return 1;
+    break_start(pipe_name);
     if (!ConnectNamedPipe(g_pipe, NULL)) {
         if (GetLastError() != ERROR_PIPE_CONNECTED)
             goto done;
     }
 
     host_set_sink(companion_sink);
+    host_debug_set_notify(companion_flush, companion_send_json);
+    host_set_edit(companion_edit);
+    forth_set_key_hook(companion_key);
     if (forth_boot() != 0) {
         companion_flush();
         goto done;
     }
+    forth_autoload();
     companion_flush();
     companion_send_cwd();
     forth_prompt();
     companion_flush();
 
     for (;;) {
-        unsigned char hdr[4];
-        unsigned long n;
+        char op[32];
         char text[8192];
-        int tn;
+        int got = read_message(op, (int)sizeof op, text, (int)sizeof text);
 
-        if (!read_full(hdr, 4))
+        if (g_quit_req) {
+            rc = 0;
             break;
-        n = (unsigned long)hdr[0] | ((unsigned long)hdr[1] << 8) |
-            ((unsigned long)hdr[2] << 16) | ((unsigned long)hdr[3] << 24);
-        if (n == 0 || n > COMPANION_MSG)
-            break;
-        body = (char *)malloc(n + 1);
-        if (body == NULL)
-            break;
-        if (!read_full(body, (int)n))
-            break;
-        body[n] = '\0';
-        if (json_string_field(body, "op", op, (int)sizeof op) < 0) {
-            free(body);
-            body = NULL;
-            continue;
         }
+        if (got == 0)
+            break;
+        if (got < 0)
+            continue;
         if (strcmp(op, "quit") == 0) {
             rc = 0;
             break;
         }
-        if (strcmp(op, "eval") == 0) {
-            tn = json_string_field(body, "text", text, (int)sizeof text);
-            free(body);
-            body = NULL;
-            if (tn < 0)
-                continue;
-            trim_line(text);
-            if (companion_is_bye(text)) {
-                pipe_send("{\"op\":\"bye\"}");
-                rc = 0;
-                break;
-            }
-            forth_eval(text, strlen(text));
-            companion_flush();
-            companion_send_cwd();
-            forth_prompt();
-            companion_flush();
+        if (handle_side(op, text))
             continue;
+        if (strcmp(op, "key") == 0 || strcmp(op, "arm") == 0)
+            continue;
+        if (strcmp(op, "eval") != 0)
+            continue;
+        trim_line(text);
+        if (companion_is_bye(text)) {
+            pipe_send("{\"op\":\"bye\"}");
+            rc = 0;
+            break;
         }
-        free(body);
-        body = NULL;
+        g_evaluating = 1;
+        forth_eval(text, strlen(text));
+        g_evaluating = 0;
+        if (g_quit_req) {
+            rc = 0;
+            break;
+        }
+        companion_flush();
+        companion_send_cwd();
+        forth_prompt();
+        companion_flush();
     }
 
 done:
-    free(body);
+    host_debug_set_notify(NULL, NULL);
+    host_set_edit(NULL);
+    break_stop();
     if (g_pipe != INVALID_HANDLE_VALUE) {
         DisconnectNamedPipe(g_pipe);
         CloseHandle(g_pipe);

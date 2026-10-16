@@ -40,9 +40,9 @@ The executables are `Forth\build\arm64\forth.exe` and `Edit\build\arm64\editfort
 
 ## Editor
 
-The editor opens one window with a tab per file, Consolas, line numbers, and New, Open, Save, and Save As. A Forth pane under the tabs launches `forth.exe --companion` and shows the cold-load lines, the banner, and `ok(n)>`. Return in that pane runs the line.
+The editor opens one window with a tab per file, Consolas, line numbers, and New, Open, Save, and Save As. A Forth pane under the tabs launches `forth.exe --companion` and shows the cold-load lines, the banner, and `ok(n)>`. Return in that pane runs the line. Above that pane, the status strip shows whether Forth is connected and, while the stepper is armed, the paused word. The debug bar under it steps, continues, and stops. Letter keys stay in the editor. Undock moves that same console into a window titled Forth. Dock puts it back. Closing the Forth window hides the transcript and leaves the engine running. Unhide Forth shows it again. The choice is remembered.
 
-Bare `EDIT` opens a file into a tab. Bare `FLOAD` or `INCLUDE` loads the file you pick. Those dialogs, and File > Open, list `.fth`, `.fs`, `.4th`, `.f`, and `.txt`. They start in the current Forth directory, and you can navigate from there. A path that contains a quote, or is longer than 255 characters, is not loaded.
+Bare `EDIT` opens a file into a tab. `EDIT` with a name opens that file, and `FROMLIB EDIT sample\clock.fth` opens the copy under `Documents\EditForthWin\Library`. Quotes around the name are optional. `FROMLIB` does not change the Forth directory. Bare `FLOAD` or `INCLUDE` loads the file you pick. Those dialogs, and File > Open, list `.fth`, `.fs`, `.4th`, `.f`, and `.txt`. They start in the current Forth directory, and you can navigate from there. A path that contains a quote, or is longer than 255 characters, is not loaded.
 
 `BYE` in the Forth pane closes the editor. Unsaved files are asked about first. Cancel leaves both the editor and Forth running. Closing the window asks in that same order, then shuts Forth down.
 
@@ -54,7 +54,7 @@ Forth starts in `Documents\EditForthWin`. `CHDIR` with a path changes that direc
 
 The shipped copies live in `Forth\Resources`: `Library`, `AutoLoad`, `Docs`, and `Config`. The first run copies `Library`, `AutoLoad`, and `Docs` into `Documents\EditForthWin` and creates an empty `Config` folder. Files already present are left as they are. The copy looks for `Forth\Resources\Library\BigInteger\big-int.fth` by walking up from `forth.exe`.
 
-`FROMLIB` and `FROM-LIBRARY` make the next relative load start in `Documents\EditForthWin\Library`, then clear. `FROMLIB?` is true while that arm is set, and asking does not clear it. `FROMLIB-OFF` clears it without loading. `LIBRARY-PATH` returns that absolute Library directory. An absolute path is left unchanged. The PI demo is:
+`FROMLIB` and `FROM-LIBRARY` make the next relative load or `EDIT` start in `Documents\EditForthWin\Library`, then clear. `FROMLIB?` is true while that arm is set, and asking does not clear it. `FROMLIB-OFF` clears it without loading. `LIBRARY-PATH` returns that absolute Library directory. An absolute path is left unchanged. The PI demo is:
 
 ```
 FROMLIB FLOAD PI/pi-test.fth
@@ -90,7 +90,9 @@ While paused, Space or `o` steps over, `i` steps into, `u` steps out, `g` runs, 
 
 `VIEW-REG` records a source path and returns an id. `VIEW-PATH` returns that path. `VIEW-STAMP` stores a file id and line in the word header.
 
-The other `DBG-*` hooks live in `SYSVOC`. `DBG-HOST-SPAN` remembers an editor span. Nothing paints that span yet.
+The other `DBG-*` hooks live in `SYSVOC`. `DBG-HOST-SPAN` remembers an editor span. A pause sends that span, the word name, and the stamped source path to the editor. A clean buffer highlights the span. A buffer with unsaved edits highlights the word name instead.
+
+`Documents\EditForthWin\AutoLoad\autoload.fth` loads the debugger after boot. Emitter and Hyper in that file are commented out so boot can reach the debugger. Restore those lines when those loads should run on Windows again. `--no-autoload` skips the file. The editor reads step keys as `32` (over), `105` (into), `33554450` (out, tagged F8), `103` (continue), and `113` (stop). F6, F7, F8, F5, and Esc send those keys while a pause is showing. Ctrl+Shift+Y asks Forth to pause at the next safe word. F9 toggles a breakpoint on the word at the caret. Arm runs `BPGO` on that word, or continues to the next enabled breakpoint when already paused.
 
 ## Facility terminal
 
@@ -98,8 +100,18 @@ The other `DBG-*` hooks live in `SYSVOC`. `DBG-HOST-SPAN` remembers an editor sp
 
 `CLIP!` and `CLIP@` copy text through the Windows clipboard. The assembly `CLS` still clears the console transcript. The `CLS` you type is the GRAPHICS word.
 
-`FACILITY` and `FACILITY-EXT` still report false. `EKEY` and the `K-` key names are not in this kernel.
+`FACILITY` and `FACILITY-EXT` still report false. `EKEY` is in the kernel. `EKEY>CHAR`, `EKEY>FKEY`, and the `K-` names come from the cold load.
+
+## Validation
+
+`FROMLIB FLOAD Testing/ANSValidate/ANS-VALIDATE.fth` was run after the normal boot on Oct 16, 2026.
+
+Core, Core Ext, Search-Order, String, Facility, Exception, and Memory-Allocation finished with an empty stack and no failures.
+
+Double failed one check. `123.` is not accepted as a double literal, so the suite printed `123. ?` and `FAIL: lit.`. The rest of that section finished.
+
+Locals then stopped the run. `(LOCAL)` does not compile a local, so `LOCALS|` leaves the name unknown and the following `TO` aborts the load. Tools, File, Block, XChar, Float, and Host did not run. There is no final pass count.
 
 ## Later
 
-The x64 kernel and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false.
+The x64 kernel and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false. Trailing-dot double literals and `(LOCAL)` are the open ANS-VALIDATE gaps above. Emitter and Hyper stay commented out of autoload.
