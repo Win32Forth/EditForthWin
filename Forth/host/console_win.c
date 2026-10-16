@@ -12,6 +12,7 @@
 
 void host_set_sink(void (*fn)(const void *, size_t));
 void host_set_cls(void (*fn)(void));
+void host_set_headless(int on);
 void host_out(const void *p, size_t n);
 void host_outs(const char *s);
 void forth_set_key_hook(int (*fn)(void));
@@ -233,6 +234,7 @@ static int agent_read_line(char *dst, int cap)
 
 static int agent_run(int argc, wchar_t **argv)
 {
+    host_set_headless(1);
     enum { STEP_EVAL, STEP_FILE };
     struct step {
         int kind;

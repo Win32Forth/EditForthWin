@@ -70,6 +70,16 @@ FROMLIB FLOAD PI/pi-test.fth
 
 `BI-MUL`, `BI-DIVMOD`, and `BI-ISQRT` are kernel words. They use the `big-int.fth` layout: base `1000000000` limbs, then capacity, length, sign, and the limbs. `ALSO BIG-INTEGER` brings in the rest of that word set after the library file loads. A boot check of multiply, divide, and square root prints only when it fails.
 
+## Graphics
+
+`ALSO GRAPHICS` then `WINDOW` opens a character window. `CLS`, `AT`, `EMIT`, `TYPE`, and `."` draw into that window. `KEY` and `KEY?` read its keys. Arrow keys arrive as 200, 205, 208, and 203. `G-MOUSE` returns plot coordinates, origin at the bottom left, with buttons 1, 2, and 4. `TONE` takes a frequency in hertz and a duration in tenths of a second.
+
+`1BIT`, `COLOR8`, and `TRUECOLOR` select the pixel map. `PLOT`, `LINE`, and `PREFRESH` send it to the same window. A finished resize is reported by `(APP-SIZE?)`.
+
+`(APP-IMG-LOAD)` reads a BMP, PNG, JPEG, GIF, or TIFF. `(APP-IMG-SIZE)` and `(APP-IMG-RENDER)` use that image. `(APP-IMG-CHOOSE)`, `(APP-FILE-CHOOSE)`, and `(APP-FILE-SAVE-AS)` stage a path. `(APP-FILE-PATH)`, `(APP-FILE-SLURP)`, and `(APP-FILE-SPEW)` use the staged path. Under `--agent` those three dialogs return -1 and do not open a panel. The graphics window itself still opens.
+
+`(OOP-CALL)` is the separate window, menu, and button host used by the class library. It is not the GRAPHICS window.
+
 ## Later
 
-The x64 kernel, the debugger, the facility screen, graphics windows, and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false.
+The x64 kernel, the debugger, the facility screen, and native code are not in this editor yet. `FILE-EXT` reports true. `FACILITY`, `FLOATING`, and `BLOCK` report false.

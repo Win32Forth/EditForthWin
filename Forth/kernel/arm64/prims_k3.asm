@@ -1,7 +1,7 @@
 ; Words the cold files after kernel2.fth need at load time.
 ; {: locals and SEARCH-WORDLIST run while vocemit.fth and vocsys.fth
 ; move headers. SOURCE, LEAVE, 2*, 2/, and L@/L! are referenced from
-; definitions. The (APP-*) words are host stubs so GRAPHICS can compile.
+; definitions. The (APP-*) words call the graphics host.
 
         INCLUDE Forth/kernel/arm64/vm.inc
         INCLUDE Forth/kernel/arm64/boot_words.inc
@@ -38,6 +38,28 @@ LOCAL_FRAME_MAX EQU 16
         EXTERN _cursor_load
         EXTERN _cursor_commit
         EXTERN here_ptr
+        EXTERN host_app_open
+        EXTERN host_app_close
+        EXTERN host_app_blit
+        EXTERN host_app_pblit
+        EXTERN host_app_cblit
+        EXTERN host_app_keyq
+        EXTERN host_app_key
+        EXTERN host_app_name
+        EXTERN host_app_tone
+        EXTERN host_app_pump
+        EXTERN host_app_mouse
+        EXTERN host_app_size
+        EXTERN host_app_img_choose
+        EXTERN host_app_img_load
+        EXTERN host_app_img_size
+        EXTERN host_app_img_render
+        EXTERN host_app_file_choose
+        EXTERN host_app_file_save_as
+        EXTERN host_app_file_path
+        EXTERN host_app_file_slurp
+        EXTERN host_app_file_spew
+        EXTERN host_oop_call
         EXTERN cfa_slit
         EXTERN slit_esc_buf
         EXTERN _putchar
@@ -577,64 +599,281 @@ XLSTORE
 XLSTORE_END
         NEXT
 
-        BOOT_WORD (APP-BLIT), (APP-BLIT) ( c-addr u -- ) graphics blit is not wired, 0, XAPP_BLIT, 0
-XAPP_BLIT
-        ldr     x20, [x22], #8
-        ldr     x20, [x22], #8
-        NEXT
-
-        BOOT_WORD (APP-OPEN), (APP-OPEN) ( cols rows -- ior ) graphics window is not wired, 0, XAPP_OPEN, 0
+        BOOT_WORD (APP-OPEN), (APP-OPEN) ( cols rows -- ior ) open a character graphics window, 0, XAPP_OPEN, XAPP_OPEN_END
 XAPP_OPEN
+        mov     x1, x20
+        ldr     x0, [x22], #8
         ldr     x20, [x22], #8
-        mov     x20, #-1
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_open
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XAPP_OPEN_END
         NEXT
 
-        BOOT_WORD (APP-CLOSE), (APP-CLOSE) ( -- ) graphics window is not wired, 0, XAPP_CLOSE, 0
+        BOOT_WORD (OOP-CALL), (OOP-CALL) ( a b c d op -- n ) OOP window host, 0, XOOP_CALL, XOOP_CALL_END
+XOOP_CALL
+        mov     x4, x20
+        ldr     x3, [x22], #8
+        ldr     x2, [x22], #8
+        ldr     x1, [x22], #8
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_oop_call
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XOOP_CALL_END
+        NEXT
+
+        BOOT_WORD (APP-CLOSE), (APP-CLOSE) ( -- ) close the character graphics window, 0, XAPP_CLOSE, XAPP_CLOSE_END
 XAPP_CLOSE
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_close
+        ldp     x29, x30, [sp], #16
+XAPP_CLOSE_END
         NEXT
 
-        BOOT_WORD (APP-NAME), (APP-NAME) ( c-addr u -- ) graphics title is not wired, 0, XAPP_NAME, 0
-XAPP_NAME
+        BOOT_WORD (APP-BLIT), (APP-BLIT) ( c-addr u -- ) blit the character buffer to the window, 0, XAPP_BLIT, XAPP_BLIT_END
+XAPP_BLIT
+        mov     x1, x20
+        ldr     x0, [x22], #8
         ldr     x20, [x22], #8
-        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_blit
+        ldp     x29, x30, [sp], #16
+XAPP_BLIT_END
         NEXT
 
-        BOOT_WORD (APP-KEY?), (APP-KEY?) ( -- flag ) graphics key is not wired, 0, XAPP_KEYQ, 0
+        BOOT_WORD (APP-PBLIT), (APP-PBLIT) ( c-addr u -- ) blit a 1-bit pixel map to the window, 0, XAPP_PBLIT, XAPP_PBLIT_END
+XAPP_PBLIT
+        mov     x1, x20
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_pblit
+        ldp     x29, x30, [sp], #16
+XAPP_PBLIT_END
+        NEXT
+
+        BOOT_WORD (APP-CBLIT), (APP-CBLIT) ( c-addr u depth -- ) blit pixels of depth 1 8 or 32, 0, XAPP_CBLIT, XAPP_CBLIT_END
+XAPP_CBLIT
+        mov     x2, x20
+        ldr     x1, [x22], #8
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_cblit
+        ldp     x29, x30, [sp], #16
+XAPP_CBLIT_END
+        NEXT
+
+        BOOT_WORD (APP-KEY?), (APP-KEY?) ( -- flag ) true when a graphics key is waiting, 0, XAPP_KEYQ, XAPP_KEYQ_END
 XAPP_KEYQ
-        str     x20, [x22, #-8]!
-        mov     x20, #0
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_keyq
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XAPP_KEYQ_END
         NEXT
 
-        BOOT_WORD (APP-KEY), (APP-KEY) ( -- c ) graphics key is not wired, 0, XAPP_KEY, 0
+        BOOT_WORD (APP-KEY), (APP-KEY) ( -- c ) next graphics key or -1 on timeout, 0, XAPP_KEY, XAPP_KEY_END
 XAPP_KEY
-        str     x20, [x22, #-8]!
-        mov     x20, #-1
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_key
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XAPP_KEY_END
         NEXT
 
-        BOOT_WORD (APP-PUMP), (APP-PUMP) ( -- ) graphics pump is not wired, 0, XAPP_PUMP, 0
-XAPP_PUMP
+        BOOT_WORD (APP-NAME), (APP-NAME) ( c-addr u -- ) set the graphics window title, 0, XAPP_NAME, XAPP_NAME_END
+XAPP_NAME
+        mov     x1, x20
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_name
+        ldp     x29, x30, [sp], #16
+XAPP_NAME_END
         NEXT
 
-        BOOT_WORD (APP-MOUSE), (APP-MOUSE) ( -- x y buttons ) graphics mouse is not wired, 0, XAPP_MOUSE, 0
-XAPP_MOUSE
-        str     x20, [x22, #-8]!
-        mov     x20, #0
-        str     x20, [x22, #-8]!
-        str     x20, [x22, #-8]!
-        NEXT
-
-        BOOT_WORD (APP-TONE), (APP-TONE) ( freq dur -- ) graphics tone is not wired, 0, XAPP_TONE, 0
+        BOOT_WORD (APP-TONE), (APP-TONE) ( freq dur -- ) play a tone for dur tenths of a second, 0, XAPP_TONE, XAPP_TONE_END
 XAPP_TONE
+        mov     x1, x20
+        ldr     x0, [x22], #8
         ldr     x20, [x22], #8
-        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_tone
+        ldp     x29, x30, [sp], #16
+XAPP_TONE_END
         NEXT
 
-        BOOT_WORD (APP-SIZE?), (APP-SIZE?) ( -- cols rows flag ) graphics size is not wired, 0, XAPP_SIZEQ, 0
-XAPP_SIZEQ
+        BOOT_WORD (APP-PUMP), (APP-PUMP) ( -- ) yield so the graphics window can run, 0, XAPP_PUMP, XAPP_PUMP_END
+XAPP_PUMP
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_pump
+        ldp     x29, x30, [sp], #16
+XAPP_PUMP_END
+        NEXT
+
+        BOOT_WORD (APP-MOUSE), (APP-MOUSE) ( -- x y buttons ) graphics mouse in plot coordinates, 0, XAPP_MOUSE, XAPP_MOUSE_END
+XAPP_MOUSE
+        stp     x29, x30, [sp, #-16]!
+        sub     sp, sp, #32
+        mov     x0, sp
+        add     x1, sp, #8
+        add     x2, sp, #16
+        str     xzr, [sp]
+        str     xzr, [sp, #8]
+        str     xzr, [sp, #16]
+        bl      host_app_mouse
+        ldr     x0, [sp]
+        ldr     x1, [sp, #8]
+        ldr     x2, [sp, #16]
+        add     sp, sp, #32
+        ldp     x29, x30, [sp], #16
         str     x20, [x22, #-8]!
-        mov     x20, #0
+        str     x0, [x22, #-8]!
+        str     x1, [x22, #-8]!
+        mov     x20, x2
+XAPP_MOUSE_END
+        NEXT
+
+        BOOT_WORD (APP-SIZE?), (APP-SIZE?) ( -- cols rows flag ) pending grid after a resize, 0, XAPP_SIZE, XAPP_SIZE_END
+XAPP_SIZE
+        stp     x29, x30, [sp, #-16]!
+        sub     sp, sp, #32
+        mov     x0, sp
+        add     x1, sp, #8
+        str     xzr, [sp]
+        str     xzr, [sp, #8]
+        bl      host_app_size
+        ldr     x1, [sp]
+        ldr     x2, [sp, #8]
+        add     sp, sp, #32
+        ldp     x29, x30, [sp], #16
         str     x20, [x22, #-8]!
+        str     x1, [x22, #-8]!
+        str     x2, [x22, #-8]!
+        mov     x20, x0
+XAPP_SIZE_END
+        NEXT
+
+        BOOT_WORD (APP-IMG-CHOOSE), (APP-IMG-CHOOSE) ( -- ior ) choose an image file, 0, XAPP_IMG_CHOOSE, XAPP_IMG_CHOOSE_END
+XAPP_IMG_CHOOSE
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_img_choose
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XAPP_IMG_CHOOSE_END
+        NEXT
+
+        BOOT_WORD (APP-IMG-LOAD), (APP-IMG-LOAD) ( c-addr u -- ior ) load an image from a path, 0, XAPP_IMG_LOAD, XAPP_IMG_LOAD_END
+XAPP_IMG_LOAD
+        mov     x1, x20
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_img_load
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XAPP_IMG_LOAD_END
+        NEXT
+
+        BOOT_WORD (APP-IMG-SIZE), (APP-IMG-SIZE) ( -- w h ) loaded image size in pixels, 0, XAPP_IMG_SIZE, XAPP_IMG_SIZE_END
+XAPP_IMG_SIZE
+        stp     x29, x30, [sp, #-16]!
+        sub     sp, sp, #32
+        mov     x0, sp
+        add     x1, sp, #8
+        str     xzr, [sp]
+        str     xzr, [sp, #8]
+        bl      host_app_img_size
+        ldr     x0, [sp]
+        ldr     x1, [sp, #8]
+        add     sp, sp, #32
+        ldp     x29, x30, [sp], #16
         str     x20, [x22, #-8]!
+        str     x0, [x22, #-8]!
+        mov     x20, x1
+XAPP_IMG_SIZE_END
+        NEXT
+
+        BOOT_WORD (APP-IMG-RENDER), (APP-IMG-RENDER) ( c-addr w h cx cy zoom100 -- ior ) render the image into BGRA, 0, XAPP_IMG_RENDER, XAPP_IMG_RENDER_END
+XAPP_IMG_RENDER
+        mov     x5, x20
+        ldr     x4, [x22], #8
+        ldr     x3, [x22], #8
+        ldr     x2, [x22], #8
+        ldr     x1, [x22], #8
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_img_render
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XAPP_IMG_RENDER_END
+        NEXT
+
+        BOOT_WORD (APP-FILE-CHOOSE), (APP-FILE-CHOOSE) ( -- ior ) choose a file and stage its path, 0, XAPP_FILE_CHOOSE, XAPP_FILE_CHOOSE_END
+XAPP_FILE_CHOOSE
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_file_choose
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XAPP_FILE_CHOOSE_END
+        NEXT
+
+        BOOT_WORD (APP-FILE-SAVE-AS), (APP-FILE-SAVE-AS) ( -- ior ) choose a save path and stage it, 0, XAPP_FILE_SAVE_AS, XAPP_FILE_SAVE_AS_END
+XAPP_FILE_SAVE_AS
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_file_save_as
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XAPP_FILE_SAVE_AS_END
+        NEXT
+
+        BOOT_WORD (APP-FILE-PATH), (APP-FILE-PATH) ( c-addr u -- u2 ) copy the staged file path, 0, XAPP_FILE_PATH, XAPP_FILE_PATH_END
+XAPP_FILE_PATH
+        mov     x1, x20
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_file_path
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XAPP_FILE_PATH_END
+        NEXT
+
+        BOOT_WORD (APP-FILE-SLURP), (APP-FILE-SLURP) ( c-addr max -- u ior ) read the staged file, 0, XAPP_FILE_SLURP, XAPP_FILE_SLURP_END
+XAPP_FILE_SLURP
+        mov     x1, x20
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        sub     sp, sp, #16
+        mov     x2, sp
+        str     xzr, [sp]
+        bl      host_app_file_slurp
+        ldr     x1, [sp]
+        add     sp, sp, #16
+        ldp     x29, x30, [sp], #16
+        str     x20, [x22, #-8]!
+        str     x1, [x22, #-8]!
+        mov     x20, x0
+XAPP_FILE_SLURP_END
+        NEXT
+
+        BOOT_WORD (APP-FILE-SPEW), (APP-FILE-SPEW) ( c-addr u -- ior ) write bytes to the staged file, 0, XAPP_FILE_SPEW, XAPP_FILE_SPEW_END
+XAPP_FILE_SPEW
+        mov     x1, x20
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_file_spew
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XAPP_FILE_SPEW_END
         NEXT
 
         BOOT_WORD_SESCAPE  escaped string, FLAG_IMM, XSESCAPE, 0
