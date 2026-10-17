@@ -41,12 +41,18 @@ DBG_DSAVE_MAX   EQU 64
         EXTERN cfa_plusloop
         EXTERN wordlist_reg
         EXTERN wordlist_reg_n
+        EXTERN latest_var
         EXTERN catch_ok_cell
         EXTERN tw_continue_cell
         EXTERN tw_continue_cfa
         EXTERN host_debug_paint
         EXTERN host_debug_set_span
         EXTERN host_debug_get_span
+        EXTERN source_id
+        EXTERN source_base
+        EXTERN to_in
+        EXTERN line_mode
+        EXTERN line_origin
 
         EXPORT next_debug
         EXPORT debug_break_asap
@@ -60,6 +66,17 @@ DBG_DSAVE_MAX   EQU 64
         EXPORT debug_name
         EXPORT view_file_n
         EXPORT view_paths
+        EXPORT view_src_id
+        EXPORT view_id_sp
+        EXPORT include_name_pending
+        EXPORT include_name_len
+        EXPORT _view_line_now
+        EXPORT _view_push_src_id
+        EXPORT _view_pop_src_id
+        EXPORT _view_set_src_from_pending
+        EXPORT debug_runto_ip
+        EXPORT debug_runto_off
+        EXPORT debug_runto_status
         EXPORT debug_floor
         EXPORT debug_field_count
         EXPORT debug_field_len
@@ -1788,6 +1805,12 @@ ip_wid_loop
         add     x24, x24, #1
         b       ip_wid_loop
 ip_wid_done
+        ; FORTH-WORDLIST is latest_var and is not in WORDLISTS.
+        ; (VIEW-OPEN) stays in FORTH, so step-into must see those threads.
+        ; Closest body still wins over an earlier SYSVOC neighbor.
+        adrp    x0, latest_var
+        add     x0, x0, latest_var
+        bl      _ip_scan_wid
         mov     x0, x21
         cbz     x21, ip_no_off
         sub     x1, x20, x22
@@ -2419,6 +2442,116 @@ vrp_fail
         ldp     x29, x30, [sp], #16
         ret
 
+; x0 = 1-based line in the current SOURCE, or 0 when no file is registered
+; or the source is the console. Leaf: clobbers x1-x4 only.
+_view_line_now
+        adrp    x0, view_src_id
+        add     x0, x0, view_src_id
+        ldr     x0, [x0]
+        cbz     x0, _vln_none
+        adrp    x0, source_id
+        add     x0, x0, source_id
+        ldr     x0, [x0]
+        cbz     x0, _vln_none
+        b       _source_line_now
+_vln_none
+        mov     x0, #0
+        ret
+
+; x0 = 1-based line. Counts LF from the file origin through >IN.
+_source_line_now
+        adrp    x1, source_base
+        add     x1, x1, source_base
+        ldr     x1, [x1]
+        adrp    x2, to_in
+        add     x2, x2, to_in
+        ldr     x2, [x2]
+        adrp    x4, line_mode
+        add     x4, x4, line_mode
+        ldr     x4, [x4]
+        cbz     x4, _source_line_at
+        adrp    x3, line_origin
+        add     x3, x3, line_origin
+        ldr     x3, [x3]
+        add     x4, x1, x2
+        sub     x2, x4, x3
+        mov     x1, x3
+_source_line_at
+        mov     x0, #1
+        mov     x3, #0
+_sla_loop
+        cmp     x3, x2
+        b.hs    _sla_done
+        ldrb    w4, [x1, x3]
+        cmp     w4, #10
+        b.ne    _sla_next
+        add     x0, x0, #1
+_sla_next
+        add     x3, x3, #1
+        b       _sla_loop
+_sla_done
+        ret
+
+; Register include_name_pending and store its file id in view_src_id.
+_view_set_src_from_pending
+        stp     x29, x30, [sp, #-16]!
+        adrp    x0, include_name_len
+        add     x0, x0, include_name_len
+        ldr     x1, [x0]
+        cbz     x1, _vset_clear
+        adrp    x0, include_name_pending
+        add     x0, x0, include_name_pending
+        bl      _view_register_path
+        adrp    x1, view_src_id
+        add     x1, x1, view_src_id
+        str     x0, [x1]
+        ldp     x29, x30, [sp], #16
+        ret
+_vset_clear
+        adrp    x1, view_src_id
+        add     x1, x1, view_src_id
+        str     xzr, [x1]
+        ldp     x29, x30, [sp], #16
+        ret
+
+; Nest the current file id. Eight levels, same depth as the source stack.
+_view_push_src_id
+        adrp    x0, view_src_id
+        add     x0, x0, view_src_id
+        ldr     x1, [x0]
+        adrp    x2, view_id_sp
+        add     x2, x2, view_id_sp
+        ldr     x3, [x2]
+        cmp     x3, #8
+        b.hs    _vpush_full
+        adrp    x4, view_id_stack
+        add     x4, x4, view_id_stack
+        str     x1, [x4, x3, lsl #3]
+        add     x3, x3, #1
+        str     x3, [x2]
+_vpush_full
+        ret
+
+_view_pop_src_id
+        adrp    x2, view_id_sp
+        add     x2, x2, view_id_sp
+        ldr     x3, [x2]
+        cbz     x3, _vpop_empty
+        sub     x3, x3, #1
+        str     x3, [x2]
+        adrp    x4, view_id_stack
+        add     x4, x4, view_id_stack
+        ldr     x1, [x4, x3, lsl #3]
+        adrp    x0, view_src_id
+        add     x0, x0, view_src_id
+        str     x1, [x0]
+        ret
+_vpop_empty
+        adrp    x0, view_src_id
+        add     x0, x0, view_src_id
+        str     xzr, [x0]
+        ret
+
 _getchar
         stp     x29, x30, [sp, #-16]!
         adrp    x1, key_fn
@@ -2502,5 +2635,9 @@ debug_nest_rstack   SPACE 16384
 view_src_id         DCQ 0
 view_file_n         DCQ 0
 view_paths          SPACE 65536
+view_id_sp          DCQ 0
+view_id_stack       SPACE 64
+include_name_len    DCQ 0
+include_name_pending SPACE 256
 
         END

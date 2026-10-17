@@ -322,6 +322,26 @@ VARIABLE HYPER-LEAF-U
 \ Header comments ("# Format: …") still no-op: first word is '#' but the
 \ remainder is not a pure line number, so (HYPER-TRY-LINE) / HYPER->LINE
 \ rejects them.
+\ A path header is "@ Library/…". The fetch word is "@ 217". Require a
+\ slash after the @, or that word line is swallowed and the following
+\ names are stamped against the text "217".
+: HYPER-HAS-SLASH?  ( a u -- flag )
+   0
+   BEGIN  2DUP > WHILE
+      2 PICK OVER + C@ [CHAR] / = IF
+         DROP 2DROP TRUE EXIT
+      THEN
+      1+
+   REPEAT
+   DROP 2DROP FALSE ;
+
+: HYPER-AT-PATH?  ( a u -- flag )
+   DUP 2 < IF  2DROP FALSE EXIT  THEN
+   OVER C@ [CHAR] @ <> IF  2DROP FALSE EXIT  THEN
+   HYPER-SKIP1 HYPER-SKIP-BL
+   DUP 0= IF  2DROP FALSE EXIT  THEN
+   HYPER-HAS-SLASH? ;
+
 : (HYPER-COLLECT-NDX)  ( -- )
    HYPER-ENSURE 0= IF  EXIT  THEN
    0 TO HYPER-POS
@@ -329,11 +349,8 @@ VARIABLE HYPER-LEAF-U
    BEGIN  HYPER-EOF? 0= WHILE
       HYPER-READ-LINE
       DUP 0= IF  2DROP
-      ELSE  OVER C@ 64 = IF
-         DUP 1 < IF  2DROP
-         ELSE  HYPER-SKIP1 HYPER-SKIP-BL
-            DUP 0= IF  2DROP  ELSE  HYPER-SET-CUR  THEN
-         THEN
+      ELSE  2DUP HYPER-AT-PATH? IF
+         HYPER-SKIP1 HYPER-SKIP-BL HYPER-SET-CUR
       ELSE  (HYPER-TRY-LINE)
       THEN THEN
    REPEAT ;
@@ -368,10 +385,10 @@ VARIABLE HYPER-LEAF-U
 \ NDX can list the same name twice (e.g. real OVER in forth.s, then a
 \ mid-line CREATE OVER under +FIELD); last-wins stamped the wrong line.
 \
-\ Walk WORDLISTS (FORTH registered first) instead of FIND: ALSO GRAPHICS
-\ made FIND hit GRAPHICS TYPE before cold FORTH TYPE, so VIEW TYPE stayed
-\ (no source) while the graphics homonym got forth.s:3469. Per-wid walk
-\ stamps FORTH TYPE from forth.s, then GRAPHICS TYPE from app-output.fth.
+\ FORTH-WORDLIST is the cold dictionary (latest_var). VOCABULARY and
+\ WORDLIST register their own heads, so WORDLISTS does not contain it.
+\ Search FORTH first, then the registered table. A hit returns and later
+\ NDX lines still reach a homonym whose VIEW-FILE# is still 0.
 : (HYPER-STAMP-LINE)  ( a u -- )
    HYPER-CUR C@ 0= IF  2DROP EXIT  THEN
    HYPER-CUR COUNT HYPER-LIB-PATH? 0= IF  2DROP EXIT  THEN
@@ -381,6 +398,8 @@ VARIABLE HYPER-LEAF-U
    HYPER-SEEK HYPER-PLACE                    \ ra ru
    HYPER->LINE 0= IF  EXIT  THEN             \ line
    HYPER-TMP-LINE !
+   FORTH-WORDLIST HYPER-TMP-LINE @ (HYPER-STAMP-WID)
+   IF  EXIT  THEN
    WORDLISTS HYPER-TMP-N ! HYPER-TMP-ADDR !
    0 HYPER-TMP-I !
    BEGIN  HYPER-TMP-I @ HYPER-TMP-N @ < WHILE
@@ -390,8 +409,7 @@ VARIABLE HYPER-LEAF-U
       1 HYPER-TMP-I +!
    REPEAT ;
 
-\ WORDLISTS covers FORTH + every VOCABULARY (SYSVOC/EDITOR/GRAPHICS/…).
-\ No ALSO/FIND — see (HYPER-STAMP-LINE).
+\ FORTH-WORDLIST first, then WORDLISTS. No ALSO/FIND.
 : HYPER-STAMP-COLD  ( -- )
    HYPER-ENSURE 0= IF  EXIT  THEN
    0 TO HYPER-POS
@@ -399,11 +417,8 @@ VARIABLE HYPER-LEAF-U
    BEGIN  HYPER-EOF? 0= WHILE
       HYPER-READ-LINE
       DUP 0= IF  2DROP
-      ELSE  OVER C@ 64 = IF
-         DUP 1 < IF  2DROP
-         ELSE  HYPER-SKIP1 HYPER-SKIP-BL
-            DUP 0= IF  2DROP  ELSE  HYPER-SET-CUR  THEN
-         THEN
+      ELSE  2DUP HYPER-AT-PATH? IF
+         HYPER-SKIP1 HYPER-SKIP-BL HYPER-SET-CUR
       ELSE  (HYPER-STAMP-LINE)
       THEN THEN
    REPEAT ;

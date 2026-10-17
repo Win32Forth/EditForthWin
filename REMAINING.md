@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Updated Oct 16, 2026 for version 1.2.0 (ARM64 `1.2.0`, x64 `1.2.0-x64`, built Oct 16, 2026 10:43 AM). The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel has 372. Twenty-nine Mac names have no Windows header. The x64 kernel is a translation of this ARM64 set, so it has the same words. No boot words were added for 1.2.0. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. The seven Mac cold-load files are unchanged.
+Updated Oct 16, 2026 for version 1.2.1 (ARM64 `1.2.1`, x64 `1.2.1-x64`, built Oct 16, 2026 7:02 PM). The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
@@ -23,25 +23,21 @@ These bodies are in the kernel and were checked on both `fortharm64.exe` and `fo
 - `CALL-NATIVE` saves the Forth registers and calls the code. On ARM64, x0 is the argument and x19 is the data-stack pointer. `CALL-NATIVE-LEAF` passes x0=0 and a built-in data stack. On x64 the translated call uses the Windows argument registers, so it runs x64 machine code. It does not run ARM64 opcodes. `NATIVE-SMOKE` maps a page, writes a leaf that returns 7, protects it, calls it, and frees it. It returned 0 on both builds. A direct `CALL-NATIVE` and `CALL-NATIVE-LEAF` of that same leaf also returned 7.
 - `JIT-WPROTECT` drops the flag and records 0 or 1. Windows has no per-thread `MAP_JIT` switch, so this word does not change page protection. The assembler uses `MPROTECT`.
 - `(DOCON)` pushes the cell at CFA+16. `DOCON-ADDR` is that code address. The colon word `CONSTANT` is still `CREATE , DOES> @`, so a normal constant uses `DOES>` rather than `(DOCON)`. Patching a `CREATE` word's code field to `DOCON-ADDR` made it push 42. `' (DOCON) @` matches `DOCON-ADDR`. `(DOCON)` is moved into `EMITTER` by the cold load. `DOCON-ADDR` stays in `FORTH`.
+- `EDIT-AT` takes a path and a line and opens that place in the editor. It does not open a file dialog.
+- `SYSTEM` runs the command string and returns the process exit code, or -1 when the command does not start.
+- `XEMIT` emits one xchar as UTF-8. The assembly label is `XXCHAR_EMIT`. `EMIT` is unchanged.
+- `USER-DICT` returns the base of the user dictionary.
+- `GROWMEMORYMB` grows that dictionary to the given number of megabytes once per session. It does not shrink, and the maximum is 256.
 
-The assembler and the emitter were not loaded.
+The assembler and the emitter were not loaded. An unknown word typed at the console stops on the first name, turns compiling off, and clears both stacks. `.` on an empty stack prints `0 stack underflow` and returns to `ok(0)>`. `VIEW` stamps come from Hyper after `HYPER-REINDEX`. `DUP` opens the running kernel's `prims.asm`. Cold colon words such as `VIEW-LINE` open `Library/Sources/kernel1.fth`. The shipped autoload still leaves Hyper commented out.
 
 ## Hayes
 
-`FROMLIB FLOAD Testing/HayesTest/HayesTest.fth` was run on `fortharm64.exe` and `forthx64.exe` on Oct 16, 2026. Both finished with no `HAYES FAIL` banner. Core through Block, the floating-point sections, and Paranoia reported 0. The suite's own summary line was `ALL COUNTS ZERO`. The Qt editors were not rebuilt. Help > About reads the version from the Forth engine, so it shows 1.2.0 from these executables.
+`FROMLIB FLOAD Testing/HayesTest/HayesTest.fth` was run on `fortharm64.exe` and `forthx64.exe` on Oct 16, 2026, before the 1.2.1 kernel changes. Both finished with no `HAYES FAIL` banner. Core through Block, the floating-point sections, and Paranoia reported 0. The suite's own summary line was `ALL COUNTS ZERO`. That run was not repeated for 1.2.1. Help > About reads the version from the Forth engine.
 
 ## Still no Windows boot word
 
-Editor and host:
-
-- `EDIT-AT` opens a path at a line. `VIEW` in Hyper calls it.
-- `SYSTEM` runs a command string and returns the exit code.
-- `XEMIT` emits one xchar as UTF-8. `XC@+` and `XC!+` are already there.
-
-Dictionary:
-
-- `USER-DICT` is the base of the user dictionary.
-- `GROWMEMORYMB` grows that dictionary once per session.
+The five names that were open at 1.2.0 are in the kernel. What remains are the emitter labels below. The emitter was not turned on.
 
 ## Names that are not missing features
 
@@ -55,4 +51,4 @@ The other 22 Mac-only names are `FLAG_EMM` labels on internal stand-alone code, 
 
 Core through File-Access finished with an empty stack and no failures. Double and Locals are in that stretch.
 
-Block printed `BL-T ?`, `FAIL: LOAD`, then `BLK ?`. The process then faulted. XChar, Float, and Host did not run. There is no final pass count. That suite has not been run again. The 1.2.0 check is the Hayes suite above, not a new ANS-VALIDATE pass.
+Block printed `BL-T ?`, `FAIL: LOAD`, then `BLK ?`. The process then faulted. XChar, Float, and Host did not run. There is no final pass count. That suite has not been run again. The 1.2.0 Hayes run above is the last full suite. 1.2.1 did not re-run ANS-VALIDATE.

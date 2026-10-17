@@ -20,10 +20,18 @@ extern uint64_t debug_break_asap;
 extern uint64_t debug_bp_go;
 extern uint64_t debug_bp_xts[8];
 extern uint64_t debug_bp_en[8];
+extern uint64_t debug_runto_ip;
+extern uint64_t debug_runto_off;
+extern uint64_t debug_runto_status;
+extern uint64_t last_cfa;
+extern uint64_t view_file_n;
+extern unsigned char view_paths[];
 extern uint64_t _find_word(const char *token, uint64_t len);
+void host_user_tree(int mode);
 
 void host_set_sink(void (*fn)(const void *, size_t));
 void host_set_edit(void (*fn)(const char *path, int kind));
+void host_set_edit_at(void (*fn)(const char *path, long long line));
 void host_outs(const char *s);
 int forth_eval(const char *text, size_t n);
 void forth_prompt(void);
@@ -142,6 +150,75 @@ static int pipe_send_text(const char *op, const char *text, int n)
     json[k++] = '"';
     json[k++] = '}';
     json[k] = '\0';
+    rc = pipe_send(json);
+    free(json);
+    return rc;
+}
+
+/* edit plus a 1-based line. Line 0 opens the file and leaves the caret. */
+static int pipe_send_edit(const char *text, int n, long long line)
+{
+    static const char hex[] = "0123456789abcdef";
+    char tail[48];
+    char *json;
+    int i;
+    int cap;
+    int k;
+    int rc;
+    int tail_n;
+
+    if (text == NULL) {
+        text = "";
+        n = 0;
+    }
+    if (n < 0)
+        n = 0;
+    tail_n = snprintf(tail, sizeof tail, "\",\"line\":%lld}", line);
+    if (tail_n < 0 || tail_n >= (int)sizeof tail)
+        return 0;
+    cap = 32 + n * 6 + tail_n;
+    json = (char *)malloc((size_t)cap);
+    if (json == NULL)
+        return 0;
+    k = snprintf(json, (size_t)cap, "{\"op\":\"edit\",\"text\":\"");
+    if (k < 0 || k >= cap) {
+        free(json);
+        return 0;
+    }
+    for (i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)text[i];
+        if (k + 6 + tail_n >= cap) {
+            free(json);
+            return 0;
+        }
+        if (c == '"' || c == '\\') {
+            json[k++] = '\\';
+            json[k++] = (char)c;
+        } else if (c == '\n') {
+            json[k++] = '\\';
+            json[k++] = 'n';
+        } else if (c == '\r') {
+            json[k++] = '\\';
+            json[k++] = 'r';
+        } else if (c == '\t') {
+            json[k++] = '\\';
+            json[k++] = 't';
+        } else if (c < 0x20) {
+            json[k++] = '\\';
+            json[k++] = 'u';
+            json[k++] = '0';
+            json[k++] = '0';
+            json[k++] = hex[c >> 4];
+            json[k++] = hex[c & 15];
+        } else {
+            json[k++] = (char)c;
+        }
+    }
+    if (k + tail_n >= cap) {
+        free(json);
+        return 0;
+    }
+    memcpy(json + k, tail, (size_t)tail_n + 1);
     rc = pipe_send(json);
     free(json);
     return rc;
@@ -415,6 +492,76 @@ static void break_clear(int index)
     debug_bp_en[index] = 0;
 }
 
+static void send_last_name(void)
+{
+    char name[64];
+
+    if (!xt_name(last_cfa, name, (int)sizeof name))
+        pipe_send_text("last", "", 0);
+    else
+        pipe_send_text("last", name, (int)strlen(name));
+}
+
+/* VIEW stamp on the word: open its source. Hyper is not required. */
+static void send_view(const char *name)
+{
+    char token[64];
+    char path[256];
+    char msg[96];
+    uint64_t xt;
+    uint64_t flags;
+    unsigned line;
+    unsigned file;
+    const unsigned char *slot;
+    int n;
+    size_t len;
+
+    if (name == NULL)
+        name = "";
+    while (*name == ' ' || *name == '\t')
+        name++;
+    len = strlen(name);
+    while (len > 0 && (name[len - 1] == ' ' || name[len - 1] == '\t'))
+        len--;
+    if (len == 0 || len >= sizeof token) {
+        pipe_send_text("err", "VIEW needs a single token", 25);
+        return;
+    }
+    memcpy(token, name, len);
+    token[len] = '\0';
+    if (strchr(token, ' ') != NULL || strchr(token, '\t') != NULL) {
+        pipe_send_text("err", "VIEW needs a single token", 25);
+        return;
+    }
+    xt = _find_word(token, (uint64_t)len);
+    if (xt == 0 || (xt & 7) != 0) {
+        n = snprintf(msg, sizeof msg, "undefined: %.60s", token);
+        if (n > 0)
+            pipe_send_text("err", msg, n);
+        return;
+    }
+    flags = *(uint64_t *)(uintptr_t)(xt - 8);
+    line = (unsigned)((flags >> 32) & 0xFFFFULL);
+    file = (unsigned)((flags >> 48) & 0x1FFFULL);
+    if (file == 0 || file > view_file_n || file > 256) {
+        n = snprintf(msg, sizeof msg, "no source stamp for %.60s", token);
+        if (n > 0)
+            pipe_send_text("err", msg, n);
+        return;
+    }
+    slot = view_paths + (size_t)(file - 1) * 256;
+    n = slot[0];
+    if (n <= 0 || n > 255) {
+        n = snprintf(msg, sizeof msg, "no source stamp for %.60s", token);
+        if (n > 0)
+            pipe_send_text("err", msg, n);
+        return;
+    }
+    memcpy(path, slot + 1, (size_t)n);
+    path[n] = '\0';
+    pipe_send_edit(path, n, (long long)line);
+}
+
 static int break_toggle(const char *name)
 {
     uint64_t xt;
@@ -480,6 +627,24 @@ static int handle_side(const char *op, const char *text)
             pipe_send_text("err", "BREAK table full", (int)strlen("BREAK table full"));
         }
         send_breaks();
+        return 1;
+    }
+    if (strcmp(op, "last") == 0) {
+        send_last_name();
+        return 1;
+    }
+    if (strcmp(op, "view") == 0) {
+        send_view(text);
+        return 1;
+    }
+    if (strcmp(op, "tree") == 0) {
+        if (strcmp(text, "replace") == 0)
+            host_user_tree(1);
+        else if (strcmp(text, "rename") == 0)
+            host_user_tree(2);
+        else
+            host_user_tree(0);
+        companion_send_cwd();
         return 1;
     }
     return 0;
@@ -549,6 +714,12 @@ static int companion_key(void)
         if (strcmp(op, "arm") == 0) {
             debug_bp_go = 1;
             return 'g';
+        }
+        if (strcmp(op, "runto") == 0) {
+            debug_runto_off = _strtoui64(text, NULL, 10);
+            debug_runto_ip = 0;
+            debug_runto_status = 0;
+            return 135;
         }
         if (handle_side(op, text))
             continue;
@@ -637,6 +808,16 @@ static void companion_edit(const char *path, int kind)
     pipe_send_text("edit", buf, n);
 }
 
+static void companion_edit_at(const char *path, long long line)
+{
+    int n;
+
+    if (path == NULL)
+        path = "";
+    n = (int)strlen(path);
+    pipe_send_edit(path, n, line);
+}
+
 int companion_run(const wchar_t *pipe_name)
 {
     wchar_t path[300];
@@ -659,6 +840,7 @@ int companion_run(const wchar_t *pipe_name)
     host_set_sink(companion_sink);
     host_debug_set_notify(companion_flush, companion_send_json);
     host_set_edit(companion_edit);
+    host_set_edit_at(companion_edit_at);
     forth_set_key_hook(companion_key);
     if (forth_boot() != 0) {
         companion_flush();
@@ -698,6 +880,10 @@ int companion_run(const wchar_t *pipe_name)
             continue;
         if (strcmp(op, "key") == 0 || strcmp(op, "arm") == 0)
             continue;
+        if (strcmp(op, "runto") == 0) {
+            pipe_send_text("err", "Run to Here needs a pause", 25);
+            continue;
+        }
         if (strcmp(op, "eval") != 0)
             continue;
         trim_line(text);
@@ -722,6 +908,7 @@ int companion_run(const wchar_t *pipe_name)
 done:
     host_debug_set_notify(NULL, NULL);
     host_set_edit(NULL);
+    host_set_edit_at(NULL);
     break_stop();
     if (g_pipe != INVALID_HANDLE_VALUE) {
         DisconnectNamedPipe(g_pipe);

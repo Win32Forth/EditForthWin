@@ -69,6 +69,7 @@ static int load_len[HOST_LOADS];
 static int load_n;
 static int fromlib_armed;
 static void (*host_edit_fn)(const char *path, int kind);
+static void (*host_edit_at_fn)(const char *path, long long line);
 static char user_root[HOST_PATH];
 static char library_root[HOST_PATH];
 static char reg_path[HOST_REGS][256];
@@ -365,8 +366,8 @@ static int host_join(char *dst, int cap, const char *dir, const char *rel)
     return 1;
 }
 
-/* Copy files that are not already in dst. Existing files stay as the user left them. */
-static void host_copy_missing(const char *src, const char *dst, int depth)
+/* Copy src onto dst. overwrite 0 leaves files the user already has. */
+static void host_copy_tree(const char *src, const char *dst, int overwrite, int depth)
 {
     char wild[HOST_PATH];
     char from[HOST_PATH];
@@ -392,11 +393,46 @@ static void host_copy_missing(const char *src, const char *dst, int depth)
         if (snprintf(to, sizeof to, "%s\\%s", dst, fd.cFileName) >= (int)sizeof to)
             continue;
         if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
-            host_copy_missing(from, to, depth + 1);
-        else if (GetFileAttributesA(to) == INVALID_FILE_ATTRIBUTES)
-            CopyFileA(from, to, TRUE);
+            host_copy_tree(from, to, overwrite, depth + 1);
+        else if (overwrite || GetFileAttributesA(to) == INVALID_FILE_ATTRIBUTES)
+            CopyFileA(from, to, overwrite ? FALSE : TRUE);
     } while (FindNextFileA(h, &fd));
     FindClose(h);
+}
+
+static void host_copy_missing(const char *src, const char *dst, int depth)
+{
+    host_copy_tree(src, dst, 0, depth);
+}
+
+static void host_remove_tree(const char *dir)
+{
+    char wild[HOST_PATH];
+    char child[HOST_PATH];
+    WIN32_FIND_DATAA fd;
+    HANDLE h;
+    int n;
+
+    if (dir == NULL || dir[0] == '\0')
+        return;
+    n = snprintf(wild, sizeof wild, "%s\\*", dir);
+    if (n <= 0 || n >= (int)sizeof wild)
+        return;
+    h = FindFirstFileA(wild, &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
+                continue;
+            if (snprintf(child, sizeof child, "%s\\%s", dir, fd.cFileName) >= (int)sizeof child)
+                continue;
+            if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+                host_remove_tree(child);
+            else
+                DeleteFileA(child);
+        } while (FindNextFileA(h, &fd));
+        FindClose(h);
+    }
+    RemoveDirectoryA(dir);
 }
 
 static int host_has_marker(const char *dir)
@@ -517,6 +553,107 @@ static void host_install_user_tree(void)
     if (host_has_marker(library_root))
         host_outs("EditForthWin folder: Documents\\EditForthWin\n");
     SetCurrentDirectoryA(user_root);
+}
+
+/* mode 0: copy missing Library/AutoLoad/Docs.
+   mode 1: replace those three folders from the ship tree. Config stays.
+   mode 2: rename Documents\EditForthWin to EditForthWin.UserN, then copy fresh. */
+void host_user_tree(int mode)
+{
+    char *home = NULL;
+    char ship_lib[HOST_PATH];
+    char ship_root[HOST_PATH];
+    char src[HOST_PATH];
+    char dst[HOST_PATH];
+    char renamed[HOST_PATH];
+    const char *names[] = {"Library", "AutoLoad", "Docs"};
+    size_t home_len = 0;
+    int i;
+    int slash;
+    int n;
+    int overwrite;
+
+    if (user_root[0] == '\0') {
+        if (_dupenv_s(&home, &home_len, "USERPROFILE") != 0 || home == NULL || home[0] == '\0') {
+            free(home);
+            host_outs("? user folder: USERPROFILE is not set\n");
+            return;
+        }
+        if (snprintf(user_root, sizeof user_root, "%s\\Documents\\EditForthWin", home) >=
+            (int)sizeof user_root) {
+            free(home);
+            user_root[0] = '\0';
+            host_outs("? user folder path is too long\n");
+            return;
+        }
+        free(home);
+    }
+    if (!host_find_ship(ship_lib, (int)sizeof ship_lib)) {
+        host_outs("? shipped Library was not found beside the Forth program\n");
+        return;
+    }
+    slash = (int)strlen(ship_lib);
+    while (slash > 0 && ship_lib[slash - 1] != '\\')
+        slash--;
+    if (slash <= 1) {
+        host_outs("? shipped Library path is not usable\n");
+        return;
+    }
+    memcpy(ship_root, ship_lib, (size_t)slash - 1);
+    ship_root[slash - 1] = '\0';
+
+    if (mode == 2) {
+        SetCurrentDirectoryA("C:\\");
+        for (n = 1; n < 100; n++) {
+            if (snprintf(renamed, sizeof renamed, "%s.User%d", user_root, n) >= (int)sizeof renamed) {
+                host_outs("? rename path is too long\n");
+                SetCurrentDirectoryA(user_root);
+                return;
+            }
+            if (GetFileAttributesA(renamed) == INVALID_FILE_ATTRIBUTES)
+                break;
+        }
+        if (n >= 100) {
+            host_outs("? too many EditForthWin.User folders\n");
+            SetCurrentDirectoryA(user_root);
+            return;
+        }
+        if (!MoveFileA(user_root, renamed)) {
+            host_outs("? could not rename Documents\\EditForthWin\n");
+            SetCurrentDirectoryA(user_root);
+            return;
+        }
+        CreateDirectoryA(user_root, NULL);
+        host_outs("Renamed Documents\\EditForthWin\n");
+    } else if (mode == 1) {
+        for (i = 0; i < 3; i++) {
+            if (!host_join(dst, (int)sizeof dst, user_root, names[i]))
+                continue;
+            host_remove_tree(dst);
+        }
+        host_outs("Replacing Library, AutoLoad, and Docs\n");
+    }
+
+    overwrite = mode == 0 ? 0 : 1;
+    for (i = 0; i < 3; i++) {
+        if (!host_join(src, (int)sizeof src, ship_root, names[i]))
+            continue;
+        if (!host_is_dir(src))
+            continue;
+        if (!host_join(dst, (int)sizeof dst, user_root, names[i]))
+            continue;
+        host_copy_tree(src, dst, overwrite, 0);
+    }
+    if (snprintf(dst, sizeof dst, "%s\\Config", user_root) < (int)sizeof dst)
+        CreateDirectoryA(dst, NULL);
+    if (snprintf(library_root, sizeof library_root, "%s\\Library", user_root) >= (int)sizeof library_root)
+        library_root[0] = '\0';
+    if (mode == 0)
+        host_outs("Updated missing files in Documents\\EditForthWin\n");
+    else
+        host_outs("Restored shipped files in Documents\\EditForthWin\n");
+    if (mode == 2)
+        SetCurrentDirectoryA(user_root);
 }
 
 void host_fromlib(void)
@@ -700,6 +837,211 @@ void host_edit(const char *p, long long n)
     host_outs("EDIT: ");
     host_outs(resolved);
     host_outs("\n");
+}
+
+void host_set_edit_at(void (*fn)(const char *path, long long line))
+{
+    host_edit_at_fn = fn;
+}
+
+/* Open a resolved path at a 1-based line. Line 0 opens only. No cwd change
+   and no file dialog. With no editor connected this validates and returns. */
+void host_edit_at(const char *p, long long n, long long line)
+{
+    char resolved[HOST_PATH];
+    const char *s;
+    long long rn;
+    long long a;
+    long long b;
+
+    if (line < 0)
+        line = 0;
+    if (p == NULL || n <= 0) {
+        host_outs("? EDIT-AT needs a path\n");
+        return;
+    }
+    a = 0;
+    b = n;
+    while (a < b) {
+        char c = p[a];
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n')
+            break;
+        a++;
+    }
+    while (b > a) {
+        char c = p[b - 1];
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n')
+            break;
+        b--;
+    }
+    if (b <= a) {
+        host_outs("? EDIT-AT needs a path\n");
+        return;
+    }
+    s = p + a;
+    rn = host_resolve(s, b - a, resolved, (long long)sizeof resolved);
+    if (rn <= 0 || !host_is_file(resolved)) {
+        host_outs("can't edit: ");
+        if (rn > 0)
+            host_outs(resolved);
+        else
+            host_out(s, (size_t)(b - a));
+        host_outs(" (not found)\n");
+        return;
+    }
+    if (host_edit_at_fn != NULL)
+        host_edit_at_fn(resolved, line);
+}
+
+static void drain_handle(HANDLE h)
+{
+    char buf[1024];
+    DWORD avail;
+    DWORD got;
+
+    if (h == NULL || h == INVALID_HANDLE_VALUE)
+        return;
+    for (;;) {
+        avail = 0;
+        if (!PeekNamedPipe(h, NULL, 0, NULL, &avail, NULL) || avail == 0)
+            return;
+        if (avail > sizeof buf)
+            avail = (DWORD)sizeof buf;
+        got = 0;
+        if (!ReadFile(h, buf, avail, &got, NULL) || got == 0)
+            return;
+        host_out(buf, (size_t)got);
+    }
+}
+
+/* SYSTEM ( c-addr u -- n ). Same job as Mac /bin/sh -c: run the string in
+   the session directory and return the process exit code, or -1. */
+long long host_system(const char *cmd, long long n)
+{
+    wchar_t comspec[MAX_PATH];
+    wchar_t *wcmd = NULL;
+    wchar_t *cline = NULL;
+    STARTUPINFOW si;
+    PROCESS_INFORMATION pi;
+    SECURITY_ATTRIBUTES sa;
+    HANDLE out_r = NULL;
+    HANDLE out_w = NULL;
+    HANDLE err_r = NULL;
+    HANDLE err_w = NULL;
+    HANDLE nul = NULL;
+    DWORD code = 0;
+    DWORD com_n;
+    int wn;
+    int start;
+    int end;
+    size_t cn;
+    long long rc = -1;
+
+    if (cmd == NULL || n <= 0) {
+        host_outs("SYSTEM: empty command\n");
+        return -1;
+    }
+    if (n > 8192) {
+        host_outs("SYSTEM: command is too long\n");
+        return -1;
+    }
+    start = 0;
+    end = (int)n;
+    while (start < end && (cmd[start] == ' ' || cmd[start] == '\t' ||
+                           cmd[start] == '\r' || cmd[start] == '\n'))
+        start++;
+    while (end > start && (cmd[end - 1] == ' ' || cmd[end - 1] == '\t' ||
+                           cmd[end - 1] == '\r' || cmd[end - 1] == '\n'))
+        end--;
+    if (end <= start) {
+        host_outs("SYSTEM: empty command\n");
+        return -1;
+    }
+    wn = MultiByteToWideChar(CP_UTF8, 0, cmd + start, end - start, NULL, 0);
+    if (wn <= 0) {
+        host_outs("SYSTEM: failed to launch\n");
+        return -1;
+    }
+    wcmd = (wchar_t *)malloc(((size_t)wn + 1) * sizeof(wchar_t));
+    if (wcmd == NULL) {
+        host_outs("SYSTEM: failed to launch\n");
+        return -1;
+    }
+    MultiByteToWideChar(CP_UTF8, 0, cmd + start, end - start, wcmd, wn);
+    wcmd[wn] = 0;
+    com_n = GetEnvironmentVariableW(L"ComSpec", comspec, MAX_PATH);
+    if (com_n == 0 || com_n >= MAX_PATH) {
+        memcpy(comspec, L"cmd.exe", 8 * sizeof(wchar_t));
+    }
+    cn = wcslen(comspec) + (size_t)wn + 8;
+    cline = (wchar_t *)malloc(cn * sizeof(wchar_t));
+    if (cline == NULL) {
+        host_outs("SYSTEM: failed to launch\n");
+        free(wcmd);
+        return -1;
+    }
+    _snwprintf_s(cline, cn, _TRUNCATE, L"\"%s\" /c %s", comspec, wcmd);
+    memset(&sa, 0, sizeof sa);
+    sa.nLength = sizeof sa;
+    sa.bInheritHandle = TRUE;
+    if (!CreatePipe(&out_r, &out_w, &sa, 0) || !CreatePipe(&err_r, &err_w, &sa, 0)) {
+        host_outs("SYSTEM: failed to launch\n");
+        goto done;
+    }
+    SetHandleInformation(out_r, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(err_r, HANDLE_FLAG_INHERIT, 0);
+    nul = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                      &sa, OPEN_EXISTING, 0, NULL);
+    if (nul == INVALID_HANDLE_VALUE) {
+        nul = NULL;
+        host_outs("SYSTEM: failed to launch\n");
+        goto done;
+    }
+    memset(&si, 0, sizeof si);
+    memset(&pi, 0, sizeof pi);
+    si.cb = sizeof si;
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdInput = nul;
+    si.hStdOutput = out_w;
+    si.hStdError = err_w;
+    if (!CreateProcessW(comspec, cline, NULL, NULL, TRUE, CREATE_NO_WINDOW,
+                        NULL, NULL, &si, &pi)) {
+        host_outs("SYSTEM: failed to launch\n");
+        goto done;
+    }
+    CloseHandle(out_w);
+    out_w = NULL;
+    CloseHandle(err_w);
+    err_w = NULL;
+    for (;;) {
+        drain_handle(out_r);
+        drain_handle(err_r);
+        if (WaitForSingleObject(pi.hProcess, 30) == WAIT_OBJECT_0) {
+            drain_handle(out_r);
+            drain_handle(err_r);
+            break;
+        }
+    }
+    if (GetExitCodeProcess(pi.hProcess, &code) && code != STILL_ACTIVE)
+        rc = (long long)(int)code;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    pi.hThread = NULL;
+    pi.hProcess = NULL;
+done:
+    if (out_w != NULL)
+        CloseHandle(out_w);
+    if (err_w != NULL)
+        CloseHandle(err_w);
+    if (out_r != NULL)
+        CloseHandle(out_r);
+    if (err_r != NULL)
+        CloseHandle(err_r);
+    if (nul != NULL)
+        CloseHandle(nul);
+    free(wcmd);
+    free(cline);
+    return rc;
 }
 
 void host_begin_load(const char *p, long long n)

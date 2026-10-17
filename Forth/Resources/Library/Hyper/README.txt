@@ -81,8 +81,10 @@ In-app reindex (Phase 3a / 4)
   HYPER-REINDEX   (FORTH; implementation helpers in HYPER-VOC)
     → TYPE 0 from Config/HYPER.CFG
     → SPECS/*EXCLUDE via host (OPEN Config/HYPER.SPECS = expanded list)
-    → BOOT_WORD → CodeLabel in Library/Sources/forth.s
+    → BOOT_WORD in Library/Sources/arm64 or Library/Sources/x64
+      (hx-arm64.fth / hx-x64.fth, chosen from the running image)
     → CREATE-FILE Config/HYPER.NDX, then HYPER-RELOAD
+  forth.s is the Mac kernel and is not indexed on Windows.
   Quiet:  HYPER-VOC MIN-HYPER-NOISE ON FORTH  then  HYPER-REINDEX
 
   Limits vs tools/build_hyper_index.py (optional polish):

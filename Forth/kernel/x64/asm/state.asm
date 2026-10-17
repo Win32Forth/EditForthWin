@@ -138,6 +138,9 @@ PUBLIC key_hook
 PUBLIC data_stack
 PUBLIC return_stack
 PUBLIC user_dict_area
+PUBLIC user_dict_size_cell
+PUBLIC grow_memory_used
+PUBLIC xchar_emit_buf
 PUBLIC numbuf
 PUBLIC dstack
 PUBLIC rstack
@@ -428,11 +431,22 @@ return_stack:
 rstack:
     ; SPACE   4096
     DB 4096 DUP(0)
+user_dict_size_cell:
+    ; DCQ 8388608
+    DQ 800000h
+grow_memory_used:
+    ; DCQ 0
+    DQ 0
+xchar_emit_buf:
+    ; SPACE 8
+    DB 8 DUP(0)
+.DATA?
 user_dict_area:
 dictmem:
-    ; SPACE   1048576
-    DB 1048576 DUP(0)
+    ; SPACE   268435456
+    DB 268435456 DUP(?)
 dict_end:
+.DATA
 restart_cfa:
     ; DCQ     XRESTART
     DQ OFFSET XRESTART

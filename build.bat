@@ -32,6 +32,18 @@ armasm64 -nologo -o Forth\build\arm64\boot_end.obj Forth\kernel\arm64\boot_end.a
 if errorlevel 1 exit /b 1
 cl /nologo /W3 /std:c11 /I Forth\include /Fe:Forth\build\arm64\fortharm64.exe /Fo:Forth\build\arm64\ Forth\host\main.c Forth\host\console_win.c Forth\host\companion.c Forth\host\bigint.c Forth\host\gfx_win.c Forth\host\debug_win.c Forth\host\facility_win.c Forth\host\float_win.c Forth\host\exec_win.c Forth\build\arm64\state.obj Forth\build\arm64\emit.obj Forth\build\arm64\boot_begin.obj Forth\build\arm64\prims.obj Forth\build\arm64\prims_k1.obj Forth\build\arm64\prims_k2.obj Forth\build\arm64\prims_k3.obj Forth\build\arm64\prims_dbg.obj Forth\build\arm64\dict.obj Forth\build\arm64\entry.obj Forth\build\arm64\cold.obj Forth\build\arm64\identity.obj Forth\build\arm64\boot_end.obj /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib shell32.lib comdlg32.lib windowscodecs.lib ole32.lib
 if errorlevel 1 exit /b 1
+if not exist Forth\Resources\Library\Sources\arm64 mkdir Forth\Resources\Library\Sources\arm64
+copy /Y Forth\kernel\arm64\*.asm Forth\Resources\Library\Sources\arm64\ >nul
+if errorlevel 1 exit /b 1
+copy /Y Forth\kernel\arm64\*.inc Forth\Resources\Library\Sources\arm64\ >nul
+if errorlevel 1 exit /b 1
+echo Copied armasm64 sources to Forth\Resources\Library\Sources\arm64
+if exist "%USERPROFILE%\Documents\EditForthWin\Library\Sources" (
+  if not exist "%USERPROFILE%\Documents\EditForthWin\Library\Sources\arm64" mkdir "%USERPROFILE%\Documents\EditForthWin\Library\Sources\arm64"
+  copy /Y Forth\kernel\arm64\*.asm "%USERPROFILE%\Documents\EditForthWin\Library\Sources\arm64\" >nul
+  copy /Y Forth\kernel\arm64\*.inc "%USERPROFILE%\Documents\EditForthWin\Library\Sources\arm64\" >nul
+  echo Copied armasm64 sources to Documents\EditForthWin\Library\Sources\arm64
+)
 
 set QTDIR=C:\Qt\6.11.3\msvc2022_arm64
 set CMAKE=C:\Qt\Tools\cmake-4.4.4-windows-arm64\bin\cmake.exe

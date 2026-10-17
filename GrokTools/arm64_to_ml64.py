@@ -165,6 +165,8 @@ def area_kind(line: str) -> str:
         return "data"
     if name in (".rdata", "rdata"):
         return "const"
+    if name in (".bss", "bss"):
+        return "bss"
     if "bootptr" in name:
         return "bootptr"
     if "bootword" in name:
@@ -382,6 +384,8 @@ class Translator:
             self.body.append(".DATA")
         elif kind == "const":
             self.body.append(".CONST")
+        elif kind == "bss":
+            self.body.append(".DATA?")
         elif kind == "bootptr":
             self.body.append("BOOTPTR SEGMENT ALIGN(8) READ")
         elif kind == "bootword":
@@ -480,7 +484,8 @@ class Translator:
             return
         if op == "space":
             count = self.number(ops[0])
-            self.body.append(f"    DB {count} DUP(0)")
+            fill = "?" if self.section == "bss" else "0"
+            self.body.append(f"    DB {count} DUP({fill})")
             return
         if op == "dcb":
             self.emit_dcb(ops)
@@ -890,11 +895,17 @@ class Translator:
 
     def emit_movk(self, op: str, ops: list[str]) -> None:
         dest = self.parse_op(ops[0])
-        src = self.parse_op(ops[1])
-        value = src["value"] & 0xFFFF
-        shift = 0
-        if src.get("shift"):
-            shift = src["shift"][1]
+        # parse_op folds lsl into the immediate and drops the shift, which
+        # turns movk #imm, lsl #n into a zero field. Read the raw operand.
+        raw = ops[1].strip()
+        shifted = re.fullmatch(
+            r"#?\s*(.+?)\s+(?:lsl|lsr|asr)\s+#(-?(?:0x)?[0-9A-Fa-f]+)", raw, re.I)
+        if shifted:
+            value = self.number(shifted.group(1)) & 0xFFFF
+            shift = int(shifted.group(2), 0)
+        else:
+            value = self.number(raw) & 0xFFFF
+            shift = 0
         field = (value << shift) & ((1 << 64) - 1)
         if op == "movz":
             self.L(f"mov rax, {masm_imm(field)}")

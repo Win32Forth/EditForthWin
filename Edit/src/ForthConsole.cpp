@@ -3,6 +3,7 @@
 #include <QFont>
 #include <QKeyEvent>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QScrollBar>
 #include <QTextCursor>
 
@@ -34,6 +35,53 @@ void ForthConsole::appendOutput(const QString &text) {
     cursor.setPosition(toPlainText().size());
     setTextCursor(cursor);
     verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+}
+
+void ForthConsole::fillInput(const QString &text) {
+    replaceInput(text);
+    QTextCursor cursor = textCursor();
+    cursor.movePosition(QTextCursor::End);
+    setTextCursor(cursor);
+    setFocus();
+}
+
+void ForthConsole::clearDisplay() {
+    clear();
+    m_prot = 0;
+    m_commit_at = -1;
+    m_commit_n = 0;
+}
+
+void ForthConsole::setPointSize(int points) {
+    QFont next = font();
+    next.setPointSize(qBound(9, points, 32));
+    setFont(next);
+}
+
+void ForthConsole::mousePressEvent(QMouseEvent *event) {
+    if (event->button() == Qt::LeftButton && (event->modifiers() & Qt::ControlModifier)) {
+        const QTextCursor cursor = cursorForPosition(event->position().toPoint());
+        const QString text = toPlainText();
+        int position = cursor.position();
+        if (position < 0 || position > text.size() || text.isEmpty()) {
+            QPlainTextEdit::mousePressEvent(event);
+            return;
+        }
+        if (position == text.size())
+            --position;
+        if (position >= 0 && !text.at(position).isSpace()) {
+            int start = position;
+            int end = position + 1;
+            while (start > 0 && !text.at(start - 1).isSpace())
+                --start;
+            while (end < text.size() && !text.at(end).isSpace())
+                ++end;
+            const QString word = text.mid(start, end - start);
+            if (!word.isEmpty())
+                emit viewWordRequested(word);
+        }
+    }
+    QPlainTextEdit::mousePressEvent(event);
 }
 
 void ForthConsole::replaceInput(const QString &text) {

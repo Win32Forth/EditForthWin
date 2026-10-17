@@ -2,30 +2,40 @@
 
 #include "CodeEdit.h"
 #include "DebugBar.h"
+#include "DiskDiff.h"
+#include "FindBar.h"
+#include "FolderSearch.h"
 #include "ForthConsole.h"
 #include "ForthPipe.h"
+#include "WebTab.h"
 
 #include <QAction>
+#include <QActionGroup>
+#include <QApplication>
 #include <QCloseEvent>
+#include <QComboBox>
+#include <QDesktopServices>
 #include <QEvent>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QMenuBar>
 #include <QPushButton>
 #include <QMessageBox>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QStringList>
 #include <QShortcut>
 #include <QSplitter>
-#include <QStringList>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTextBlock>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -68,6 +78,46 @@ QString tabLabel(const CodeEdit *edit) {
     if (edit->document()->isModified())
         name += QLatin1Char('*');
     return name;
+}
+
+// Uppercase stem, non-alnum collapsed to one underscore, edges stripped.
+QString moduleMarker(const QString &path) {
+    const QString stem = QFileInfo(path).completeBaseName().toUpper();
+    QString out;
+    bool gap = false;
+    for (const QChar c : stem) {
+        if (c.isLetterOrNumber()) {
+            if (gap && !out.isEmpty())
+                out += QLatin1Char('_');
+            gap = false;
+            out += c;
+        } else {
+            gap = true;
+        }
+    }
+    if (out.isEmpty())
+        out = QStringLiteral("UNTITLED");
+    return out + QStringLiteral("_MODULE");
+}
+
+QString userFolder() {
+    return QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) +
+           QStringLiteral("/EditForthWin");
+}
+
+bool browseSaved(const QString &path) {
+    const QStringList paths = QSettings().value(QStringLiteral("browsePaths")).toStringList();
+    return paths.contains(path, Qt::CaseInsensitive);
+}
+
+void storeBrowse(const QString &path, bool on) {
+    QStringList paths = QSettings().value(QStringLiteral("browsePaths")).toStringList();
+    paths.removeIf([&path](const QString &item) {
+        return item.compare(path, Qt::CaseInsensitive) == 0;
+    });
+    if (on)
+        paths.append(path);
+    QSettings().setValue(QStringLiteral("browsePaths"), paths);
 }
 }
 
@@ -145,6 +195,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_console = new ForthConsole(this);
     m_debug = new DebugBar(this);
     m_pipe = new ForthPipe(this);
+    connect(m_console, &ForthConsole::viewWordRequested, this, &MainWindow::viewWord);
     connect(m_console, &ForthConsole::submitted, this, [this](const QString &line) {
         if (isBye(line)) {
             close();
@@ -196,6 +247,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         m_debug->setError(QString());
         m_debug->setNote(QString());
         clearHits();
+        refreshViewBanners();
         updateDebugKeys();
         syncConsoleChrome();
         m_console->appendOutput(QStringLiteral("\nForth stopped.\n"));
@@ -208,6 +260,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         m_console->setInputLocked(false);
         m_debug->setConnected(false);
         clearHits();
+        refreshViewBanners();
         updateDebugKeys();
         syncConsoleChrome();
         m_console->appendOutput(message + QLatin1Char('\n'));
@@ -216,6 +269,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(m_pipe, &ForthPipe::breaksReceived, m_debug, &DebugBar::setBreaks);
     connect(m_pipe, &ForthPipe::statusError, m_debug, &DebugBar::setError);
     connect(m_pipe, &ForthPipe::editReceived, this, &MainWindow::openRequestedFile);
+    connect(m_pipe, &ForthPipe::lastReceived, this, &MainWindow::onLastName);
     connect(m_pipe, &ForthPipe::versionReceived, this, [this](const QString &text) {
         const QStringList lines = text.split(QLatin1Char('\n'));
         m_engineVersion = lines.value(0).trimmed();
@@ -228,6 +282,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
                 m_float->setWindowTitle(consoleName);
         }
     });
+    connect(m_debug, &DebugBar::includeRequested, this, &MainWindow::includeCurrent);
+    connect(m_debug, &DebugBar::runRequested, this, [this] { prepareRun(RunKind::Execute); });
     connect(m_debug, &DebugBar::pauseRequested, this, &MainWindow::pauseNow);
     connect(m_debug, &DebugBar::breakpointsRequested, m_pipe, &ForthPipe::requestBreaks);
     connect(m_debug, &DebugBar::armRequested, this, &MainWindow::armDebug);
@@ -240,6 +296,47 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(m_debug, &DebugBar::breakEnableRequested, m_pipe, &ForthPipe::enableBreak);
     connect(m_debug, &DebugBar::dockToggleRequested, this, &MainWindow::toggleConsolePlace);
 
+    m_find = new FindBar(this);
+    m_find->hide();
+
+    m_right = new QWidget(this);
+    m_splitPick = new QComboBox(m_right);
+    auto *closeSplit = new QPushButton(QStringLiteral("Close Split"), m_right);
+    auto *splitBar = new QHBoxLayout;
+    splitBar->setContentsMargins(6, 4, 6, 4);
+    splitBar->addWidget(m_splitPick, 1);
+    splitBar->addWidget(closeSplit);
+    m_splitEdit = new CodeEdit;
+    auto *splitPane = new EditorPane(m_splitEdit, m_right);
+    auto *rightLayout = new QVBoxLayout(m_right);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(0);
+    rightLayout->addLayout(splitBar);
+    rightLayout->addWidget(splitPane, 1);
+    m_right->hide();
+    connect(closeSplit, &QPushButton::clicked, this, &MainWindow::detachSplit);
+    connect(m_splitPick, qOverload<int>(&QComboBox::activated), this, [this](int index) {
+        const auto raw = static_cast<quintptr>(m_splitPick->itemData(index).toULongLong());
+        attachSplit(reinterpret_cast<CodeEdit *>(raw));
+    });
+    connect(m_splitEdit, &CodeEdit::viewWordRequested, this, &MainWindow::viewWord);
+    connect(m_splitEdit, &CodeEdit::breakWordRequested, this, &MainWindow::breakWord);
+    connect(m_splitEdit, &CodeEdit::runToRequested, this, &MainWindow::runToHere);
+    connect(m_splitEdit, &CodeEdit::browseChanged, this, [this](bool on) { noteBrowse(m_splitEdit, on); });
+
+    m_editors = new QSplitter(Qt::Horizontal, this);
+    m_editors->addWidget(m_tabs);
+    m_editors->addWidget(m_right);
+    m_editors->setStretchFactor(0, 1);
+    m_editors->setStretchFactor(1, 1);
+
+    auto *top = new QWidget(this);
+    auto *topLayout = new QVBoxLayout(top);
+    topLayout->setContentsMargins(0, 0, 0, 0);
+    topLayout->setSpacing(0);
+    topLayout->addWidget(m_find);
+    topLayout->addWidget(m_editors, 1);
+
     m_bottom = new QWidget(this);
     m_bottomLayout = new QVBoxLayout(m_bottom);
     m_bottomLayout->setContentsMargins(0, 0, 0, 0);
@@ -248,7 +345,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_bottomLayout->addWidget(m_console, 1);
 
     m_split = new QSplitter(Qt::Vertical, this);
-    m_split->addWidget(m_tabs);
+    m_split->addWidget(top);
     m_split->addWidget(m_bottom);
     m_split->setStretchFactor(0, 3);
     m_split->setStretchFactor(1, 1);
@@ -256,7 +353,27 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_console->setMinimumHeight(80);
     setCentralWidget(m_split);
     connect(m_tabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
-    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int) { refreshStatus(); });
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int) {
+        refreshStatus();
+        syncTabChrome();
+    });
+    connect(qApp, &QApplication::focusChanged, this, [this](QWidget *, QWidget *now) {
+        for (QWidget *widget = now; widget != nullptr; widget = widget->parentWidget()) {
+            if (auto *edit = qobject_cast<CodeEdit *>(widget)) {
+                m_find->attach(edit);
+                break;
+            }
+        }
+    });
+
+    QSettings settings;
+    m_pointSize = qBound(9, settings.value(QStringLiteral("editorPointSize"), 13).toInt(), 32);
+    m_wrapMode = settings.value(QStringLiteral("wrapMode"), QStringLiteral("off")).toString();
+    if (m_wrapMode != QLatin1String("window") && m_wrapMode != QLatin1String("column"))
+        m_wrapMode = QStringLiteral("off");
+    m_wrapColumn = qBound(40, settings.value(QStringLiteral("wrapColumn"), 80).toInt(), 300);
+    applyEditorChrome(m_splitEdit);
+    m_console->setPointSize(m_pointSize);
 
     auto *fileMenu = menuBar()->addMenu(QStringLiteral("&File"));
     fileMenu->addAction(QStringLiteral("&New"), QKeySequence::New, this, &MainWindow::newFile);
@@ -274,6 +391,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         if (CodeEdit *edit = currentEdit())
             saveEditAs(edit);
     });
+    m_compareAction = fileMenu->addAction(QStringLiteral("Compare with Disk"), this,
+                                          &MainWindow::compareWithDisk);
+    m_compareAction->setEnabled(false);
     fileMenu->addSeparator();
     fileMenu->addAction(QStringLiteral("&Close"), QKeySequence::Close, this, [this] {
         closeTab(m_tabs->currentIndex());
@@ -281,17 +401,186 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     fileMenu->addSeparator();
     fileMenu->addAction(QStringLiteral("E&xit"), QKeySequence::Quit, this, &QWidget::close);
 
+    auto *editMenu = menuBar()->addMenu(QStringLiteral("&Edit"));
+    editMenu->addAction(QStringLiteral("&Find"), QKeySequence::Find, this, [this] { showFind(false); });
+    auto *replaceItem = editMenu->addAction(QStringLiteral("Find and &Replace"), this, [this] {
+        showFind(true);
+    });
+    replaceItem->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_H),
+                               QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_F)});
+    auto *findNext = editMenu->addAction(QStringLiteral("Find &Next"), this, [this] {
+        showFind(false);
+        m_find->findNext();
+    });
+    findNext->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_G), QKeySequence(Qt::Key_F3)});
+    auto *findPrev = editMenu->addAction(QStringLiteral("Find &Previous"), this, [this] {
+        showFind(false);
+        m_find->findPrevious();
+    });
+    findPrev->setShortcuts(
+        {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G), QKeySequence(Qt::SHIFT | Qt::Key_F3)});
+    editMenu->addAction(QStringLiteral("Use Selection for Find"), this, [this] {
+        if (CodeEdit *edit = currentEdit())
+            m_find->attach(edit);
+        m_find->useSelection();
+    });
+    editMenu->addAction(QStringLiteral("&Replace"), this, [this] {
+        showFind(true);
+        m_find->replaceSelection();
+    });
+    editMenu->addAction(QStringLiteral("Replace and Find Next"), this, [this] {
+        showFind(true);
+        m_find->replaceOne();
+    });
+    editMenu->addAction(QStringLiteral("Replace &All"), this, [this] {
+        showFind(true);
+        m_find->replaceAll();
+    });
+    editMenu->addSeparator();
+    editMenu->addAction(QStringLiteral("Search in &Folders..."),
+                        QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F), this,
+                        &MainWindow::searchInFolders);
+
     auto *viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
+    m_browseAction = viewMenu->addAction(QStringLiteral("Browse Mode"));
+    m_browseAction->setCheckable(true);
+    m_browseAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B));
+    connect(m_browseAction, &QAction::toggled, this, &MainWindow::toggleBrowse);
+    auto *allowEdit = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E), this);
+    allowEdit->setContext(Qt::WindowShortcut);
+    connect(allowEdit, &QShortcut::activated, this, [this] {
+        CodeEdit *edit = nullptr;
+        for (QWidget *widget = QApplication::focusWidget(); widget != nullptr;
+             widget = widget->parentWidget()) {
+            if (auto *found = qobject_cast<CodeEdit *>(widget)) {
+                edit = found;
+                break;
+            }
+        }
+        if (edit == nullptr)
+            edit = currentEdit();
+        if (edit != nullptr)
+            edit->setBrowse(false);
+    });
+    m_showConsoleAction = viewMenu->addAction(QStringLiteral("Show Forth Console"));
+    m_showConsoleAction->setCheckable(true);
+    m_showConsoleAction->setChecked(true);
+    connect(m_showConsoleAction, &QAction::toggled, this, [this](bool on) {
+        if (on) {
+            if (m_consoleHidden)
+                dockConsole();
+        } else if (!m_consoleHidden) {
+            hideConsole();
+        }
+    });
     m_lineNumbersAction = viewMenu->addAction(QStringLiteral("Show &Line Numbers"));
     m_lineNumbersAction->setCheckable(true);
-    QSettings settings;
     m_lineNumbersAction->setChecked(settings.value(QStringLiteral("showLineNumbers"), true).toBool());
     connect(m_lineNumbersAction, &QAction::toggled, this, [this](bool on) {
         QSettings().setValue(QStringLiteral("showLineNumbers"), on);
         applyLineNumbers();
     });
+    viewMenu->addAction(QStringLiteral("Open Web Page"), this, &MainWindow::openWebPage);
+    m_splitAction = viewMenu->addAction(QStringLiteral("Split Editor"), this, &MainWindow::toggleSplit);
+    auto *wrapMenu = viewMenu->addMenu(QStringLiteral("Wrap at Column"));
+    auto *wrapGroup = new QActionGroup(this);
+    wrapGroup->setExclusive(true);
+    const auto addWrap = [&](const QString &text, QAction **slot) {
+        *slot = wrapMenu->addAction(text);
+        (*slot)->setCheckable(true);
+        wrapGroup->addAction(*slot);
+    };
+    addWrap(QStringLiteral("Off"), &m_wrapOff);
+    addWrap(QStringLiteral("Window"), &m_wrapWindow);
+    addWrap(QStringLiteral("60"), &m_wrap60);
+    addWrap(QStringLiteral("80"), &m_wrap80);
+    addWrap(QStringLiteral("100"), &m_wrap100);
+    addWrap(QStringLiteral("Other..."), &m_wrapOther);
+    connect(m_wrapOff, &QAction::triggered, this, [this] { setWrapMode(QStringLiteral("off"), m_wrapColumn); });
+    connect(m_wrapWindow, &QAction::triggered, this, [this] {
+        setWrapMode(QStringLiteral("window"), m_wrapColumn);
+    });
+    connect(m_wrap60, &QAction::triggered, this, [this] { setWrapMode(QStringLiteral("column"), 60); });
+    connect(m_wrap80, &QAction::triggered, this, [this] { setWrapMode(QStringLiteral("column"), 80); });
+    connect(m_wrap100, &QAction::triggered, this, [this] { setWrapMode(QStringLiteral("column"), 100); });
+    connect(m_wrapOther, &QAction::triggered, this, [this] {
+        bool ok = false;
+        const int columns = QInputDialog::getInt(this, QStringLiteral("Wrap at Column"),
+                                                  QStringLiteral("Columns"), m_wrapColumn, 40, 300, 1, &ok);
+        if (ok)
+            setWrapMode(QStringLiteral("column"), columns);
+        else
+            syncWrapChecks();
+    });
+    syncWrapChecks();
     m_dockAction = viewMenu->addAction(QStringLiteral("Undock Forth Console"));
     connect(m_dockAction, &QAction::triggered, this, &MainWindow::toggleConsolePlace);
+
+    auto *formatMenu = menuBar()->addMenu(QStringLiteral("F&ormat"));
+    auto *bigger = formatMenu->addAction(QStringLiteral("&Bigger"), this, [this] {
+        setPointSize(m_pointSize + 1);
+    });
+    bigger->setShortcuts({QKeySequence::ZoomIn, QKeySequence(Qt::CTRL | Qt::Key_Plus),
+                          QKeySequence(Qt::CTRL | Qt::Key_Equal)});
+    auto *smaller = formatMenu->addAction(QStringLiteral("&Smaller"), this, [this] {
+        setPointSize(m_pointSize - 1);
+    });
+    smaller->setShortcuts({QKeySequence::ZoomOut, QKeySequence(Qt::CTRL | Qt::Key_Minus)});
+    formatMenu->addAction(QStringLiteral("&Reset Size"), this, [this] { setPointSize(13); });
+
+    auto *debugMenu = menuBar()->addMenu(QStringLiteral("&Debug"));
+    m_actBreak = debugMenu->addAction(QStringLiteral("Toggle &Breakpoint"),
+                                      QKeySequence(Qt::CTRL | Qt::Key_Backslash), this,
+                                      &MainWindow::toggleCaretBreak);
+    m_actPause = debugMenu->addAction(QStringLiteral("Break &Now"),
+                                      QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Y), this,
+                                      &MainWindow::pauseNow);
+
+    auto *forthMenu = menuBar()->addMenu(QStringLiteral("F&orth"));
+    m_actInclude = forthMenu->addAction(QStringLiteral("&INCLUDE Current File"),
+                                        QKeySequence(Qt::Key_F4), this, &MainWindow::includeCurrent);
+    m_actRun = forthMenu->addAction(QStringLiteral("&RUN LAST"), QKeySequence(Qt::Key_F5), this, [this] {
+        if (m_paused)
+            sendStep(103);
+        else
+            prepareRun(RunKind::Execute);
+    });
+    m_actDebug = forthMenu->addAction(QStringLiteral("&DEBUG LAST"),
+                                      QKeySequence(Qt::CTRL | Qt::Key_F5), this, [this] {
+                                          prepareRun(RunKind::Debug);
+                                      });
+    m_actBpgo = forthMenu->addAction(QStringLiteral("&BPGO LAST"),
+                                     QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F5), this, [this] {
+                                         prepareRun(RunKind::Bpgo);
+                                     });
+    auto *emitItem = forthMenu->addAction(QStringLiteral("EMIT Current (later pass)"));
+    emitItem->setEnabled(false);
+    emitItem->setStatusTip(QStringLiteral("The stand-alone emitter is a later pass."));
+    forthMenu->addSeparator();
+    forthMenu->addAction(QStringLiteral("&FLOAD..."), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L),
+                         this, &MainWindow::floadDialog);
+    forthMenu->addAction(QStringLiteral("&CHDIR..."), this, &MainWindow::chdirDialog);
+    forthMenu->addAction(QStringLiteral("Open &File..."), this, [this] {
+        const QString path = QFileDialog::getOpenFileName(
+            this, QStringLiteral("Open"), m_forthDir, kSourceFilter);
+        if (!path.isEmpty())
+            openFile(path);
+    });
+    forthMenu->addAction(QStringLiteral("C&LS"), this, [this] { m_console->clearDisplay(); });
+    forthMenu->addSeparator();
+    forthMenu->addAction(QStringLiteral("&Update User Data"), this, [this] {
+        if (!m_connected) {
+            m_debug->setError(QStringLiteral("Forth is not connected"));
+            return;
+        }
+        m_pipe->requestTree(QString());
+    });
+    forthMenu->addAction(QStringLiteral("&Restore Shipped Files..."), this, &MainWindow::restoreShipped);
+    forthMenu->addSeparator();
+    forthMenu->addAction(QStringLiteral("Show &Library"), this, [this] { showUserFolder(QStringLiteral("Library")); });
+    forthMenu->addAction(QStringLiteral("Show &AutoLoad"), this, [this] { showUserFolder(QStringLiteral("AutoLoad")); });
+    forthMenu->addAction(QStringLiteral("Show &Docs"), this, [this] { showUserFolder(QStringLiteral("Docs")); });
+    forthMenu->addAction(QStringLiteral("Show &Config"), this, [this] { showUserFolder(QStringLiteral("Config")); });
 
     auto *helpMenu = menuBar()->addMenu(QStringLiteral("&Help"));
     helpMenu->addAction(QStringLiteral("&About EditForthWin"), this, &MainWindow::showAbout);
@@ -307,16 +596,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_keyOver = windowKey(QKeySequence(Qt::Key_F6));
     m_keyInto = windowKey(QKeySequence(Qt::Key_F7));
     m_keyOut = windowKey(QKeySequence(Qt::Key_F8));
-    m_keyGo = windowKey(QKeySequence(Qt::Key_F5));
     m_keyStop = windowKey(QKeySequence(Qt::Key_Escape));
-    m_keyPause = windowKey(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Y));
     m_keyBreak = windowKey(QKeySequence(Qt::Key_F9));
     connect(m_keyOver, &QShortcut::activated, this, [this] { sendStep(32); });
     connect(m_keyInto, &QShortcut::activated, this, [this] { sendStep(105); });
     connect(m_keyOut, &QShortcut::activated, this, [this] { sendStep(33554450); });
-    connect(m_keyGo, &QShortcut::activated, this, [this] { sendStep(103); });
     connect(m_keyStop, &QShortcut::activated, this, [this] { sendStep(113); });
-    connect(m_keyPause, &QShortcut::activated, this, &MainWindow::pauseNow);
     connect(m_keyBreak, &QShortcut::activated, this, &MainWindow::toggleCaretBreak);
     updateDebugKeys();
     m_debug->installEventFilter(this);
@@ -331,12 +616,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_pipe->start();
 }
 
-void MainWindow::openRequestedFile(const QString &text) {
+void MainWindow::openRequestedFile(const QString &text, int line) {
     QString start = text;
     const bool dialog = start.isEmpty() || start.endsWith(QLatin1Char('\\')) ||
                         start.endsWith(QLatin1Char('/'));
     if (!dialog) {
         openFile(start);
+        if (line > 0) {
+            if (CodeEdit *edit = currentEdit())
+                edit->gotoLine(line);
+        }
         return;
     }
     if (start.endsWith(QLatin1Char('\\')) || start.endsWith(QLatin1Char('/')))
@@ -374,14 +663,17 @@ void MainWindow::newFile() {
     const QString title = m_untitled == 1 ? QStringLiteral("Untitled")
                                           : QStringLiteral("Untitled %1").arg(m_untitled);
     edit->setProperty("title", title);
-    edit->setLineNumbersVisible(m_lineNumbersAction->isChecked());
+    applyEditorChrome(edit);
     addEditor(edit, title);
 }
 
 void MainWindow::openFile(const QString &path) {
     const QString canonical = QFileInfo(path).absoluteFilePath();
     for (int i = 0; i < m_tabs->count(); ++i) {
-        if (editAt(i)->property(kPath).toString().compare(canonical, Qt::CaseInsensitive) == 0) {
+        CodeEdit *existing = editAt(i);
+        if (existing == nullptr)
+            continue;
+        if (existing->property(kPath).toString().compare(canonical, Qt::CaseInsensitive) == 0) {
             m_tabs->setCurrentIndex(i);
             return;
         }
@@ -396,7 +688,8 @@ void MainWindow::openFile(const QString &path) {
     edit->setPlainText(QString::fromUtf8(file.readAll()));
     edit->document()->setModified(false);
     edit->setProperty(kPath, canonical);
-    edit->setLineNumbersVisible(m_lineNumbersAction->isChecked());
+    applyEditorChrome(edit);
+    edit->setBrowse(browseSaved(canonical));
     addEditor(edit, QFileInfo(canonical).fileName());
 }
 
@@ -517,6 +810,10 @@ void MainWindow::syncConsoleChrome() {
                                                        : QStringLiteral("Undock Forth Console");
         m_dockAction->setText(text);
     }
+    if (m_showConsoleAction != nullptr) {
+        const QSignalBlocker block(m_showConsoleAction);
+        m_showConsoleAction->setChecked(!m_consoleHidden);
+    }
     if (m_float != nullptr)
         m_float->setStatus(m_connected, m_armed);
     if (m_docked)
@@ -528,14 +825,23 @@ void MainWindow::syncConsoleChrome() {
 CodeEdit *MainWindow::currentEdit() const { return editAt(m_tabs->currentIndex()); }
 
 CodeEdit *MainWindow::editAt(int index) const {
-    return qobject_cast<CodeEdit *>(m_tabs->widget(index));
+    QWidget *page = m_tabs->widget(index);
+    if (auto *pane = qobject_cast<EditorPane *>(page))
+        return pane->edit();
+    return qobject_cast<CodeEdit *>(page);
 }
 
 void MainWindow::addEditor(CodeEdit *edit, const QString &title) {
     wire(edit);
-    const int index = m_tabs->addTab(edit, title);
+    auto *pane = new EditorPane(edit);
+    pane->setDebugState(m_armed, m_paused);
+    edit->setDebugFocusLock(m_armed && edit->browse());
+    const int index = m_tabs->addTab(pane, title);
     m_tabs->setCurrentIndex(index);
-    edit->setFocus();
+    if (m_armed)
+        focusConsole();
+    else
+        edit->setFocus();
     refreshStatus();
 }
 
@@ -547,6 +853,10 @@ void MainWindow::wire(CodeEdit *edit) {
         if (edit == currentEdit())
             refreshStatus();
     });
+    connect(edit, &CodeEdit::viewWordRequested, this, &MainWindow::viewWord);
+    connect(edit, &CodeEdit::breakWordRequested, this, &MainWindow::breakWord);
+    connect(edit, &CodeEdit::runToRequested, this, &MainWindow::runToHere);
+    connect(edit, &CodeEdit::browseChanged, this, [this, edit](bool on) { noteBrowse(edit, on); });
 }
 
 bool MainWindow::saveEdit(CodeEdit *edit) {
@@ -587,11 +897,18 @@ bool MainWindow::maybeSave(CodeEdit *edit) {
 }
 
 void MainWindow::refreshTitle(CodeEdit *edit) {
-    const int index = m_tabs->indexOf(edit);
+    int index = -1;
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        if (editAt(i) == edit) {
+            index = i;
+            break;
+        }
+    }
     if (index >= 0)
         m_tabs->setTabText(index, tabLabel(edit));
     if (edit == currentEdit())
         refreshStatus();
+    refreshSplitList();
 }
 
 void MainWindow::refreshStatus() {
@@ -609,20 +926,31 @@ void MainWindow::refreshStatus() {
 
 void MainWindow::applyLineNumbers() {
     const bool on = m_lineNumbersAction->isChecked();
-    for (int i = 0; i < m_tabs->count(); ++i)
-        editAt(i)->setLineNumbersVisible(on);
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        if (CodeEdit *edit = editAt(i))
+            edit->setLineNumbersVisible(on);
+    }
+    if (m_splitEdit != nullptr)
+        m_splitEdit->setLineNumbersVisible(on);
 }
 
 void MainWindow::closeTab(int index) {
+    QWidget *widget = m_tabs->widget(index);
+    if (widget == nullptr)
+        return;
     CodeEdit *edit = editAt(index);
-    if (!edit)
-        return;
-    if (!maybeSave(edit))
-        return;
+    if (edit != nullptr) {
+        if (!maybeSave(edit))
+            return;
+        if (edit == m_splitSource)
+            detachSplit();
+    }
     m_tabs->removeTab(index);
-    edit->deleteLater();
+    widget->deleteLater();
     if (m_tabs->count() == 0)
         newFile();
+    refreshSplitList();
+    syncTabChrome();
 }
 
 void MainWindow::onDebug(bool armed, bool paused, int line, int off, int len, const QString &name,
@@ -637,9 +965,12 @@ void MainWindow::onDebug(bool armed, bool paused, int line, int off, int len, co
     m_debug->setError(QString());
     updateDebugKeys();
     syncConsoleChrome();
+    refreshViewBanners();
     clearHits();
     if (!m_paused) {
         m_debug->setNote(QString());
+        if (m_armed)
+            focusConsole();
         return;
     }
     showHit(line, off, len, name, path);
@@ -651,6 +982,7 @@ void MainWindow::sendStep(int key) {
     m_paused = false;
     m_debug->setDebug(m_armed, false, QString());
     updateDebugKeys();
+    refreshViewBanners();
     m_pipe->sendKey(key);
 }
 
@@ -709,13 +1041,24 @@ void MainWindow::showAbout() {
 
 void MainWindow::updateDebugKeys() {
     const bool step = m_paused;
+    const bool idle = m_connected && !m_armed;
     m_keyOver->setEnabled(step);
     m_keyInto->setEnabled(step);
     m_keyOut->setEnabled(step);
-    m_keyGo->setEnabled(step);
     m_keyStop->setEnabled(step);
-    m_keyPause->setEnabled(m_connected);
     m_keyBreak->setEnabled(m_connected);
+    if (m_actRun != nullptr)
+        m_actRun->setEnabled(m_connected);
+    if (m_actPause != nullptr)
+        m_actPause->setEnabled(m_connected);
+    if (m_actBreak != nullptr)
+        m_actBreak->setEnabled(m_connected);
+    if (m_actInclude != nullptr)
+        m_actInclude->setEnabled(idle);
+    if (m_actDebug != nullptr)
+        m_actDebug->setEnabled(idle);
+    if (m_actBpgo != nullptr)
+        m_actBpgo->setEnabled(idle);
 }
 
 void MainWindow::clearHits() {
@@ -723,6 +1066,8 @@ void MainWindow::clearHits() {
         if (CodeEdit *edit = editAt(i))
             edit->clearDebugHit();
     }
+    if (m_splitEdit != nullptr)
+        m_splitEdit->clearDebugHit();
 }
 
 QString MainWindow::caretWord() const {
@@ -791,5 +1136,452 @@ void MainWindow::showHit(int line, int off, int len, const QString &name, const 
     } else {
         m_debug->setNote(QString());
     }
-    edit->showDebugHit(line, off, len, name, !dirty && off > 0 && len > 0);
+    // Forth counts file bytes. The editor buffer has LF only, so a CRLF
+    // source (hyper.fth) must drop one byte per CR before this offset.
+    int spanOff = off;
+    const bool useSpan = !dirty && off >= 0 && len > 0;
+    if (useSpan && off > 0 && !edit->toPlainText().toUtf8().contains('\r')) {
+        QFile file(resolved);
+        if (file.open(QIODevice::ReadOnly)) {
+            const QByteArray prefix = file.read(static_cast<qint64>(off));
+            if (prefix.size() == off)
+                spanOff = off - prefix.count('\r');
+        }
+    }
+    // A file opened from the debugger is read-only until its own Edit button.
+    // The caret stays in the Forth console so a key cannot change this file.
+    edit->setBrowse(true);
+    edit->showDebugHit(line, spanOff, len, name, useSpan);
+    if (m_splitSource == edit && m_splitEdit != nullptr)
+        m_splitEdit->showDebugHit(line, spanOff, len, name, useSpan);
+    focusConsole();
+}
+
+bool forthIdle(DebugBar *debug, bool connected, bool armed) {
+    if (!connected) {
+        debug->setError(QStringLiteral("Forth is not connected"));
+        return false;
+    }
+    if (armed) {
+        debug->setError(QStringLiteral("debugger paused - use Step, Continue, or Stop"));
+        return false;
+    }
+    return true;
+}
+
+bool pathAccepts(const QString &path) {
+    return path.size() <= 255 && !path.contains(QLatin1Char('"'));
+}
+
+void MainWindow::includeCurrent() {
+    if (!forthIdle(m_debug, m_connected, m_armed))
+        return;
+    CodeEdit *edit = currentEdit();
+    if (edit == nullptr) {
+        m_debug->setError(QStringLiteral("INCLUDE needs a source tab."));
+        return;
+    }
+    if (edit->document()->isModified() && !saveEdit(edit))
+        return;
+    const QString path = edit->property(kPath).toString();
+    if (path.isEmpty()) {
+        m_debug->setError(QStringLiteral("Save the file before INCLUDE."));
+        return;
+    }
+    if (!pathAccepts(path)) {
+        m_debug->setError(QStringLiteral("That path cannot be INCLUDEd."));
+        return;
+    }
+    m_debug->setError(QString());
+    m_pipe->eval(QStringLiteral("ANEW %1 %2").arg(moduleMarker(path), includedLine(path)));
+}
+
+void MainWindow::prepareRun(RunKind kind) {
+    if (!forthIdle(m_debug, m_connected, m_armed))
+        return;
+    m_pendingRun = kind;
+    const QString word = caretWord();
+    if (!word.isEmpty()) {
+        fillRun(word);
+        return;
+    }
+    m_waitingLast = true;
+    m_pipe->requestLast();
+}
+
+void MainWindow::fillRun(const QString &name) {
+    QString line = name;
+    if (m_pendingRun == RunKind::Debug)
+        line = QStringLiteral("DEBUG %1").arg(name);
+    else if (m_pendingRun == RunKind::Bpgo)
+        line = QStringLiteral("BPGO %1").arg(name);
+    if (m_consoleHidden)
+        dockConsole();
+    else if (!m_docked && m_float != nullptr)
+        m_float->show();
+    m_debug->setError(QString());
+    m_console->fillInput(line);
+}
+
+void MainWindow::onLastName(const QString &name) {
+    if (!m_waitingLast)
+        return;
+    m_waitingLast = false;
+    const QString word = name.trimmed();
+    if (word.isEmpty()) {
+        m_debug->setError(QStringLiteral("LAST has no name"));
+        return;
+    }
+    fillRun(word);
+}
+
+void MainWindow::viewWord(const QString &word) {
+    const QString name = word.trimmed();
+    if (name.isEmpty() || name.contains(QLatin1Char(' ')) || name.contains(QLatin1Char('"'))) {
+        m_debug->setError(QStringLiteral("VIEW needs a single token"));
+        return;
+    }
+    if (!m_connected) {
+        m_debug->setError(QStringLiteral("Forth is not connected"));
+        return;
+    }
+    m_debug->setError(QString());
+    m_pipe->requestView(name);
+}
+
+void MainWindow::breakWord(const QString &word) {
+    if (!m_connected) {
+        m_debug->setError(QStringLiteral("Forth is not connected"));
+        return;
+    }
+    if (word.isEmpty() || word.contains(QLatin1Char('"'))) {
+        m_debug->setError(QStringLiteral("Break needs a word at the caret."));
+        return;
+    }
+    m_debug->setError(QString());
+    m_pipe->toggleBreak(word);
+}
+
+void MainWindow::runToHere(int utf8Offset) {
+    if (!m_paused) {
+        m_debug->setError(QStringLiteral("Run to Here needs a pause"));
+        return;
+    }
+    m_debug->setError(QString());
+    m_pipe->requestRunTo(utf8Offset);
+}
+
+void MainWindow::showFind(bool replace) {
+    CodeEdit *edit = currentEdit();
+    if (edit == nullptr) {
+        statusBar()->showMessage(QStringLiteral("Find needs a source tab."));
+        return;
+    }
+    m_find->attach(edit);
+    if (replace)
+        m_find->showReplace();
+    else
+        m_find->showFind();
+}
+
+void MainWindow::revealLine(const QString &path, int line, int column) {
+    openFile(path);
+    CodeEdit *edit = currentEdit();
+    if (edit == nullptr)
+        return;
+    const QString canonical = QFileInfo(path).absoluteFilePath();
+    if (edit->property(kPath).toString().compare(canonical, Qt::CaseInsensitive) != 0)
+        return;
+    if (line > 0)
+        edit->gotoLine(line, column > 0 ? column : 1);
+}
+
+void MainWindow::searchInFolders() {
+    SearchRequest request;
+    QString start = m_forthDir;
+    if (CodeEdit *edit = currentEdit()) {
+        const QString path = edit->property(kPath).toString();
+        if (!path.isEmpty())
+            start = QFileInfo(path).absolutePath();
+    }
+    if (!runFolderSearchDialog(this, start, &request))
+        return;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const SearchOutcome outcome = searchFolders(request);
+    QApplication::restoreOverrideCursor();
+    QString summary = QStringLiteral("%1 hit%2 in %3 file%4")
+                          .arg(outcome.hits.size())
+                          .arg(outcome.hits.size() == 1 ? QString() : QStringLiteral("s"))
+                          .arg(outcome.filesScanned)
+                          .arg(outcome.filesScanned == 1 ? QString() : QStringLiteral("s"));
+    if (outcome.truncated)
+        summary += QStringLiteral(" (stopped at 5000)");
+    auto *results = new SearchResults(summary, outcome.hits);
+    connect(results, &SearchResults::openHit, this, [this](const QString &path, int line, int column) {
+        revealLine(path, line, column);
+    });
+    const int index = m_tabs->addTab(results, QStringLiteral("Search"));
+    m_tabs->setCurrentIndex(index);
+    syncTabChrome();
+}
+
+void MainWindow::compareWithDisk() {
+    CodeEdit *edit = currentEdit();
+    if (edit == nullptr)
+        return;
+    const QString path = edit->property(kPath).toString();
+    if (path.isEmpty())
+        return;
+    auto *view = new DiskDiffView(path, edit->toPlainText());
+    connect(view, &DiskDiffView::openLine, this, [this](const QString &file, int line) {
+        revealLine(file, line, 1);
+    });
+    const int index = m_tabs->addTab(view, QStringLiteral("Compare: %1").arg(QFileInfo(path).fileName()));
+    m_tabs->setCurrentIndex(index);
+    syncTabChrome();
+}
+
+void MainWindow::openWebPage() {
+    auto *tab = new WebTab;
+    const int index = m_tabs->addTab(tab, QStringLiteral("Web"));
+    m_tabs->setCurrentIndex(index);
+    syncTabChrome();
+}
+
+void MainWindow::floadDialog() {
+    if (!forthIdle(m_debug, m_connected, m_armed))
+        return;
+    const QString path = QFileDialog::getOpenFileName(
+        this, QStringLiteral("FLOAD"), m_forthDir, kSourceFilter);
+    if (path.isEmpty())
+        return;
+    if (!pathAccepts(path)) {
+        QMessageBox::warning(this, QStringLiteral("EditForthWin"),
+                             QStringLiteral("That path cannot be FLOADed."));
+        return;
+    }
+    m_pipe->eval(includedLine(path));
+}
+
+void MainWindow::chdirDialog() {
+    if (!forthIdle(m_debug, m_connected, m_armed))
+        return;
+    const QString path = QFileDialog::getExistingDirectory(this, QStringLiteral("CHDIR"), m_forthDir);
+    if (path.isEmpty())
+        return;
+    if (!pathAccepts(path)) {
+        QMessageBox::warning(this, QStringLiteral("EditForthWin"),
+                             QStringLiteral("That path cannot be used with CHDIR."));
+        return;
+    }
+    m_pipe->eval(QStringLiteral("CHDIR \"%1\"").arg(path));
+}
+
+void MainWindow::restoreShipped() {
+    if (!forthIdle(m_debug, m_connected, m_armed))
+        return;
+    QMessageBox box(this);
+    box.setWindowTitle(QStringLiteral("EditForthWin"));
+    box.setText(QStringLiteral("Restore the shipped Library, AutoLoad, and Docs?"));
+    box.setInformativeText(QStringLiteral(
+        "Rename keeps your current Documents\\EditForthWin folder under a new name. "
+        "Replace overwrites Library, AutoLoad, and Docs. Config is left as it is."));
+    auto *rename = box.addButton(QStringLiteral("Rename EditForthWin"), QMessageBox::AcceptRole);
+    auto *replace = box.addButton(QStringLiteral("Replace EditForthWin"), QMessageBox::DestructiveRole);
+    box.addButton(QMessageBox::Cancel);
+    box.exec();
+    if (box.clickedButton() == rename) {
+        m_pipe->requestTree(QStringLiteral("rename"));
+        return;
+    }
+    if (box.clickedButton() != replace)
+        return;
+    const auto sure = QMessageBox::warning(
+        this, QStringLiteral("EditForthWin"),
+        QStringLiteral("Replace Library, AutoLoad, and Docs with the shipped copies?"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (sure == QMessageBox::Yes)
+        m_pipe->requestTree(QStringLiteral("replace"));
+}
+
+void MainWindow::showUserFolder(const QString &child) {
+    const QString path = QDir(userFolder()).filePath(child);
+    QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+}
+
+void MainWindow::toggleBrowse(bool on) {
+    CodeEdit *edit = currentEdit();
+    if (edit == nullptr)
+        return;
+    edit->setBrowse(on);
+}
+
+void MainWindow::noteBrowse(CodeEdit *edit, bool on) {
+    if (edit == nullptr)
+        return;
+    edit->setDebugFocusLock(m_armed && on);
+    if (edit == m_splitEdit) {
+        if (m_splitSource != nullptr && m_splitSource->browse() != on)
+            m_splitSource->setBrowse(on);
+        return;
+    }
+    const QString path = edit->property(kPath).toString();
+    if (!path.isEmpty())
+        storeBrowse(path, on);
+    if (m_splitSource == edit && m_splitEdit != nullptr && m_splitEdit->browse() != on)
+        m_splitEdit->setBrowse(on);
+    if (edit == currentEdit())
+        syncTabChrome();
+}
+
+void MainWindow::refreshViewBanners() {
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        if (CodeEdit *edit = editAt(i))
+            edit->setDebugFocusLock(m_armed && edit->browse());
+        if (auto *pane = qobject_cast<EditorPane *>(m_tabs->widget(i)))
+            pane->setDebugState(m_armed, m_paused);
+    }
+    if (m_splitEdit != nullptr) {
+        m_splitEdit->setDebugFocusLock(m_armed && m_splitEdit->browse());
+        if (auto *pane = qobject_cast<EditorPane *>(m_splitEdit->parentWidget()))
+            pane->setDebugState(m_armed, m_paused);
+    }
+}
+
+void MainWindow::focusConsole() {
+    if (m_console == nullptr || m_consoleHidden)
+        return;
+    if (!m_docked && m_float != nullptr && !m_float->isVisible())
+        return;
+    m_console->setFocus();
+}
+
+void MainWindow::setPointSize(int points) {
+    m_pointSize = qBound(9, points, 32);
+    QSettings().setValue(QStringLiteral("editorPointSize"), m_pointSize);
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        if (CodeEdit *edit = editAt(i))
+            edit->setPointSize(m_pointSize);
+    }
+    if (m_splitEdit != nullptr)
+        m_splitEdit->setPointSize(m_pointSize);
+    if (m_console != nullptr)
+        m_console->setPointSize(m_pointSize);
+}
+
+void MainWindow::setWrapMode(const QString &mode, int column) {
+    m_wrapMode = mode;
+    m_wrapColumn = qBound(40, column, 300);
+    QSettings settings;
+    settings.setValue(QStringLiteral("wrapMode"), m_wrapMode);
+    settings.setValue(QStringLiteral("wrapColumn"), m_wrapColumn);
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        if (CodeEdit *edit = editAt(i))
+            edit->setWrap(m_wrapMode, m_wrapColumn);
+    }
+    if (m_splitEdit != nullptr)
+        m_splitEdit->setWrap(m_wrapMode, m_wrapColumn);
+    syncWrapChecks();
+}
+
+void MainWindow::syncWrapChecks() {
+    if (m_wrapOff == nullptr)
+        return;
+    const QSignalBlocker off(m_wrapOff);
+    const QSignalBlocker window(m_wrapWindow);
+    const QSignalBlocker c60(m_wrap60);
+    const QSignalBlocker c80(m_wrap80);
+    const QSignalBlocker c100(m_wrap100);
+    const QSignalBlocker other(m_wrapOther);
+    const bool column = m_wrapMode == QLatin1String("column");
+    m_wrapOff->setChecked(m_wrapMode == QLatin1String("off"));
+    m_wrapWindow->setChecked(m_wrapMode == QLatin1String("window"));
+    m_wrap60->setChecked(column && m_wrapColumn == 60);
+    m_wrap80->setChecked(column && m_wrapColumn == 80);
+    m_wrap100->setChecked(column && m_wrapColumn == 100);
+    m_wrapOther->setChecked(column && m_wrapColumn != 60 && m_wrapColumn != 80 && m_wrapColumn != 100);
+}
+
+void MainWindow::toggleSplit() {
+    if (m_right != nullptr && m_right->isVisible()) {
+        detachSplit();
+        return;
+    }
+    CodeEdit *edit = currentEdit();
+    if (edit == nullptr) {
+        statusBar()->showMessage(QStringLiteral("Split needs a source tab."));
+        return;
+    }
+    attachSplit(edit);
+}
+
+void MainWindow::attachSplit(CodeEdit *source) {
+    if (source == nullptr || m_splitEdit == nullptr)
+        return;
+    if (m_splitEdit->document() != source->document())
+        m_splitEdit->setDocument(source->document());
+    m_splitSource = source;
+    m_splitEdit->setBrowse(source->browse());
+    applyEditorChrome(m_splitEdit);
+    m_right->show();
+    if (m_splitAction != nullptr)
+        m_splitAction->setText(QStringLiteral("Close Split"));
+    refreshSplitList();
+}
+
+void MainWindow::detachSplit() {
+    if (m_splitEdit == nullptr)
+        return;
+    if (m_splitEdit->document() == nullptr || m_splitEdit->document()->parent() != m_splitEdit) {
+        auto *fresh = new QTextDocument(m_splitEdit);
+        m_splitEdit->setDocument(fresh);
+    }
+    m_splitSource = nullptr;
+    if (m_right != nullptr)
+        m_right->hide();
+    if (m_splitAction != nullptr)
+        m_splitAction->setText(QStringLiteral("Split Editor"));
+}
+
+void MainWindow::refreshSplitList() {
+    if (m_splitPick == nullptr)
+        return;
+    const QSignalBlocker block(m_splitPick);
+    m_splitPick->clear();
+    int select = -1;
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        CodeEdit *edit = editAt(i);
+        if (edit == nullptr)
+            continue;
+        m_splitPick->addItem(m_tabs->tabText(i), QVariant::fromValue(static_cast<qulonglong>(
+                                                     reinterpret_cast<quintptr>(edit))));
+        if (edit == m_splitSource)
+            select = m_splitPick->count() - 1;
+    }
+    if (select >= 0)
+        m_splitPick->setCurrentIndex(select);
+}
+
+void MainWindow::syncTabChrome() {
+    CodeEdit *edit = currentEdit();
+    if (m_compareAction != nullptr)
+        m_compareAction->setEnabled(edit != nullptr && !edit->property(kPath).toString().isEmpty());
+    if (m_browseAction != nullptr) {
+        const QSignalBlocker block(m_browseAction);
+        const bool on = edit != nullptr && edit->browse();
+        m_browseAction->setEnabled(edit != nullptr);
+        m_browseAction->setChecked(on);
+        m_browseAction->setText(on ? QStringLiteral("Allow Editing") : QStringLiteral("Browse Mode"));
+    }
+    if (edit != nullptr && m_find != nullptr)
+        m_find->attach(edit);
+}
+
+void MainWindow::applyEditorChrome(CodeEdit *edit) {
+    if (edit == nullptr)
+        return;
+    edit->setPointSize(m_pointSize);
+    edit->setWrap(m_wrapMode, m_wrapColumn);
+    const bool numbers = m_lineNumbersAction == nullptr || m_lineNumbersAction->isChecked();
+    edit->setLineNumbersVisible(numbers);
 }

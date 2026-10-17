@@ -10,6 +10,9 @@ public:
     explicit ForthConsole(QWidget *parent = nullptr);
 
     void appendOutput(const QString &text);
+    void fillInput(const QString &text);
+    void clearDisplay();
+    void setPointSize(int points);
     void setEngineAlive(bool alive);
     // While the stepper is armed, copy and navigation stay. Typing does not.
     void setInputLocked(bool locked);
@@ -18,9 +21,11 @@ public:
 
 signals:
     void submitted(const QString &line);
+    void viewWordRequested(const QString &word);
 
 protected:
     void keyPressEvent(QKeyEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
     void insertFromMimeData(const QMimeData *source) override;
 
 private:

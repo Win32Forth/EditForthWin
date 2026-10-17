@@ -101,6 +101,9 @@
         EXPORT data_stack
         EXPORT return_stack
         EXPORT user_dict_area
+        EXPORT user_dict_size_cell
+        EXPORT grow_memory_used
+        EXPORT xchar_emit_buf
         EXPORT numbuf
         EXPORT dstack
         EXPORT rstack
@@ -207,8 +210,15 @@ data_stack
 dstack      SPACE   4096
 return_stack
 rstack      SPACE   4096
+; Logical size starts at 8 MiB. GROWMEMORYMB raises it once, up to 256 MiB.
+; The reserve is uninitialized so the image stays small. The base does not move.
+user_dict_size_cell DCQ 8388608
+grow_memory_used DCQ 0
+xchar_emit_buf SPACE 8
+
+        AREA |.bss|, DATA, NOINIT, READWRITE, ALIGN=3
 user_dict_area
-dictmem     SPACE   1048576
+dictmem     SPACE   268435456
 dict_end
 
         AREA |.data|, DATA, READWRITE, ALIGN=8

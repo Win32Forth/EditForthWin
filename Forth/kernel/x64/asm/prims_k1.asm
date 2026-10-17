@@ -61,7 +61,6 @@ EXTRN cfa_slit:BYTE
 EXTRN current_var:BYTE
 EXTRN data_stack:BYTE
 EXTRN debug_break_asap:BYTE
-EXTRN dict_end:BYTE
 EXTRN emit_cstr:PROC
 EXTRN emit_str:PROC
 EXTRN eval_resume_sp:BYTE
@@ -82,9 +81,11 @@ EXTRN state_var:BYTE
 EXTRN throw_handler:BYTE
 EXTRN to_in:BYTE
 EXTRN user_dict_area:BYTE
+EXTRN user_dict_size_cell:BYTE
 EXTRN word_scratch:BYTE
 EXTRN wordlist_reg:BYTE
 EXTRN wordlist_reg_n:BYTE
+EXTRN xchar_emit_buf:BYTE
 .CODE
 PUBLIC DOVAR
 PUBLIC DOCON
@@ -1915,6 +1916,348 @@ XTYPE_END:
     mov rax, QWORD PTR arm_x1
     jmp rax
 BWSTR SEGMENT ALIGN(1) READ
+nm_XXCHAR_EMIT:
+    ; DCB "XEMIT", 0
+    DB "XEMIT", 0
+hl_XXCHAR_EMIT:
+    ; DCB "XEMIT ( xchar -- ) emit UTF-8 xchar to console", 0
+    DB "XEMIT ( xchar -- ) emit UTF-8 xchar to console", 0
+BWSTR ENDS
+BOOTWORD SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+row_XXCHAR_EMIT:
+    ; DCQ     nm_XXCHAR_EMIT, hl_XXCHAR_EMIT
+    DQ OFFSET nm_XXCHAR_EMIT, OFFSET hl_XXCHAR_EMIT
+    ; DCQ     0
+    DQ 0
+    ; DCQ     XXCHAR_EMIT, XXCHAR_EMIT_END
+    DQ OFFSET XXCHAR_EMIT, OFFSET XXCHAR_EMIT_END
+BOOTWORD ENDS
+BOOTPTR SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+    ; DCQ     row_XXCHAR_EMIT
+    DQ OFFSET row_XXCHAR_EMIT
+BOOTPTR ENDS
+.CODE
+XXCHAR_EMIT:
+    ; mov     x1, x20
+    mov rax, QWORD PTR arm_x20
+    mov QWORD PTR arm_x1, rax
+    ; ldr     x20, [x22], #8
+    mov r10, QWORD PTR arm_x22
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x20, rax
+    mov rax, QWORD PTR arm_x22
+    add rax, 8
+    mov QWORD PTR arm_x22, rax
+    ; movz    x2, #0xFFFF
+    mov rax, 0FFFFh
+    mov QWORD PTR arm_x2, rax
+    ; movk    x2, #0x10, lsl #16
+    mov rax, QWORD PTR arm_x2
+    mov rcx, 0FFFFFFFF0000FFFFh
+    and rax, rcx
+    mov rcx, 100000h
+    or rax, rcx
+    mov QWORD PTR arm_x2, rax
+    ; cmp     x1, x2
+    mov rax, QWORD PTR arm_x1
+    mov rcx, QWORD PTR arm_x2
+    cmp rax, rcx
+    seto BYTE PTR arm_v
+    sets BYTE PTR arm_n
+    setz BYTE PTR arm_z
+    setnc BYTE PTR arm_c
+    ; csel    x1, x2, x1, hi
+    cmp BYTE PTR arm_c, 0
+    je xsk_9
+    cmp BYTE PTR arm_z, 0
+    je xsk_7
+    xsk_9:
+    mov rax, QWORD PTR arm_x1
+    jmp xsk_8
+    xsk_7:
+    mov rax, QWORD PTR arm_x2
+    xsk_8:
+    mov QWORD PTR arm_x1, rax
+    ; lea x0, xchar_emit_buf
+    lea rax, xchar_emit_buf
+    mov QWORD PTR arm_x0, rax
+    ; mov     x3, x0
+    mov rax, QWORD PTR arm_x0
+    mov QWORD PTR arm_x3, rax
+    ; cmp     x1, #0x7F
+    mov rax, QWORD PTR arm_x1
+    cmp rax, 7Fh
+    seto BYTE PTR arm_v
+    sets BYTE PTR arm_n
+    setz BYTE PTR arm_z
+    setnc BYTE PTR arm_c
+    ; b.ls    _xe_1
+    cmp BYTE PTR arm_c, 0
+    je _xe_1
+    cmp BYTE PTR arm_z, 0
+    jne _xe_1
+    ; cmp     x1, #0x7FF
+    mov rax, QWORD PTR arm_x1
+    cmp rax, 7FFh
+    seto BYTE PTR arm_v
+    sets BYTE PTR arm_n
+    setz BYTE PTR arm_z
+    setnc BYTE PTR arm_c
+    ; b.ls    _xe_2
+    cmp BYTE PTR arm_c, 0
+    je _xe_2
+    cmp BYTE PTR arm_z, 0
+    jne _xe_2
+    ; movz    x4, #0xFFFF
+    mov rax, 0FFFFh
+    mov QWORD PTR arm_x4, rax
+    ; cmp     x1, x4
+    mov rax, QWORD PTR arm_x1
+    mov rcx, QWORD PTR arm_x4
+    cmp rax, rcx
+    seto BYTE PTR arm_v
+    sets BYTE PTR arm_n
+    setz BYTE PTR arm_z
+    setnc BYTE PTR arm_c
+    ; b.ls    _xe_3
+    cmp BYTE PTR arm_c, 0
+    je _xe_3
+    cmp BYTE PTR arm_z, 0
+    jne _xe_3
+    ; lsr     x4, x1, #18
+    mov rax, QWORD PTR arm_x1
+    shr rax, 18
+    mov QWORD PTR arm_x4, rax
+    ; orr     w4, w4, #0xF0
+    mov eax, DWORD PTR arm_x4
+    or eax, 0F0h
+    mov QWORD PTR arm_x4, rax
+    ; strb    w4, [x0], #1
+    mov r10, QWORD PTR arm_x0
+    mov eax, DWORD PTR arm_x4
+    mov BYTE PTR [r10], al
+    mov rax, QWORD PTR arm_x0
+    add rax, 1
+    mov QWORD PTR arm_x0, rax
+    ; lsr     x4, x1, #12
+    mov rax, QWORD PTR arm_x1
+    shr rax, 12
+    mov QWORD PTR arm_x4, rax
+    ; and     w4, w4, #0x3F
+    mov eax, DWORD PTR arm_x4
+    and eax, 3Fh
+    mov QWORD PTR arm_x4, rax
+    ; orr     w4, w4, #0x80
+    mov eax, DWORD PTR arm_x4
+    or eax, 80h
+    mov QWORD PTR arm_x4, rax
+    ; strb    w4, [x0], #1
+    mov r10, QWORD PTR arm_x0
+    mov eax, DWORD PTR arm_x4
+    mov BYTE PTR [r10], al
+    mov rax, QWORD PTR arm_x0
+    add rax, 1
+    mov QWORD PTR arm_x0, rax
+    ; lsr     x4, x1, #6
+    mov rax, QWORD PTR arm_x1
+    shr rax, 6
+    mov QWORD PTR arm_x4, rax
+    ; and     w4, w4, #0x3F
+    mov eax, DWORD PTR arm_x4
+    and eax, 3Fh
+    mov QWORD PTR arm_x4, rax
+    ; orr     w4, w4, #0x80
+    mov eax, DWORD PTR arm_x4
+    or eax, 80h
+    mov QWORD PTR arm_x4, rax
+    ; strb    w4, [x0], #1
+    mov r10, QWORD PTR arm_x0
+    mov eax, DWORD PTR arm_x4
+    mov BYTE PTR [r10], al
+    mov rax, QWORD PTR arm_x0
+    add rax, 1
+    mov QWORD PTR arm_x0, rax
+    ; and     w4, w1, #0x3F
+    mov eax, DWORD PTR arm_x1
+    and eax, 3Fh
+    mov QWORD PTR arm_x4, rax
+    ; orr     w4, w4, #0x80
+    mov eax, DWORD PTR arm_x4
+    or eax, 80h
+    mov QWORD PTR arm_x4, rax
+    ; strb    w4, [x0], #1
+    mov r10, QWORD PTR arm_x0
+    mov eax, DWORD PTR arm_x4
+    mov BYTE PTR [r10], al
+    mov rax, QWORD PTR arm_x0
+    add rax, 1
+    mov QWORD PTR arm_x0, rax
+    ; b       _xe_9
+    jmp _xe_9
+_xe_3:
+    ; lsr     x4, x1, #12
+    mov rax, QWORD PTR arm_x1
+    shr rax, 12
+    mov QWORD PTR arm_x4, rax
+    ; orr     w4, w4, #0xE0
+    mov eax, DWORD PTR arm_x4
+    or eax, 0E0h
+    mov QWORD PTR arm_x4, rax
+    ; strb    w4, [x0], #1
+    mov r10, QWORD PTR arm_x0
+    mov eax, DWORD PTR arm_x4
+    mov BYTE PTR [r10], al
+    mov rax, QWORD PTR arm_x0
+    add rax, 1
+    mov QWORD PTR arm_x0, rax
+    ; lsr     x4, x1, #6
+    mov rax, QWORD PTR arm_x1
+    shr rax, 6
+    mov QWORD PTR arm_x4, rax
+    ; and     w4, w4, #0x3F
+    mov eax, DWORD PTR arm_x4
+    and eax, 3Fh
+    mov QWORD PTR arm_x4, rax
+    ; orr     w4, w4, #0x80
+    mov eax, DWORD PTR arm_x4
+    or eax, 80h
+    mov QWORD PTR arm_x4, rax
+    ; strb    w4, [x0], #1
+    mov r10, QWORD PTR arm_x0
+    mov eax, DWORD PTR arm_x4
+    mov BYTE PTR [r10], al
+    mov rax, QWORD PTR arm_x0
+    add rax, 1
+    mov QWORD PTR arm_x0, rax
+    ; and     w4, w1, #0x3F
+    mov eax, DWORD PTR arm_x1
+    and eax, 3Fh
+    mov QWORD PTR arm_x4, rax
+    ; orr     w4, w4, #0x80
+    mov eax, DWORD PTR arm_x4
+    or eax, 80h
+    mov QWORD PTR arm_x4, rax
+    ; strb    w4, [x0], #1
+    mov r10, QWORD PTR arm_x0
+    mov eax, DWORD PTR arm_x4
+    mov BYTE PTR [r10], al
+    mov rax, QWORD PTR arm_x0
+    add rax, 1
+    mov QWORD PTR arm_x0, rax
+    ; b       _xe_9
+    jmp _xe_9
+_xe_2:
+    ; lsr     x4, x1, #6
+    mov rax, QWORD PTR arm_x1
+    shr rax, 6
+    mov QWORD PTR arm_x4, rax
+    ; orr     w4, w4, #0xC0
+    mov eax, DWORD PTR arm_x4
+    or eax, 0C0h
+    mov QWORD PTR arm_x4, rax
+    ; strb    w4, [x0], #1
+    mov r10, QWORD PTR arm_x0
+    mov eax, DWORD PTR arm_x4
+    mov BYTE PTR [r10], al
+    mov rax, QWORD PTR arm_x0
+    add rax, 1
+    mov QWORD PTR arm_x0, rax
+    ; and     w4, w1, #0x3F
+    mov eax, DWORD PTR arm_x1
+    and eax, 3Fh
+    mov QWORD PTR arm_x4, rax
+    ; orr     w4, w4, #0x80
+    mov eax, DWORD PTR arm_x4
+    or eax, 80h
+    mov QWORD PTR arm_x4, rax
+    ; strb    w4, [x0], #1
+    mov r10, QWORD PTR arm_x0
+    mov eax, DWORD PTR arm_x4
+    mov BYTE PTR [r10], al
+    mov rax, QWORD PTR arm_x0
+    add rax, 1
+    mov QWORD PTR arm_x0, rax
+    ; b       _xe_9
+    jmp _xe_9
+_xe_1:
+    ; strb    w1, [x0], #1
+    mov r10, QWORD PTR arm_x0
+    mov eax, DWORD PTR arm_x1
+    mov BYTE PTR [r10], al
+    mov rax, QWORD PTR arm_x0
+    add rax, 1
+    mov QWORD PTR arm_x0, rax
+_xe_9:
+    ; sub     x1, x0, x3
+    mov rax, QWORD PTR arm_x0
+    mov rcx, QWORD PTR arm_x3
+    sub rax, rcx
+    mov QWORD PTR arm_x1, rax
+    ; mov     x0, x3
+    mov rax, QWORD PTR arm_x3
+    mov QWORD PTR arm_x0, rax
+    ; sub     sp, sp, #64
+    mov rax, rsp
+    sub rax, 40h
+    mov rsp, rax
+    ; stp     x29, x30, [sp, #32]
+    lea r10, [rsp]
+    add r10, 20h
+    mov rax, QWORD PTR arm_x29
+    mov QWORD PTR [r10+0], rax
+    mov rax, QWORD PTR arm_x30
+    mov QWORD PTR [r10+8], rax
+    ; bl      emit_str
+    lea rax, xret_10
+    mov QWORD PTR arm_x30, rax
+    jmp emit_str
+    xret_10:
+    ; ldp     x29, x30, [sp, #32]
+    lea r10, [rsp]
+    add r10, 20h
+    mov rax, QWORD PTR [r10]
+    mov rcx, QWORD PTR [r10+8]
+    mov QWORD PTR arm_x29, rax
+    mov QWORD PTR arm_x30, rcx
+    ; add     sp, sp, #64
+    mov rax, rsp
+    add rax, 40h
+    mov rsp, rax
+XXCHAR_EMIT_END:
+    ; cbnz    x28, next_debug_gate
+    mov rax, QWORD PTR arm_x28
+    cmp rax, 0
+    jne next_debug_gate
+    ; lea x1, debug_break_asap
+    lea rax, debug_break_asap
+    mov QWORD PTR arm_x1, rax
+    ; ldr     x1, [x1]
+    mov r10, QWORD PTR arm_x1
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; cbnz    x1, next_debug_gate
+    mov rax, QWORD PTR arm_x1
+    cmp rax, 0
+    jne next_debug_gate
+    ; ldr     x21, [x19], #8
+    mov r10, QWORD PTR arm_x19
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x21, rax
+    mov rax, QWORD PTR arm_x19
+    add rax, 8
+    mov QWORD PTR arm_x19, rax
+    ; ldr     x1, [x21]
+    mov r10, QWORD PTR arm_x21
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; br      x1
+    mov rax, QWORD PTR arm_x1
+    jmp rax
+BWSTR SEGMENT ALIGN(1) READ
 nm_XDP:
     ; DCB "DP", 0
     DB "DP", 0
@@ -2121,8 +2464,17 @@ XALLOT:
     ; b.lo    _allot_fail
     cmp BYTE PTR arm_c, 0
     je _allot_fail
-    ; lea x5, dict_end
-    lea rax, dict_end
+    ; lea x5, user_dict_size_cell
+    lea rax, user_dict_size_cell
+    mov QWORD PTR arm_x5, rax
+    ; ldr     x5, [x5]
+    mov r10, QWORD PTR arm_x5
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x5, rax
+    ; add     x5, x4, x5
+    mov rax, QWORD PTR arm_x4
+    mov rcx, QWORD PTR arm_x5
+    add rax, rcx
     mov QWORD PTR arm_x5, rax
     ; cmp     x3, x5
     mov rax, QWORD PTR arm_x3
@@ -2134,10 +2486,10 @@ XALLOT:
     setnc BYTE PTR arm_c
     ; b.hi    _allot_fail
     cmp BYTE PTR arm_c, 0
-    je xsk_7
+    je xsk_11
     cmp BYTE PTR arm_z, 0
     je _allot_fail
-    xsk_7:
+    xsk_11:
     ; str     x3, [x1]
     mov r10, QWORD PTR arm_x1
     mov rax, QWORD PTR arm_x3
@@ -2160,10 +2512,10 @@ _allot_fail:
     lea rax, msg_allot
     mov QWORD PTR arm_x0, rax
     ; bl      emit_cstr
-    lea rax, xret_8
+    lea rax, xret_12
     mov QWORD PTR arm_x30, rax
     jmp emit_cstr
-    xret_8:
+    xret_12:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]
     add r10, 20h
@@ -2256,10 +2608,10 @@ XCOMMA:
     mov rax, QWORD PTR arm_x30
     mov QWORD PTR [r10+8], rax
     ; bl      _compile_cell
-    lea rax, xret_9
+    lea rax, xret_13
     mov QWORD PTR arm_x30, rax
     jmp _compile_cell
-    xret_9:
+    xret_13:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]
     add r10, 20h
@@ -2557,10 +2909,10 @@ XCREATE:
     mov rax, QWORD PTR arm_x30
     mov QWORD PTR [r10+8], rax
     ; bl      _next_word
-    lea rax, xret_10
+    lea rax, xret_14
     mov QWORD PTR arm_x30, rax
     jmp _next_word
-    xret_10:
+    xret_14:
     ; cbz     x1, _create_fail
     mov rax, QWORD PTR arm_x1
     cmp rax, 0
@@ -2573,10 +2925,10 @@ XCREATE:
     mov rax, QWORD PTR arm_x1
     mov QWORD PTR [r10+8], rax
     ; bl      _take_pending_help
-    lea rax, xret_11
+    lea rax, xret_15
     mov QWORD PTR arm_x30, rax
     jmp _take_pending_help
-    xret_11:
+    xret_15:
     ; ldp     x0, x1, [sp, #48]
     lea r10, [rsp]
     add r10, 30h
@@ -2591,10 +2943,10 @@ XCREATE:
     mov rax, 0
     mov QWORD PTR arm_x5, rax
     ; bl      _header_build
-    lea rax, xret_12
+    lea rax, xret_16
     mov QWORD PTR arm_x30, rax
     jmp _header_build
-    xret_12:
+    xret_16:
     ; lea x1, here_ptr
     lea rax, here_ptr
     mov QWORD PTR arm_x1, rax
@@ -2657,10 +3009,10 @@ _create_fail:
     lea rax, msg_huh_k1
     mov QWORD PTR arm_x0, rax
     ; bl      emit_cstr
-    lea rax, xret_13
+    lea rax, xret_17
     mov QWORD PTR arm_x30, rax
     jmp emit_cstr
-    xret_13:
+    xret_17:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]
     add r10, 20h
@@ -2962,10 +3314,10 @@ XREGWID:
     mov rax, QWORD PTR arm_x30
     mov QWORD PTR [r10+8], rax
     ; bl      _wordlist_register
-    lea rax, xret_14
+    lea rax, xret_18
     mov QWORD PTR arm_x30, rax
     jmp _wordlist_register
-    xret_14:
+    xret_18:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]
     add r10, 20h
@@ -3260,10 +3612,10 @@ XSET_ORDER:
     setnc BYTE PTR arm_c
     ; b.hi    _set_ord_bad
     cmp BYTE PTR arm_c, 0
-    je xsk_15
+    je xsk_19
     cmp BYTE PTR arm_z, 0
     je _set_ord_bad
-    xsk_15:
+    xsk_19:
     ; lea x0, search_order_n
     lea rax, search_order_n
     mov QWORD PTR arm_x0, rax
@@ -3985,12 +4337,21 @@ XWORDLIST:
     ; b.lo    _allot_fail
     cmp BYTE PTR arm_c, 0
     je _allot_fail
-    ; lea x4, dict_end
-    lea rax, dict_end
-    mov QWORD PTR arm_x4, rax
-    ; cmp     x3, x4
+    ; lea x5, user_dict_size_cell
+    lea rax, user_dict_size_cell
+    mov QWORD PTR arm_x5, rax
+    ; ldr     x5, [x5]
+    mov r10, QWORD PTR arm_x5
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x5, rax
+    ; add     x5, x4, x5
+    mov rax, QWORD PTR arm_x4
+    mov rcx, QWORD PTR arm_x5
+    add rax, rcx
+    mov QWORD PTR arm_x5, rax
+    ; cmp     x3, x5
     mov rax, QWORD PTR arm_x3
-    mov rcx, QWORD PTR arm_x4
+    mov rcx, QWORD PTR arm_x5
     cmp rax, rcx
     seto BYTE PTR arm_v
     sets BYTE PTR arm_n
@@ -3998,10 +4359,10 @@ XWORDLIST:
     setnc BYTE PTR arm_c
     ; b.hi    _allot_fail
     cmp BYTE PTR arm_c, 0
-    je xsk_16
+    je xsk_20
     cmp BYTE PTR arm_z, 0
     je _allot_fail
-    xsk_16:
+    xsk_20:
     ; mov     x2, x1
     mov rax, QWORD PTR arm_x1
     mov QWORD PTR arm_x2, rax
@@ -4045,10 +4406,10 @@ _wl_zero:
     mov rax, QWORD PTR arm_x30
     mov QWORD PTR [r10+8], rax
     ; bl      _wordlist_register
-    lea rax, xret_17
+    lea rax, xret_21
     mov QWORD PTR arm_x30, rax
     jmp _wordlist_register
-    xret_17:
+    xret_21:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]
     add r10, 20h
@@ -4282,10 +4643,10 @@ XORDER:
     lea rax, str_search_order
     mov QWORD PTR arm_x0, rax
     ; bl      emit_cstr
-    lea rax, xret_18
+    lea rax, xret_22
     mov QWORD PTR arm_x30, rax
     jmp emit_cstr
-    xret_18:
+    xret_22:
     ; lea x0, search_order_n
     lea rax, search_order_n
     mov QWORD PTR arm_x0, rax
@@ -4319,18 +4680,18 @@ _ord_loop:
     mov rax, QWORD PTR [r10]
     mov QWORD PTR arm_x0, rax
     ; bl      _print_wid_name
-    lea rax, xret_19
+    lea rax, xret_23
     mov QWORD PTR arm_x30, rax
     jmp _print_wid_name
-    xret_19:
+    xret_23:
     ; mov     x0, #32
     mov rax, 20h
     mov QWORD PTR arm_x0, rax
     ; bl      _putchar
-    lea rax, xret_20
+    lea rax, xret_24
     mov QWORD PTR arm_x30, rax
     jmp _putchar
-    xret_20:
+    xret_24:
     ; add     x21, x21, #1
     mov rax, QWORD PTR arm_x21
     add rax, 1
@@ -4342,18 +4703,18 @@ _ord_nl:
     mov rax, 0Ah
     mov QWORD PTR arm_x0, rax
     ; bl      _putchar
-    lea rax, xret_21
+    lea rax, xret_25
     mov QWORD PTR arm_x30, rax
     jmp _putchar
-    xret_21:
+    xret_25:
     ; lea x0, str_comp_wl
     lea rax, str_comp_wl
     mov QWORD PTR arm_x0, rax
     ; bl      emit_cstr
-    lea rax, xret_22
+    lea rax, xret_26
     mov QWORD PTR arm_x30, rax
     jmp emit_cstr
-    xret_22:
+    xret_26:
     ; lea x0, current_var
     lea rax, current_var
     mov QWORD PTR arm_x0, rax
@@ -4362,18 +4723,18 @@ _ord_nl:
     mov rax, QWORD PTR [r10]
     mov QWORD PTR arm_x0, rax
     ; bl      _print_wid_name
-    lea rax, xret_23
+    lea rax, xret_27
     mov QWORD PTR arm_x30, rax
     jmp _print_wid_name
-    xret_23:
+    xret_27:
     ; mov     x0, #10
     mov rax, 0Ah
     mov QWORD PTR arm_x0, rax
     ; bl      _putchar
-    lea rax, xret_24
+    lea rax, xret_28
     mov QWORD PTR arm_x30, rax
     jmp _putchar
-    xret_24:
+    xret_28:
     ; ldp     x21, x22, [sp, #64]
     lea r10, [rsp]
     add r10, 40h
@@ -4603,10 +4964,10 @@ XDEPTH:
     setnc BYTE PTR arm_c
     ; b.hi    _depth_fix
     cmp BYTE PTR arm_c, 0
-    je xsk_25
+    je xsk_29
     cmp BYTE PTR arm_z, 0
     je _depth_fix
-    xsk_25:
+    xsk_29:
     ; cmp     x22, x1
     mov rax, QWORD PTR arm_x22
     mov rcx, QWORD PTR arm_x1
@@ -4788,10 +5149,10 @@ XSP0:
     setnc BYTE PTR arm_c
     ; b.hi    _sp0_fix
     cmp BYTE PTR arm_c, 0
-    je xsk_26
+    je xsk_30
     cmp BYTE PTR arm_z, 0
     je _sp0_fix
-    xsk_26:
+    xsk_30:
     ; cmp     x22, x1
     mov rax, QWORD PTR arm_x22
     mov rcx, QWORD PTR arm_x1
@@ -5094,10 +5455,10 @@ XBRACKET_TICK:
     mov rax, QWORD PTR arm_x30
     mov QWORD PTR [r10+8], rax
     ; bl      _next_word
-    lea rax, xret_27
+    lea rax, xret_31
     mov QWORD PTR arm_x30, rax
     jmp _next_word
-    xret_27:
+    xret_31:
     ; cbz     x1, _btick_fail
     mov rax, QWORD PTR arm_x1
     cmp rax, 0
@@ -5110,10 +5471,10 @@ XBRACKET_TICK:
     mov rax, QWORD PTR arm_x1
     mov QWORD PTR [r10+8], rax
     ; bl      _find_word
-    lea rax, xret_28
+    lea rax, xret_32
     mov QWORD PTR arm_x30, rax
     jmp _find_word
-    xret_28:
+    xret_32:
     ; cbz     x0, _btick_fail
     mov rax, QWORD PTR arm_x0
     cmp rax, 0
@@ -5142,20 +5503,20 @@ XBRACKET_TICK:
     mov rax, QWORD PTR [r10]
     mov QWORD PTR arm_x0, rax
     ; bl      _compile_cell
-    lea rax, xret_29
+    lea rax, xret_33
     mov QWORD PTR arm_x30, rax
     jmp _compile_cell
-    xret_29:
+    xret_33:
     ; ldr     x0, [sp, #64]
     lea r10, [rsp]
     add r10, 40h
     mov rax, QWORD PTR [r10]
     mov QWORD PTR arm_x0, rax
     ; bl      _compile_cell
-    lea rax, xret_30
+    lea rax, xret_34
     mov QWORD PTR arm_x30, rax
     jmp _compile_cell
-    xret_30:
+    xret_34:
     ; b       _btick_leave
     jmp _btick_leave
 _btick_interp:
@@ -5220,10 +5581,10 @@ _btick_fail:
     lea rax, msg_huh_k1
     mov QWORD PTR arm_x0, rax
     ; bl      emit_cstr
-    lea rax, xret_31
+    lea rax, xret_35
     mov QWORD PTR arm_x30, rax
     jmp emit_cstr
-    xret_31:
+    xret_35:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]
     add r10, 20h
@@ -6670,10 +7031,10 @@ XDOES_RT:
     mov rax, QWORD PTR arm_x30
     mov QWORD PTR [r10+8], rax
     ; bl      _nfa_reveal_cfa
-    lea rax, xret_32
+    lea rax, xret_36
     mov QWORD PTR arm_x30, rax
     jmp _nfa_reveal_cfa
-    xret_32:
+    xret_36:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]
     add r10, 20h
@@ -6769,10 +7130,10 @@ XDOES:
     mov rax, QWORD PTR [r10]
     mov QWORD PTR arm_x0, rax
     ; bl      _compile_cell
-    lea rax, xret_33
+    lea rax, xret_37
     mov QWORD PTR arm_x30, rax
     jmp _compile_cell
-    xret_33:
+    xret_37:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]
     add r10, 20h
@@ -6966,10 +7327,10 @@ _throw_tos_snap:
     mov rax, QWORD PTR arm_x6
     mov QWORD PTR arm_x0, rax
     ; bl      _throw_unwind_to_sp
-    lea rax, xret_34
+    lea rax, xret_38
     mov QWORD PTR arm_x30, rax
     jmp _throw_unwind_to_sp
-    xret_34:
+    xret_38:
     ; ldp     x19, x22, [sp, #64]
     lea r10, [rsp]
     add r10, 40h
@@ -7061,28 +7422,28 @@ _throw_uncaught:
     lea rax, msg_throw
     mov QWORD PTR arm_x0, rax
     ; bl      emit_cstr
-    lea rax, xret_35
+    lea rax, xret_39
     mov QWORD PTR arm_x30, rax
     jmp emit_cstr
-    xret_35:
+    xret_39:
     ; ldr     x0, [sp, #48]
     lea r10, [rsp]
     add r10, 30h
     mov rax, QWORD PTR [r10]
     mov QWORD PTR arm_x0, rax
     ; bl      _print_signed
-    lea rax, xret_36
+    lea rax, xret_40
     mov QWORD PTR arm_x30, rax
     jmp _print_signed
-    xret_36:
+    xret_40:
     ; mov     x0, #10
     mov rax, 0Ah
     mov QWORD PTR arm_x0, rax
     ; bl      _putchar
-    lea rax, xret_37
+    lea rax, xret_41
     mov QWORD PTR arm_x30, rax
     jmp _putchar
-    xret_37:
+    xret_41:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]
     add r10, 20h
@@ -7182,10 +7543,10 @@ XPARSE:
     add rax, 8
     mov QWORD PTR arm_x22, rax
     ; bl      _cursor_load
-    lea rax, xret_38
+    lea rax, xret_42
     mov QWORD PTR arm_x30, rax
     jmp _cursor_load
-    xret_38:
+    xret_42:
     ; mov     x9, x0
     mov rax, QWORD PTR arm_x0
     mov QWORD PTR arm_x9, rax
@@ -7259,10 +7620,10 @@ _parse_commit:
     mov rax, QWORD PTR arm_x3
     mov QWORD PTR arm_x0, rax
     ; bl      _cursor_commit
-    lea rax, xret_39
+    lea rax, xret_43
     mov QWORD PTR arm_x30, rax
     jmp _cursor_commit
-    xret_39:
+    xret_43:
     ; str     x20, [x22, #-8]!
     mov rax, QWORD PTR arm_x22
     add rax, -8
@@ -7366,10 +7727,10 @@ XWORD:
     mov eax, DWORD PTR arm_x20
     mov QWORD PTR arm_x7, rax
     ; bl      _cursor_load
-    lea rax, xret_40
+    lea rax, xret_44
     mov QWORD PTR arm_x30, rax
     jmp _cursor_load
-    xret_40:
+    xret_44:
     ; lea x3, source_end
     lea rax, source_end
     mov QWORD PTR arm_x3, rax
@@ -7662,10 +8023,10 @@ _word_store:
     mov QWORD PTR arm_x5, rax
 _word_len_ok:
     ; bl      _cursor_commit
-    lea rax, xret_41
+    lea rax, xret_45
     mov QWORD PTR arm_x30, rax
     jmp _cursor_commit
-    xret_41:
+    xret_45:
     ; lea x6, word_scratch
     lea rax, word_scratch
     mov QWORD PTR arm_x6, rax
@@ -7757,10 +8118,10 @@ _word_done:
     jmp rax
 _word_empty:
     ; bl      _cursor_commit
-    lea rax, xret_42
+    lea rax, xret_46
     mov QWORD PTR arm_x30, rax
     jmp _cursor_commit
-    xret_42:
+    xret_46:
     ; lea x6, word_scratch
     lea rax, word_scratch
     mov QWORD PTR arm_x6, rax
@@ -7853,10 +8214,10 @@ XDOTPAREN:
     mov eax, 29h
     mov QWORD PTR arm_x7, rax
     ; bl      _cursor_load
-    lea rax, xret_43
+    lea rax, xret_47
     mov QWORD PTR arm_x30, rax
     jmp _cursor_load
-    xret_43:
+    xret_47:
     ; mov     x9, x0
     mov rax, QWORD PTR arm_x0
     mov QWORD PTR arm_x9, rax
@@ -7930,10 +8291,10 @@ _dotp_go:
     mov rax, QWORD PTR arm_x3
     mov QWORD PTR arm_x0, rax
     ; bl      _cursor_commit
-    lea rax, xret_44
+    lea rax, xret_48
     mov QWORD PTR arm_x30, rax
     jmp _cursor_commit
-    xret_44:
+    xret_48:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]
     add r10, 20h
@@ -8017,10 +8378,10 @@ XBACKSLASH:
     mov rax, QWORD PTR arm_x30
     mov QWORD PTR [r10+8], rax
     ; bl      _cursor_load
-    lea rax, xret_45
+    lea rax, xret_49
     mov QWORD PTR arm_x30, rax
     jmp _cursor_load
-    xret_45:
+    xret_49:
     ; mov     x10, x0
     mov rax, QWORD PTR arm_x0
     mov QWORD PTR arm_x10, rax
@@ -8082,10 +8443,10 @@ _bs_done:
     mov rax, QWORD PTR arm_x10
     mov QWORD PTR arm_x0, rax
     ; bl      _cursor_commit
-    lea rax, xret_46
+    lea rax, xret_50
     mov QWORD PTR arm_x30, rax
     jmp _cursor_commit
-    xret_46:
+    xret_50:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]
     add r10, 20h
@@ -8266,10 +8627,10 @@ XPAREN:
     mov rax, QWORD PTR arm_x30
     mov QWORD PTR [r10+8], rax
     ; bl      _cursor_load
-    lea rax, xret_47
+    lea rax, xret_51
     mov QWORD PTR arm_x30, rax
     jmp _cursor_load
-    xret_47:
+    xret_51:
     ; mov     x10, x0
     mov rax, QWORD PTR arm_x0
     mov QWORD PTR arm_x10, rax
@@ -8336,19 +8697,19 @@ _par_eol:
     cmp rax, 0
     je _par_store
     ; bl      _take_line
-    lea rax, xret_48
+    lea rax, xret_52
     mov QWORD PTR arm_x30, rax
     jmp _take_line
-    xret_48:
+    xret_52:
     ; cbz     x0, _par_eof
     mov rax, QWORD PTR arm_x0
     cmp rax, 0
     je _par_eof
     ; bl      _cursor_load
-    lea rax, xret_49
+    lea rax, xret_53
     mov QWORD PTR arm_x30, rax
     jmp _cursor_load
-    xret_49:
+    xret_53:
     ; mov     x10, x0
     mov rax, QWORD PTR arm_x0
     mov QWORD PTR arm_x10, rax
@@ -8363,10 +8724,10 @@ _par_eol:
     jmp _par_loop
 _par_eof:
     ; bl      _cursor_load
-    lea rax, xret_50
+    lea rax, xret_54
     mov QWORD PTR arm_x30, rax
     jmp _cursor_load
-    xret_50:
+    xret_54:
     ; mov     x10, x0
     mov rax, QWORD PTR arm_x0
     mov QWORD PTR arm_x10, rax
@@ -8375,10 +8736,10 @@ _par_store:
     mov rax, QWORD PTR arm_x10
     mov QWORD PTR arm_x0, rax
     ; bl      _cursor_commit
-    lea rax, xret_51
+    lea rax, xret_55
     mov QWORD PTR arm_x30, rax
     jmp _cursor_commit
-    xret_51:
+    xret_55:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]
     add r10, 20h
@@ -8557,10 +8918,10 @@ XSQUOTE:
     mov rax, QWORD PTR arm_x30
     mov QWORD PTR [r10+8], rax
     ; bl      _cursor_load
-    lea rax, xret_52
+    lea rax, xret_56
     mov QWORD PTR arm_x30, rax
     jmp _cursor_load
-    xret_52:
+    xret_56:
     ; mov     x1, x0
     mov rax, QWORD PTR arm_x0
     mov QWORD PTR arm_x1, rax
@@ -8633,10 +8994,10 @@ _sq_commit:
     mov rax, QWORD PTR arm_x1
     mov QWORD PTR arm_x0, rax
     ; bl      _cursor_commit
-    lea rax, xret_53
+    lea rax, xret_57
     mov QWORD PTR arm_x30, rax
     jmp _cursor_commit
-    xret_53:
+    xret_57:
     ; lea x0, state_var
     lea rax, state_var
     mov QWORD PTR arm_x0, rax
@@ -8724,20 +9085,20 @@ _sq_comp:
     mov rax, QWORD PTR [r10]
     mov QWORD PTR arm_x0, rax
     ; bl      _compile_cell
-    lea rax, xret_54
+    lea rax, xret_58
     mov QWORD PTR arm_x30, rax
     jmp _compile_cell
-    xret_54:
+    xret_58:
     ; ldr     x0, [sp, #56]
     lea r10, [rsp]
     add r10, 38h
     mov rax, QWORD PTR [r10]
     mov QWORD PTR arm_x0, rax
     ; bl      _compile_cell
-    lea rax, xret_55
+    lea rax, xret_59
     mov QWORD PTR arm_x30, rax
     jmp _compile_cell
-    xret_55:
+    xret_59:
     ; ldr     x5, [sp, #56]
     lea r10, [rsp]
     add r10, 38h
@@ -8978,10 +9339,10 @@ XCQUOTE:
     mov rax, QWORD PTR arm_x30
     mov QWORD PTR [r10+8], rax
     ; bl      _cursor_load
-    lea rax, xret_56
+    lea rax, xret_60
     mov QWORD PTR arm_x30, rax
     jmp _cursor_load
-    xret_56:
+    xret_60:
     ; mov     x1, x0
     mov rax, QWORD PTR arm_x0
     mov QWORD PTR arm_x1, rax
@@ -9054,10 +9415,10 @@ _cq_commit:
     mov rax, QWORD PTR arm_x1
     mov QWORD PTR arm_x0, rax
     ; bl      _cursor_commit
-    lea rax, xret_57
+    lea rax, xret_61
     mov QWORD PTR arm_x30, rax
     jmp _cursor_commit
-    xret_57:
+    xret_61:
     ; cmp     x5, #255
     mov rax, QWORD PTR arm_x5
     cmp rax, 0FFh
@@ -9197,10 +9558,10 @@ _cq_comp:
     mov rax, QWORD PTR [r10]
     mov QWORD PTR arm_x0, rax
     ; bl      _compile_cell
-    lea rax, xret_58
+    lea rax, xret_62
     mov QWORD PTR arm_x30, rax
     jmp _compile_cell
-    xret_58:
+    xret_62:
     ; ldr     x5, [sp, #56]
     lea r10, [rsp]
     add r10, 38h
@@ -9328,8 +9689,8 @@ next_debug_gate:
     jmp rax
 .CONST
 msg_allot:
-    ; DCB     " allot range", 10, 0
-    DB " allot range", 0Ah, 0
+    ; DCB     "ALLOT: dictionary full (need more USER-DICT space)", 10, 0
+    DB "ALLOT: dictionary full (need more USER-DICT space)", 0Ah, 0
 msg_throw:
     ; DCB     " throw ", 0
     DB " throw ", 0

@@ -33,6 +33,9 @@
         EXTERN line_limit
         EXTERN line_next
         EXTERN source_id
+        EXTERN view_src_id
+        EXTERN view_id_sp
+        EXTERN _view_pop_src_id
         EXTERN file_echo
         EXTERN file_echo_pos
         EXTERN file_echo_stack
@@ -59,6 +62,8 @@
         EXTERN cfa_loop
         EXTERN cfa_plusloop
         EXTERN _local_lookup
+        EXTERN _local_compile_reset
+        EXTERN noname_xt
         EXTERN restart_cell
         EXTERN data_stack
         EXTERN return_stack
@@ -443,6 +448,12 @@ _eval_go
         adrp    x2, source_sp
         add     x2, x2, source_sp
         str     xzr, [x2]
+        adrp    x2, view_src_id
+        add     x2, x2, view_src_id
+        str     xzr, [x2]
+        adrp    x2, view_id_sp
+        add     x2, x2, view_id_sp
+        str     xzr, [x2]
         adrp    x2, eval_resume_sp
         add     x2, x2, eval_resume_sp
         str     xzr, [x2]
@@ -452,6 +463,7 @@ _eval_go
 _interpret_loop
         adrp    x24, latest_var
         add     x24, x24, latest_var
+        bl      _check_stack
         bl      _file_echo_upto_cursor
         bl      _next_word
         cbz     x1, _interpret_empty
@@ -638,9 +650,23 @@ _interpret_undef
         adrp    x7, throw_handler
         add     x7, x7, throw_handler
         ldr     x1, [x7]
-        cbz     x1, _interpret_loop
+        cbz     x1, _undef_abandon
         mov     x20, #-13
         b       XTHROW
+
+; No CATCH around this evaluate (the console). Stop on this token.
+; Compiling goes off and both stacks are emptied. A loaded file has a
+; CATCH, so it still receives THROW -13.
+_undef_abandon
+        adrp    x22, data_stack
+        add     x22, x22, data_stack
+        add     x22, x22, #1, lsl #12
+        mov     x20, #0
+        bl      _local_compile_reset
+        adrp    x0, noname_xt
+        add     x0, x0, noname_xt
+        str     xzr, [x0]
+        b       _do_quit
 
 _interpret_empty
         adrp    x0, line_mode
@@ -661,6 +687,13 @@ _ie_pop
         ldr     x25, [x0]
         bl      _pop_source
         cbz     x0, _embed_finish
+        cmp     x25, #0
+        b.gt    _ie_view_pop
+        cmn     x25, #2
+        b.ne    _ie_after_view
+_ie_view_pop
+        bl      _view_pop_src_id
+_ie_after_view
         cmn     x25, #1
         b.eq    _ie_resume
         cmn     x25, #2
@@ -691,6 +724,12 @@ _do_quit
         str     xzr, [x0]
         adrp    x0, source_id
         add     x0, x0, source_id
+        str     xzr, [x0]
+        adrp    x0, view_src_id
+        add     x0, x0, view_src_id
+        str     xzr, [x0]
+        adrp    x0, view_id_sp
+        add     x0, x0, view_id_sp
         str     xzr, [x0]
         adrp    x0, line_mode
         add     x0, x0, line_mode
@@ -729,6 +768,33 @@ _embed_ret_x0
         add     sp, sp, #128
         ret
         ENDP
+
+; Between outer-interpreter words. Empty is data_stack+4096.
+; Above that is underflow. Below data_stack is overflow.
+; . on an empty stack has already printed the cached 0 and a space.
+; Kept outside kernel_eval so ret returns to the interpreter, not to C.
+_check_stack
+        adrp    x0, data_stack
+        add     x0, x0, data_stack
+        add     x1, x0, #1, lsl #12
+        cmp     x22, x1
+        b.hi    _stack_underflow
+        cmp     x22, x0
+        b.lo    _stack_overflow
+        ret
+
+_stack_underflow
+        adrp    x0, msg_underflow
+        add     x0, x0, msg_underflow
+        bl      emit_cstr
+        b       _stack_reset_abandon
+
+_stack_overflow
+        adrp    x0, msg_overflow
+        add     x0, x0, msg_overflow
+        bl      emit_cstr
+_stack_reset_abandon
+        b       _undef_abandon
 
 ; FILE-ECHO. Echo source lines of a file load up through the line that
 ; holds the next token. Each line is "NNNNN| " plus the text. source-id
@@ -1201,8 +1267,19 @@ _tu_loop
         ldr     x2, [sp, #48]
         cmp     x1, x2
         b.ls    _tu_done
+        adrp    x0, source_id
+        add     x0, x0, source_id
+        ldr     x0, [x0]
+        str     x0, [sp, #56]
         bl      _pop_source
         cbz     x0, _tu_done
+        ldr     x0, [sp, #56]
+        cmp     x0, #0
+        b.gt    _tu_view
+        cmn     x0, #2
+        b.ne    _tu_loop
+_tu_view
+        bl      _view_pop_src_id
         b       _tu_loop
 _tu_done
         ldp     x29, x30, [sp, #32]
@@ -1264,6 +1341,8 @@ next_debug_gate
         AREA |.rdata|, DATA, READONLY, ALIGN=8
 
 msg_huh         DCB     " ?", 10, 0
+msg_underflow   DCB     "stack underflow", 10, 0
+msg_overflow    DCB     "stack overflow", 10, 0
         ALIGN   8
 boot_cmp_lit    DCB     "LIT", 0
 boot_cmp_exit   DCB     "EXIT", 0

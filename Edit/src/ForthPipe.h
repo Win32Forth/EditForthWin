@@ -30,6 +30,10 @@ public:
     void requestBreaks();
     void enableBreak(int index, bool on);
     void toggleBreak(const QString &name);
+    void requestLast();
+    void requestView(const QString &name);
+    void requestTree(const QString &mode);
+    void requestRunTo(int utf8Offset);
     bool signalBreak();
 
 public slots:
@@ -42,7 +46,8 @@ public slots:
                    const QString &path);
     void noteBreaks(const QString &text);
     void noteError(const QString &text);
-    void noteEdit(const QString &path);
+    void noteEdit(const QString &path, int line);
+    void noteLast(const QString &name);
     void noteVersion(const QString &text);
 
 signals:
@@ -54,7 +59,8 @@ signals:
                        const QString &path);
     void breaksReceived(const QString &text);
     void statusError(const QString &text);
-    void editReceived(const QString &path);
+    void editReceived(const QString &path, int line);
+    void lastReceived(const QString &name);
     void versionReceived(const QString &text);
 
 private:

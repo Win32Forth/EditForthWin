@@ -7,7 +7,10 @@
 \     match only at first non-blank on the line (no mid-body CREATE)
 \   - SPECS expanded by host via virtual Config/HYPER.SPECS
 \   - *EXCLUDE applied by host when building the SPECS list
-\   - BOOT_WORD → CodeLabel in Library/Sources/forth.s
+\   - Running kernel: Library/Sources/arm64 or Library/Sources/x64
+\     (hx-arm64.fth / hx-x64.fth). forth.s is the Mac kernel and is not indexed.
+\   - Cold kernel .fth files (kernel1.fth through boot-fix.fth) are in the
+\     fallback list. Mac reaches the same sources through SPECS.
 \   - Sources .s/.inc TYPE 0 only on .ascii / .asciz lines
 \
 \ Use:  HYPER-REINDEX   (FORTH wrapper; HX-DO-REINDEX + helpers in HYPER-VOC)
@@ -393,11 +396,8 @@ CREATE HX-LTAB  HX-LMAX HX-ESIZE * ALLOT
    AGAIN ;
 
 : HX-COLLECT-LABELS  ( -- )
-   0 TO HX-LN
-   S" Library/Sources/forth.s" HX-COLLECT-LABELS-FILE
-   MIN-HYPER-NOISE @ 0=
-   IF   ." HX: " HX-LN . ." asm labels" CR
-   THEN ;
+   \ Code words come from the running kernel's asm, not Mac forth.s.
+   0 TO HX-LN ;
 
 \ -----------------------------------------------------------------------------
 \ BOOT_WORD "name", "help", imm, CodeLabel
@@ -529,8 +529,25 @@ CREATE HX-LTAB  HX-LMAX HX-ESIZE * ALLOT
 \ SPECS — host expands Config/HYPER.CFG into virtual Config/HYPER.SPECS
 \ -----------------------------------------------------------------------------
 
+: HX-NO-KERNEL  ( -- ) ;
+
+DEFER HX-SCAN-KERNEL
+' HX-NO-KERNEL IS HX-SCAN-KERNEL
+
 : HX-SCAN-FALLBACK  ( -- )
-   S" Library/Sources/forth.s"       HX-SCAN-FILE
+   HX-SCAN-KERNEL
+   \ Cold kernel sources. Mac indexes these through SPECS Library/**/*.fth.
+   \ The asm scan above stays first, so a BOOT_WORD hit such as DUP is kept.
+   \ boot-fix.fth is last at cold start and replaces SYNONYM, REPLACES,
+   \ and SUBSTITUTE, so its hit has to win over kernel2.fth.
+   S" Library/Sources/boot-fix.fth"    HX-SCAN-FILE
+   S" Library/Sources/kernel1.fth"     HX-SCAN-FILE
+   S" Library/Sources/kernel2.fth"     HX-SCAN-FILE
+   S" Library/Sources/vocemit.fth"     HX-SCAN-FILE
+   S" Library/Sources/app-output.fth"  HX-SCAN-FILE
+   S" Library/Sources/app-points.fth"  HX-SCAN-FILE
+   S" Library/Sources/vocsys.fth"      HX-SCAN-FILE
+   S" Library/Sources/xref.fth"        HX-SCAN-FILE
    S" Library/Sources/colon_words.inc" HX-SCAN-FILE
    S" Library/Sources/boot_words.inc"  HX-SCAN-FILE
    S" Library/Hyper/hyper.fth"   HX-SCAN-FILE
@@ -627,6 +644,14 @@ CREATE HX-LTAB  HX-LMAX HX-ESIZE * ALLOT
       ."  " HYPER-LEN . ." bytes" CR
       HYPER-STAMP-COLD
    ELSE  ." HYPER: cannot open index" CR  THEN ;
+
+FLOAD hx-arm64.fth
+FLOAD hx-x64.fth
+
+\ x64 DUP's code begins with REX.W (72). Arm64 begins with the STR byte 212.
+: HX-RUN-KERNEL  ( -- )
+   ['] DUP @ C@ 72 = IF  HX-SCAN-X64  ELSE  HX-SCAN-ARM64  THEN ;
+' HX-RUN-KERNEL IS HX-SCAN-KERNEL
 
 \ Public entry in FORTH — no ALSO needed at the call site.
 \ Note: FORTH replaces search_order[0] (does not push). Keep HYPER-VOC first

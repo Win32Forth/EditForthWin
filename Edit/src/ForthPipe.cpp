@@ -171,7 +171,12 @@ public:
                     QMetaObject::invokeMethod(owner, "noteError", Qt::QueuedConnection,
                                               Q_ARG(QString, obj.value(QStringLiteral("text")).toString()));
                 } else if (op == QLatin1String("edit")) {
-                    QMetaObject::invokeMethod(owner, "noteEdit", Qt::QueuedConnection,
+                    QMetaObject::invokeMethod(
+                        owner, "noteEdit", Qt::QueuedConnection,
+                        Q_ARG(QString, obj.value(QStringLiteral("text")).toString()),
+                        Q_ARG(int, obj.value(QStringLiteral("line")).toInt()));
+                } else if (op == QLatin1String("last")) {
+                    QMetaObject::invokeMethod(owner, "noteLast", Qt::QueuedConnection,
                                               Q_ARG(QString, obj.value(QStringLiteral("text")).toString()));
                 } else if (op == QLatin1String("version")) {
                     QMetaObject::invokeMethod(owner, "noteVersion", Qt::QueuedConnection,
@@ -330,6 +335,18 @@ void ForthPipe::enableBreak(int index, bool on) {
 
 void ForthPipe::toggleBreak(const QString &name) { post(message("break-toggle", name)); }
 
+void ForthPipe::requestLast() { post(message("last", QString())); }
+
+void ForthPipe::requestView(const QString &name) { post(message("view", name)); }
+
+void ForthPipe::requestTree(const QString &mode) { post(message("tree", mode)); }
+
+void ForthPipe::requestRunTo(int utf8Offset) { post(message("runto", QString::number(utf8Offset))); }
+
+void ForthPipe::noteEdit(const QString &path, int line) { emit editReceived(path, line); }
+
+void ForthPipe::noteLast(const QString &name) { emit lastReceived(name); }
+
 bool ForthPipe::signalBreak() {
     const std::wstring name =
         QStringLiteral("Local\\EditForthWin-%1-break").arg(QCoreApplication::applicationPid()).toStdWString();
@@ -357,5 +374,3 @@ void ForthPipe::noteDebug(bool armed, bool paused, int line, int off, int len, c
 void ForthPipe::noteBreaks(const QString &text) { emit breaksReceived(text); }
 
 void ForthPipe::noteError(const QString &text) { emit statusError(text); }
-
-void ForthPipe::noteEdit(const QString &path) { emit editReceived(path); }

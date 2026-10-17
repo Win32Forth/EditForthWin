@@ -19,8 +19,9 @@
         EXTERN _take_line
         EXTERN line_mode
         EXTERN throw_handler
-        EXTERN dict_end
         EXTERN here_ptr
+        EXTERN user_dict_size_cell
+        EXTERN xchar_emit_buf
         EXTERN state_var
         EXTERN last_cfa
         EXTERN base_var
@@ -276,6 +277,74 @@ XTYPE
 XTYPE_END
         NEXT
 
+; XEMIT ( xchar -- ) encode UTF-8 into xchar_emit_buf and TYPE it.
+; The EMIT primitive already owns the label XEMIT. This word is XXCHAR_EMIT.
+        BOOT_WORD XEMIT, XEMIT ( xchar -- ) emit UTF-8 xchar to console, 0, XXCHAR_EMIT, XXCHAR_EMIT_END
+XXCHAR_EMIT
+        mov     x1, x20
+        ldr     x20, [x22], #8
+        movz    x2, #0xFFFF
+        movk    x2, #0x10, lsl #16
+        cmp     x1, x2
+        csel    x1, x2, x1, hi
+        adrp    x0, xchar_emit_buf
+        add     x0, x0, xchar_emit_buf
+        mov     x3, x0
+        cmp     x1, #0x7F
+        b.ls    _xe_1
+        cmp     x1, #0x7FF
+        b.ls    _xe_2
+        movz    x4, #0xFFFF
+        cmp     x1, x4
+        b.ls    _xe_3
+        lsr     x4, x1, #18
+        orr     w4, w4, #0xF0
+        strb    w4, [x0], #1
+        lsr     x4, x1, #12
+        and     w4, w4, #0x3F
+        orr     w4, w4, #0x80
+        strb    w4, [x0], #1
+        lsr     x4, x1, #6
+        and     w4, w4, #0x3F
+        orr     w4, w4, #0x80
+        strb    w4, [x0], #1
+        and     w4, w1, #0x3F
+        orr     w4, w4, #0x80
+        strb    w4, [x0], #1
+        b       _xe_9
+_xe_3
+        lsr     x4, x1, #12
+        orr     w4, w4, #0xE0
+        strb    w4, [x0], #1
+        lsr     x4, x1, #6
+        and     w4, w4, #0x3F
+        orr     w4, w4, #0x80
+        strb    w4, [x0], #1
+        and     w4, w1, #0x3F
+        orr     w4, w4, #0x80
+        strb    w4, [x0], #1
+        b       _xe_9
+_xe_2
+        lsr     x4, x1, #6
+        orr     w4, w4, #0xC0
+        strb    w4, [x0], #1
+        and     w4, w1, #0x3F
+        orr     w4, w4, #0x80
+        strb    w4, [x0], #1
+        b       _xe_9
+_xe_1
+        strb    w1, [x0], #1
+_xe_9
+        sub     x1, x0, x3
+        mov     x0, x3
+        sub     sp, sp, #64
+        stp     x29, x30, [sp, #32]
+        bl      emit_str
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #64
+XXCHAR_EMIT_END
+        NEXT
+
 ; ---------------------------------------------------------------------
 ; Dictionary and compiler
 ; ---------------------------------------------------------------------
@@ -309,8 +378,10 @@ XALLOT
         add     x4, x4, user_dict_area
         cmp     x3, x4
         b.lo    _allot_fail
-        adrp    x5, dict_end
-        add     x5, x5, dict_end
+        adrp    x5, user_dict_size_cell
+        add     x5, x5, user_dict_size_cell
+        ldr     x5, [x5]
+        add     x5, x4, x5
         cmp     x3, x5
         b.hi    _allot_fail
         str     x3, [x1]
@@ -619,9 +690,11 @@ XWORDLIST
         add     x4, x4, user_dict_area
         cmp     x3, x4
         b.lo    _allot_fail
-        adrp    x4, dict_end
-        add     x4, x4, dict_end
-        cmp     x3, x4
+        adrp    x5, user_dict_size_cell
+        add     x5, x5, user_dict_size_cell
+        ldr     x5, [x5]
+        add     x5, x4, x5
+        cmp     x3, x5
         b.hi    _allot_fail
         mov     x2, x1
         mov     x5, #16
@@ -1560,7 +1633,7 @@ next_debug_gate
 
         AREA |.rdata|, DATA, READONLY
 
-msg_allot   DCB     " allot range", 10, 0
+msg_allot   DCB     "ALLOT: dictionary full (need more USER-DICT space)", 10, 0
 msg_throw   DCB     " throw ", 0
 msg_huh_k1  DCB     " ?", 10, 0
 str_search_order DCB "Search order: ", 0

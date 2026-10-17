@@ -54,7 +54,8 @@ DebugBar::DebugBar(QWidget *parent) : QWidget(parent) {
     m_mark = new QLabel(QStringLiteral("debugging"), this);
     m_mark->setStyleSheet(QString::fromLatin1(kMark));
     m_word = new QLabel(this);
-    m_hint = new QLabel(QStringLiteral("F6 over  |  F7 into  |  F8 out  |  F5 continue  |  Esc stop"), this);
+    m_hint = new QLabel(
+        QStringLiteral("F6 over  |  F7 into  |  F8 out  |  F5 continue  |  Esc stop"), this);
     m_error = new QLabel(this);
     m_error->setWordWrap(true);
     m_error->setStyleSheet(QString::fromLatin1(kError));
@@ -62,9 +63,13 @@ DebugBar::DebugBar(QWidget *parent) : QWidget(parent) {
     m_note->setWordWrap(true);
     m_note->setStyleSheet(QString::fromLatin1(kNote));
 
+    m_include = new QPushButton(QStringLiteral("INCLUDE"), this);
+    m_run = new QPushButton(QStringLiteral("RUN"), this);
     m_pause = new QPushButton(QStringLiteral("Pause"), this);
     auto *breaks = new QPushButton(QStringLiteral("Breakpoints"), this);
     m_dock = new QPushButton(QStringLiteral("Undock"), this);
+    connect(m_include, &QPushButton::clicked, this, &DebugBar::includeRequested);
+    connect(m_run, &QPushButton::clicked, this, &DebugBar::runRequested);
     connect(m_pause, &QPushButton::clicked, this, &DebugBar::pauseRequested);
     connect(breaks, &QPushButton::clicked, this, &DebugBar::showBreaks);
     connect(m_dock, &QPushButton::clicked, this, &DebugBar::dockToggleRequested);
@@ -76,6 +81,8 @@ DebugBar::DebugBar(QWidget *parent) : QWidget(parent) {
     strip->addWidget(m_word);
     strip->addStretch(1);
     strip->addWidget(m_hint);
+    strip->addWidget(m_include);
+    strip->addWidget(m_run);
     strip->addWidget(m_pause);
     strip->addWidget(breaks);
     strip->addWidget(m_dock);
@@ -98,7 +105,8 @@ DebugBar::DebugBar(QWidget *parent) : QWidget(parent) {
     connect(toolPause, &QPushButton::clicked, this, &DebugBar::pauseRequested);
 
     auto *help = new QLabel(
-        QStringLiteral("Breakpoints  |  Arm  |  F6 over  |  F7 into  |  F8 out  |  F5 continue  |  Esc stop"),
+        QStringLiteral(
+            "Idle F5 fills RUN. Paused: F6 over  |  F7 into  |  F8 out  |  F5 continue  |  Esc stop"),
         this);
     auto *tools = new QHBoxLayout;
     tools->setContentsMargins(8, 2, 8, 4);
@@ -221,6 +229,10 @@ void DebugBar::apply() {
         m_tools->setStyleSheet(m_connected ? QStringLiteral("background: #d7ecd4;")
                                            : QStringLiteral("background: #ffe8cc;"));
     m_pause->setEnabled(m_connected);
+    m_include->setVisible(!m_armed);
+    m_run->setVisible(!m_armed);
+    m_include->setEnabled(m_connected && !m_armed);
+    m_run->setEnabled(m_connected && !m_armed);
     m_arm->setEnabled(m_connected && (!m_armed || m_paused));
     const bool step = m_connected && m_paused;
     m_over->setEnabled(step);

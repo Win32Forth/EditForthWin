@@ -22,6 +22,8 @@ public:
 
 signals:
     void pauseRequested();
+    void includeRequested();
+    void runRequested();
     void breakpointsRequested();
     void armRequested();
     void stepOverRequested();
@@ -50,6 +52,8 @@ private:
     QLabel *m_note = nullptr;
     QWidget *m_tools = nullptr;
     QPushButton *m_pause = nullptr;
+    QPushButton *m_include = nullptr;
+    QPushButton *m_run = nullptr;
     QPushButton *m_arm = nullptr;
     QPushButton *m_over = nullptr;
     QPushButton *m_into = nullptr;

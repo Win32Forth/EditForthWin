@@ -23,7 +23,8 @@
         EXTERN search_order_n
         EXTERN latest_var
         EXTERN user_dict_area
-        EXTERN dict_end
+        EXTERN user_dict_size_cell
+        EXTERN grow_memory_used
         EXTERN wordlist_reg
         EXTERN wordlist_reg_n
         EXTERN source_base
@@ -96,6 +97,8 @@
         EXTERN host_time_date
         EXTERN host_chdir
         EXTERN host_edit
+        EXTERN host_edit_at
+        EXTERN host_system
         EXTERN host_fromlib
         EXTERN host_fromlib_off
         EXTERN host_fromlib_query
@@ -145,6 +148,10 @@
         EXTERN source_sp
         EXTERN eval_resume_sp
         EXTERN resolve_buf
+        EXTERN include_name_pending
+        EXTERN include_name_len
+        EXTERN _view_push_src_id
+        EXTERN _view_set_src_from_pending
         EXTERN msg_allot
         EXTERN msg_huh
 
@@ -366,13 +373,74 @@ XUNUSED
         adrp    x0, here_ptr
         add     x0, x0, here_ptr
         ldr     x1, [x0]
-        adrp    x0, dict_end
-        add     x0, x0, dict_end
-        sub     x0, x0, x1
+        adrp    x0, user_dict_area
+        add     x0, x0, user_dict_area
+        adrp    x2, user_dict_size_cell
+        add     x2, x2, user_dict_size_cell
+        ldr     x2, [x2]
+        add     x0, x0, x2
+        subs    x0, x0, x1
+        b.hs    _unused_ok
+        mov     x0, #0
+_unused_ok
         str     x20, [x22, #-8]!
         mov     x20, x0
 XUNUSED_END
         NEXT
+
+        BOOT_WORD USER-DICT, USER-DICT ( -- addr ) base of user dictionary, 0, XUSER_DICT, 0
+XUSER_DICT
+        str     x20, [x22, #-8]!
+        adrp    x0, user_dict_area
+        add     x0, x0, user_dict_area
+        mov     x20, x0
+        NEXT
+
+; Once per session. No shrink. 1 MiB through 256 MiB. The base stays put.
+        BOOT_WORD GROWMEMORYMB, GROWMEMORYMB ( n -- ) grow user dictionary to n MiB once per session with no shrink and a max of 256, 0, XGROWMEMORYMB, 0
+XGROWMEMORYMB
+        mov     x0, x20
+        ldr     x20, [x22], #8
+        adrp    x1, grow_memory_used
+        add     x1, x1, grow_memory_used
+        ldr     x2, [x1]
+        cbnz    x2, _gmm_already
+        cmp     x0, #1
+        b.lt    _gmm_small
+        cmp     x0, #256
+        b.hi    _gmm_big
+        lsl     x3, x0, #20
+        adrp    x4, user_dict_size_cell
+        add     x4, x4, user_dict_size_cell
+        ldr     x5, [x4]
+        cmp     x3, x5
+        b.ls    _gmm_shrink
+        str     x3, [x4]
+        mov     x2, #1
+        str     x2, [x1]
+        NEXT
+_gmm_already
+        adrp    x0, str_gmm_already
+        add     x0, x0, str_gmm_already
+        b       _gmm_fail
+_gmm_small
+        adrp    x0, str_gmm_small
+        add     x0, x0, str_gmm_small
+        b       _gmm_fail
+_gmm_big
+        adrp    x0, str_gmm_big
+        add     x0, x0, str_gmm_big
+        b       _gmm_fail
+_gmm_shrink
+        adrp    x0, str_gmm_shrink
+        add     x0, x0, str_gmm_shrink
+_gmm_fail
+        sub     sp, sp, #64
+        stp     x29, x30, [sp, #32]
+        bl      emit_cstr
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #64
+        b       _quit_exit
 
         BOOT_WORD_CCOMMA  ( b -- ) compile a byte, 0, XCCOMMA, 0
 XCCOMMA
@@ -386,8 +454,10 @@ XCCOMMA
         add     x4, x4, user_dict_area
         cmp     x3, x4
         b.lo    _ccomma_fail
-        adrp    x5, dict_end
-        add     x5, x5, dict_end
+        adrp    x5, user_dict_size_cell
+        add     x5, x5, user_dict_size_cell
+        ldr     x5, [x5]
+        add     x5, x4, x5
         cmp     x3, x5
         b.hi    _ccomma_fail
         strb    w0, [x2]
@@ -2147,6 +2217,47 @@ XTEXTEDIT
         ldp     x29, x30, [sp], #16
         NEXT
 
+; EDIT-AT ( c-addr u line -- ). Line 0 opens the file. Does not change cwd.
+        BOOT_WORD EDIT-AT, EDIT-AT ( c-addr u line -- ) open path at line in the editor, 0, XEDIT_AT, 0
+XEDIT_AT
+        mov     x3, x20
+        ldr     x2, [x22], #8
+        ldr     x1, [x22], #8
+        adrp    x9, data_stack
+        add     x9, x9, data_stack
+        add     x9, x9, #1, lsl #12
+        cmp     x22, x9
+        b.hs    _eat_empty
+        ldr     x20, [x22], #8
+        b       _eat_call
+_eat_empty
+        mov     x20, #0
+_eat_call
+        mov     x0, x1
+        mov     x1, x2
+        mov     x2, x3
+        sub     sp, sp, #64
+        stp     x29, x30, [sp, #32]
+        bl      host_edit_at
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #64
+        NEXT
+
+; End label follows NEXT, matching the Mac SYSTEM row.
+        BOOT_WORD SYSTEM, SYSTEM ( c-addr u -- n ) run a shell command and return the exit code or -1, 0, XSYSTEM, XSYSTEM_END
+XSYSTEM
+        mov     x1, x20
+        ldr     x0, [x22], #8
+        sub     sp, sp, #64
+        stp     x29, x30, [sp, #32]
+        bl      host_system
+        str     x0, [sp, #48]
+        ldp     x29, x30, [sp, #32]
+        ldr     x20, [sp, #48]
+        add     sp, sp, #64
+        NEXT
+XSYSTEM_END
+
 ; VIEW-PATH, DBG-ON, and DBG-OFF live with the stepper in prims_dbg.asm.
 
 ; ---------------------------------------------------------------------
@@ -2479,6 +2590,8 @@ XLINE_SOURCE
         stp     x29, x30, [sp, #32]
         stp     x0, x1, [sp, #48]
         bl      _push_source
+        bl      _view_push_src_id
+        bl      _view_set_src_from_pending
         ldp     x0, x1, [sp, #48]
         bl      _arm_lines
         adrp    x0, source_id
@@ -2505,6 +2618,28 @@ XRESOLVE_KEY
         add     x2, x2, resolve_buf
         mov     x3, #256
         bl      host_resolve
+        mov     x1, x0
+        cmp     x1, #255
+        b.ls    _rk_cap
+        mov     x1, #255
+_rk_cap
+        adrp    x3, include_name_len
+        add     x3, x3, include_name_len
+        str     x1, [x3]
+        cbz     x1, _rk_copied
+        adrp    x2, resolve_buf
+        add     x2, x2, resolve_buf
+        adrp    x3, include_name_pending
+        add     x3, x3, include_name_pending
+        mov     x4, #0
+_rk_cp
+        cmp     x4, x1
+        b.hs    _rk_copied
+        ldrb    w5, [x2, x4]
+        strb    w5, [x3, x4]
+        add     x4, x4, #1
+        b       _rk_cp
+_rk_copied
         adrp    x2, resolve_buf
         add     x2, x2, resolve_buf
         ldp     x29, x30, [sp, #32]
@@ -2513,6 +2648,9 @@ XRESOLVE_KEY
         mov     x20, x0
         NEXT
 _resolve_empty
+        adrp    x1, include_name_len
+        add     x1, x1, include_name_len
+        str     xzr, [x1]
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
         str     x0, [x22, #-8]!
@@ -3775,6 +3913,10 @@ next_debug_gate
 
 req_included_name DCB   "INCLUDED"
 str_protected   DCB     "protected (system word)", 10, 0
+str_gmm_already DCB     "? GROWMEMORYMB already used (once per session)", 10, 0
+str_gmm_small   DCB     "? GROWMEMORYMB needs at least 1 MB", 10, 0
+str_gmm_big     DCB     "? GROWMEMORYMB exceeds maximum (256 MB)", 10, 0
+str_gmm_shrink  DCB     "? GROWMEMORYMB cannot shrink memory", 10, 0
 str_bang        DCB     "!", 0
 str_twostore    DCB     "2!", 0
 str_twofetch    DCB     "2@", 0

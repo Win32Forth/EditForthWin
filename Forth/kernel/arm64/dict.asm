@@ -3,7 +3,9 @@
 ;   NFA   counted name (uppercase, bit7 = SMUDGE), padded to 8
 ;   LFA   previous CFA of this hash thread     at CFA-16
 ;   FFA   flags                                at CFA-8
-;         bits 0-15 NFA_OFF, 16-31 HFA_OFF, bit 63 IMMEDIATE
+;         bits 0-15 NFA_OFF, 16-31 HFA_OFF
+;         bits 32-47 source line, bits 48-60 source file id
+;         bits 61-63 INLINE, EMM, IMMEDIATE
 ;   CFA   code address
 ;   HERE is CFA+8 on return. Colon allots one cell so the body is CFA+16.
 ; latest_var is DICT_THREADS (16) heads. x24 = &latest_var.
@@ -31,6 +33,8 @@
         EXTERN base_var
         EXTERN pending_help_addr
         EXTERN pending_help_len
+        EXTERN _view_line_now
+        EXTERN view_src_id
         EXTERN exit_cfa
         EXTERN emit_cstr
         EXTERN DOCOL
@@ -167,6 +171,22 @@ _hb_link
         sub     x2, x0, x8
         and     x2, x2, #0xFFFF
         lsl     x2, x2, #16
+        orr     x1, x1, x2
+        ; Line and file id. _view_line_now is a leaf, so HERE and the
+        ; link slot in x6, x9, and x10 stay live. x0 is the CFA.
+        stp     x0, x1, [sp, #96]
+        bl      _view_line_now
+        mov     x3, x0
+        adrp    x2, view_src_id
+        add     x2, x2, view_src_id
+        ldr     x2, [x2]
+        ldp     x0, x1, [sp, #96]
+        and     x3, x3, #0xFFFF
+        lsl     x3, x3, #32
+        orr     x1, x1, x3
+        mov     x4, #0x1FFF
+        and     x2, x2, x4
+        lsl     x2, x2, #48
         orr     x1, x1, x2
         ldr     x5, [sp, #112]
         orr     x1, x1, x5

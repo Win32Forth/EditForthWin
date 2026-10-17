@@ -1,23 +1,17 @@
 Library/Sources — shipped kernel source for VIEW / Hyper
 ========================================================
 
-These files are copies of 64Forth/Kernel/ for distribution inside the app
-bundle (Resources/Library/Sources/). Hyper indexes them as:
+High-level kernel sources (kernel1.fth, kernel2.fth, and the other cold
+files) stay in this folder.
 
-  Library/Sources/forth.s
-  Library/Sources/boot_words.inc
-  Library/Sources/colon_words.inc
-  …
+Windows assembly is not forth.s. forth.s is the Mac kernel. Each Forth
+build copies the assembler sources for that image:
 
-so LOCATE/VIEW work in a release DMG without a developer checkout.
+  Library/Sources/arm64/     armasm64 sources (Forth/kernel/arm64)
+  Library/Sources/x64/       ml64 sources (Forth/kernel/x64)
 
-The Xcode “Copy Library” phase also refreshes this folder in the build
-product from Kernel/ on every build. After editing Kernel sources, rebuild
-(or re-copy) and run HYPER-REINDEX / tools/build_hyper_index.py so HYPER.NDX
-line numbers stay accurate.
+The first launch copies files that are not already under
+Documents\EditForthWin\Library. HYPER-REINDEX reads the folder that
+matches the running program. VIEW of DUP opens prims.asm in that folder.
 
-Do not treat this folder as the edit-source-of-truth for the kernel — edit
-64Forth/Kernel/ then rebuild.
-
-Swift host sources (App/, Host/) are not copied here: Hyper indexes Forth and
-kernel assembly definitions only. Library/**/*.fth is already in the bundle.
+Do not edit the copies here. Edit Forth/kernel, rebuild, and reindex.

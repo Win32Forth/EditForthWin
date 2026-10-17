@@ -12,8 +12,12 @@ qt_add_executable(editforthwin WIN32
     src/MainWindow.cpp
     src/CodeEdit.cpp
     src/DebugBar.cpp
+    src/DiskDiff.cpp
+    src/FindBar.cpp
+    src/FolderSearch.cpp
     src/ForthConsole.cpp
     src/ForthPipe.cpp
+    src/WebTab.cpp
 )
 
 target_link_libraries(editforthwin PRIVATE Qt6::Widgets)
