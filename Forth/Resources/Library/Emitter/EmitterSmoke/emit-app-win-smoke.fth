@@ -11,7 +11,7 @@ ONLY FORTH ALSO SYSVOC ALSO EMITTER DEFINITIONS
 : T-DOT  ( -- )  42 . ;
 
 : (WIN-EMIT)  ( -- )
-  ['] T-DOT S" emit-app-win-out" EMIT-APP-XT-TO ;
+  ['] T-DOT EMIT-APP-XT ;
 
 (WIN-EMIT)
 

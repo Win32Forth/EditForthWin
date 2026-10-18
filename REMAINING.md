@@ -39,7 +39,7 @@ The assembler and the emitter were not loaded for the checks above. An unknown w
 
 `(APP-OPEN)` and the other `(APP-*)` names are moved into `GRAPHICS` at cold start. A source file that calls them needs `ALSO GRAPHICS`.
 
-Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 7, and `emit-win-out\T-WIN\T-WIN.exe` showed `hello 42` plus blue, green, and red squares. `EMIT-WINDOW-APP` is not that path yet. The x64 emitter was not built. Hayes and ANS-VALIDATE were not run for 1.2.2.
+Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 7, and `T-WIN\T-WIN.exe` beside the source file showed `hello 42` plus blue, green, and red squares. `EMIT-WINDOW-APP` is not that path yet. The x64 emitter was not built. Hayes and ANS-VALIDATE were not run for 1.2.2.
 
 ## Hayes
 

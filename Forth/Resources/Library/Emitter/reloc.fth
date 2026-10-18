@@ -1091,12 +1091,23 @@ $D63F0120 CONSTANT ARM-BLR-X9
     insn code off + REL-TGT TO tgt
     tgt IF
       tgt code u IN-SPAN? 0= IF
-        ?EMIT-STANDALONE insn ADRP? AND IF
-          npc code off SA-BSS-TRY-PATCH 0= IF
+        \ B/BL to the end label. STITCH-NEXT has already planted B (NEXT)
+        \ at new+u. An absolute veneer would jump back into fortharm64.exe.
+        tgt  code u +  = IF
+          insn $FC000000 AND $94000000 = IF
+            npc  new u +  ENC-BL-TO
+          ELSE
+            npc  new u +  ENC-B-TO
+          THEN
+          npc W!
+        ELSE
+          ?EMIT-STANDALONE insn ADRP? AND IF
+            npc code off SA-BSS-TRY-PATCH 0= IF
+              npc insn tgt PATCH
+            THEN
+          ELSE
             npc insn tgt PATCH
           THEN
-        ELSE
-          npc insn tgt PATCH
         THEN
       THEN
     THEN

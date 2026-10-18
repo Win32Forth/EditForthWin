@@ -83,12 +83,24 @@ CREATE EMIT-TITLE      64 ALLOT         \ counted title for SLITERAL into wrappe
   2DROP TRUE ;
 
 \ Resolve outdir: relative + FROMLIB? → under LIBRARY-PATH (then FROMLIB-OFF).
-\ Absolute unchanged. Relative without FROMLIB stays cwd-relative.
+\ Absolute unchanged. "." is the directory of the file being loaded
+\ (FLOAD's current directory), so NAME\ sits beside that source file.
+\ Other relative paths stay cwd-relative.
 \ Result left counted in EMIT-TMP.
 : (EMIT-RESOLVE-OUT)  ( c-addr u -- )
-  {: a u | la lu -- :}
+  {: a u | la lu n -- :}
   a u (EMIT-ABS?) IF
     a u EMIT-TMP PLACE  EXIT
+  THEN
+  u 1 =  a C@ [CHAR] . =  AND IF
+    EMIT-TMP CHAR+ 500 CWD@ TO n
+    n 0= IF
+      a u EMIT-TMP PLACE
+    ELSE
+      n EMIT-TMP C!
+    THEN
+    FROMLIB? IF  FROMLIB-OFF  THEN
+    EXIT
   THEN
   FROMLIB? 0= IF
     a u EMIT-TMP PLACE  EXIT
@@ -416,7 +428,7 @@ S" CR"         (EMIT-GFX-XT) CONSTANT (EMIT-GFX-CR)
 : EMIT-APP-TO  ( c-addr u -- )        \ S" /tmp" EMIT-APP-TO MAIN
   (EMIT-PARSE-XT) -ROT EMIT-APP-XT-TO ;
 
-: EMIT-APP  ( -- )                    \ EMIT-APP MAIN
+: EMIT-APP  ( -- )                    \ EMIT-APP MAIN  (beside the source file)
   S" ." EMIT-APP-TO ;
 
 : EMIT-WINDOW-APP-TO  ( c-addr u -- ) \ S" /tmp" EMIT-WINDOW-APP-TO PIMAIN

@@ -31,7 +31,7 @@ CREATE MARKS 120 ALLOT
 ;
 
 : (WIN-EMIT) ( -- )
-  ['] T-WIN S" emit-win-out" EMIT-APP-XT-TO
+  ['] T-WIN EMIT-APP-XT
 ;
 
 (WIN-EMIT)
