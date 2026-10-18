@@ -7,10 +7,10 @@
 \     match only at first non-blank on the line (no mid-body CREATE)
 \   - SPECS expanded by host via virtual Config/HYPER.SPECS
 \   - *EXCLUDE applied by host when building the SPECS list
-\   - Running kernel: Library/Sources/arm64 or Library/Sources/x64
-\     (hx-arm64.fth / hx-x64.fth). forth.s is the Mac kernel and is not indexed.
-\   - Cold kernel .fth files (kernel1.fth through boot-fix.fth) are in the
-\     fallback list. Mac reaches the same sources through SPECS.
+\   - Running kernel asm is scanned before SPECS (hx-arm64.fth / hx-x64.fth)
+\     so a BOOT_WORD hit is kept. forth.s is the Mac kernel and is not indexed.
+\   - Cold kernel .fth files come from SPECS. The fallback list is only used
+\     when the host cannot open Config/HYPER.SPECS.
 \   - Sources .s/.inc TYPE 0 only on .ascii / .asciz lines
 \
 \ Use:  HYPER-REINDEX   (FORTH wrapper; HX-DO-REINDEX + helpers in HYPER-VOC)
@@ -534,10 +534,8 @@ CREATE HX-LTAB  HX-LMAX HX-ESIZE * ALLOT
 DEFER HX-SCAN-KERNEL
 ' HX-NO-KERNEL IS HX-SCAN-KERNEL
 
-: HX-SCAN-FALLBACK  ( -- )
-   HX-SCAN-KERNEL
+: HX-SCAN-COLD  ( -- )
    \ Cold kernel sources. Mac indexes these through SPECS Library/**/*.fth.
-   \ The asm scan above stays first, so a BOOT_WORD hit such as DUP is kept.
    \ boot-fix.fth is last at cold start and replaces SYNONYM, REPLACES,
    \ and SUBSTITUTE, so its hit has to win over kernel2.fth.
    S" Library/Sources/boot-fix.fth"    HX-SCAN-FILE
@@ -559,6 +557,11 @@ DEFER HX-SCAN-KERNEL
 \   S" Library/Editor/SZ-EDITOR.fth" HX-SCAN-FILE
 ;
 
+: HX-SCAN-FALLBACK  ( -- )
+   \ Asm first, so a BOOT_WORD hit such as DUP is kept.
+   HX-SCAN-KERNEL
+   HX-SCAN-COLD ;
+
 \ One SPECS path line (skip blanks / # comments)
 : HX-SCAN-SPECS-LINE  ( a u -- )
    HX-SKIP-BL
@@ -569,10 +572,16 @@ DEFER HX-SCAN-KERNEL
 0 VALUE HX-FCNT
 
 : HX-SCAN-ALL  ( -- )
+   \ The asm scan consumes a stack cell. Run it before the SPECS file
+   \ id exists, and drop anything it leaves behind.
+   DEPTH >R
+   HX-SCAN-KERNEL
+   BEGIN  DEPTH R@ >  WHILE  DROP  REPEAT
+   R> DROP
    S" Config/HYPER.SPECS" R/O OPEN-FILE
    IF
       DROP ." HX: HYPER.SPECS unavailable — fallback list" CR
-      HX-SCAN-FALLBACK EXIT
+      HX-SCAN-COLD EXIT
    THEN
    >R                               \ R: fid
    0 TO HX-FCNT

@@ -63,6 +63,9 @@ unsigned long long host_ms(void)
 #define HOST_REGS 64
 
 static FILE *host_fp[HOST_FILES];
+static char *host_mem[HOST_FILES];
+static long long host_mem_len[HOST_FILES];
+static long long host_mem_pos[HOST_FILES];
 static char load_dir[HOST_LOADS][HOST_PATH];
 static char load_prev[HOST_LOADS][HOST_PATH];
 static int load_len[HOST_LOADS];
@@ -188,7 +191,7 @@ static void host_mkdir_parents(const char *path)
 static int host_slot(void)
 {
     for (int i = 1; i < HOST_FILES; i++) {
-        if (host_fp[i] == NULL)
+        if (host_fp[i] == NULL && host_mem[i] == NULL)
             return i;
     }
     return 0;
@@ -211,6 +214,520 @@ static int host_abs(const char *s, long long n)
     return 0;
 }
 
+/* Virtual Config/HYPER.SPECS. The Mac host expands HYPER.CFG the same way.
+   Forth OPEN-FILE never sees a disk file; READ-LINE walks the generated list. */
+
+typedef struct HostList {
+    char **v;
+    int n;
+    int cap;
+} HostList;
+
+static void host_list_free(HostList *list)
+{
+    int i;
+
+    if (list == NULL)
+        return;
+    for (i = 0; i < list->n; i++)
+        free(list->v[i]);
+    free(list->v);
+    list->v = NULL;
+    list->n = 0;
+    list->cap = 0;
+}
+
+static int host_list_add(HostList *list, const char *s)
+{
+    char *copy;
+    char **grown;
+    int cap;
+
+    if (list == NULL || s == NULL)
+        return 0;
+    if (list->n >= list->cap) {
+        cap = list->cap == 0 ? 64 : list->cap * 2;
+        grown = (char **)realloc(list->v, (size_t)cap * sizeof(char *));
+        if (grown == NULL)
+            return 0;
+        list->v = grown;
+        list->cap = cap;
+    }
+    copy = _strdup(s);
+    if (copy == NULL)
+        return 0;
+    list->v[list->n++] = copy;
+    return 1;
+}
+
+static int host_list_has_ci(const HostList *list, const char *s)
+{
+    int i;
+
+    for (i = 0; i < list->n; i++) {
+        if (_stricmp(list->v[i], s) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static int host_contains_ci(const char *hay, const char *needle)
+{
+    size_t nlen;
+
+    if (hay == NULL || needle == NULL || needle[0] == '\0')
+        return 0;
+    nlen = strlen(needle);
+    for (; *hay != '\0'; hay++) {
+        if (_strnicmp(hay, needle, nlen) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static int host_prefix_ci(const char *s, const char *prefix)
+{
+    size_t n;
+
+    if (s == NULL || prefix == NULL)
+        return 0;
+    n = strlen(prefix);
+    return _strnicmp(s, prefix, n) == 0;
+}
+
+static int host_suffix_ci(const char *s, const char *suffix)
+{
+    size_t ns;
+    size_t nsu;
+
+    if (s == NULL || suffix == NULL)
+        return 0;
+    ns = strlen(s);
+    nsu = strlen(suffix);
+    if (nsu > ns)
+        return 0;
+    return _stricmp(s + (ns - nsu), suffix) == 0;
+}
+
+static int host_path_cmp(const void *a, const void *b)
+{
+    const char *sa = *(const char *const *)a;
+    const char *sb = *(const char *const *)b;
+    return _stricmp(sa, sb);
+}
+
+static int host_library_dir(char *dst, size_t cap)
+{
+    int n;
+
+    if (library_root[0] != '\0') {
+        n = snprintf(dst, cap, "%s", library_root);
+        return n > 0 && (size_t)n < cap;
+    }
+    if (user_root[0] != '\0') {
+        n = snprintf(dst, cap, "%s\\Library", user_root);
+        return n > 0 && (size_t)n < cap;
+    }
+    n = snprintf(dst, cap, "Library");
+    return n > 0 && (size_t)n < cap;
+}
+
+static int host_user_dir(char *dst, size_t cap)
+{
+    int n;
+    DWORD got;
+
+    if (user_root[0] != '\0') {
+        n = snprintf(dst, cap, "%s", user_root);
+        return n > 0 && (size_t)n < cap;
+    }
+    got = GetCurrentDirectoryA((DWORD)cap, dst);
+    return got > 0 && got < cap;
+}
+
+static int host_under_root(const char *full, const char *root, const char **rest)
+{
+    size_t n;
+
+    if (full == NULL || root == NULL || root[0] == '\0')
+        return 0;
+    n = strlen(root);
+    if (_strnicmp(full, root, n) != 0)
+        return 0;
+    if (full[n] == '\\' || full[n] == '/') {
+        *rest = full + n + 1;
+        return 1;
+    }
+    if (full[n] == '\0') {
+        *rest = full + n;
+        return 1;
+    }
+    return 0;
+}
+
+/* Disk path to the NDX key Forth will OPEN-FILE (Library/…, forward slashes). */
+static int host_to_ndx(const char *full, char *ndx, size_t cap)
+{
+    char lib[HOST_PATH];
+    char user[HOST_PATH];
+    char tmp[HOST_PATH];
+    const char *rest = NULL;
+    const char *prefix = "";
+    char *p;
+    int n;
+
+    if (!host_library_dir(lib, sizeof lib) || !host_user_dir(user, sizeof user))
+        return 0;
+    if (host_under_root(full, lib, &rest))
+        prefix = "Library/";
+    else if (host_under_root(full, user, &rest))
+        prefix = "";
+    else
+        return 0;
+    if (rest == NULL)
+        return 0;
+    n = snprintf(tmp, sizeof tmp, "%s%s", prefix, rest);
+    if (n <= 0 || (size_t)n >= sizeof tmp || (size_t)n >= cap)
+        return 0;
+    for (p = tmp; *p != '\0'; p++) {
+        if (*p == '\\')
+            *p = '/';
+    }
+    if (strchr(tmp, '/') == NULL)
+        return 0;
+    memcpy(ndx, tmp, (size_t)n + 1);
+    return 1;
+}
+
+static int host_spec_disk(const char *spec, char *disk, size_t cap)
+{
+    char norm[HOST_PATH];
+    char lib[HOST_PATH];
+    char user[HOST_PATH];
+    const char *rel;
+    size_t i;
+    size_t n;
+    int out;
+
+    n = strlen(spec);
+    if (n == 0 || n >= sizeof norm)
+        return 0;
+    for (i = 0; i <= n; i++)
+        norm[i] = (spec[i] == '/') ? '\\' : spec[i];
+    if (!host_library_dir(lib, sizeof lib) || !host_user_dir(user, sizeof user))
+        return 0;
+    if (host_prefix_ci(norm, "Resources\\Library\\"))
+        rel = norm + strlen("Resources\\Library\\");
+    else if (host_prefix_ci(norm, "Library\\"))
+        rel = norm + strlen("Library\\");
+    else if (host_prefix_ci(norm, "Resources\\")) {
+        rel = norm + strlen("Resources\\");
+        out = snprintf(disk, cap, "%s\\%s", user, rel);
+        return out > 0 && (size_t)out < cap;
+    } else {
+        rel = norm;
+        out = snprintf(disk, cap, "%s\\%s", user, rel);
+        return out > 0 && (size_t)out < cap;
+    }
+    out = snprintf(disk, cap, "%s\\%s", lib, rel);
+    return out > 0 && (size_t)out < cap;
+}
+
+static const char *host_glob_ext(const char *spec)
+{
+    if (host_suffix_ci(spec, ".fth"))
+        return ".fth";
+    if (host_suffix_ci(spec, ".fs"))
+        return ".fs";
+    return NULL;
+}
+
+static void host_walk_files(const char *dir, const char *ext, HostList *out, int depth)
+{
+    char wild[HOST_PATH];
+    char child[HOST_PATH];
+    WIN32_FIND_DATAA fd;
+    HANDLE h;
+    int n;
+
+    if (dir == NULL || dir[0] == '\0' || depth > 32)
+        return;
+    n = snprintf(wild, sizeof wild, "%s\\*", dir);
+    if (n <= 0 || n >= (int)sizeof wild)
+        return;
+    h = FindFirstFileA(wild, &fd);
+    if (h == INVALID_HANDLE_VALUE)
+        return;
+    do {
+        if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
+            continue;
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) != 0)
+            continue;
+        n = snprintf(child, sizeof child, "%s\\%s", dir, fd.cFileName);
+        if (n <= 0 || n >= (int)sizeof child)
+            continue;
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+            host_walk_files(child, ext, out, depth + 1);
+        else if (ext == NULL || host_suffix_ci(fd.cFileName, ext))
+            host_list_add(out, child);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+}
+
+static void host_expand_spec(const char *spec, HostList *batch)
+{
+    char disk[HOST_PATH];
+    char lib[HOST_PATH];
+    char user[HOST_PATH];
+    DWORD attr;
+
+    if (spec == NULL || spec[0] == '\0')
+        return;
+    if (strchr(spec, '*') == NULL && strchr(spec, '?') == NULL) {
+        if (!host_spec_disk(spec, disk, sizeof disk))
+            return;
+        attr = GetFileAttributesA(disk);
+        if (attr == INVALID_FILE_ATTRIBUTES)
+            return;
+        if ((attr & FILE_ATTRIBUTE_DIRECTORY) != 0)
+            return;
+        host_list_add(batch, disk);
+        return;
+    }
+    if (!host_library_dir(lib, sizeof lib) || !host_user_dir(user, sizeof user))
+        return;
+    if (host_prefix_ci(spec, "Resources/Library/") || host_prefix_ci(spec, "Library/"))
+        host_walk_files(lib, host_glob_ext(spec), batch, 0);
+    else
+        host_walk_files(user, host_glob_ext(spec), batch, 0);
+}
+
+static void host_trim_span(const char *s, size_t n, char *dst, size_t cap)
+{
+    while (n > 0 && (s[0] == ' ' || s[0] == '\t' || s[0] == '\r')) {
+        s++;
+        n--;
+    }
+    while (n > 0 && (s[n - 1] == ' ' || s[n - 1] == '\t' || s[n - 1] == '\r'))
+        n--;
+    if (n >= cap)
+        n = cap - 1;
+    memcpy(dst, s, n);
+    dst[n] = '\0';
+}
+
+static void host_parse_hyper_cfg(const char *text, HostList *specs, HostList *excludes)
+{
+    const char *p;
+    char line[HOST_PATH];
+    char rest[HOST_PATH];
+
+    if (text == NULL)
+        return;
+    p = text;
+    while (*p != '\0') {
+        const char *eol = p;
+        size_t n;
+        while (*eol != '\0' && *eol != '\n')
+            eol++;
+        n = (size_t)(eol - p);
+        host_trim_span(p, n, line, sizeof line);
+        p = (*eol == '\n') ? eol + 1 : eol;
+        if (line[0] == '\0' || line[0] == '#')
+            continue;
+        if (strcmp(line, ";") == 0)
+            break;
+        if (host_prefix_ci(line, "*EXCLUDE")) {
+            host_trim_span(line + 8, strlen(line + 8), rest, sizeof rest);
+            if (rest[0] != '\0')
+                host_list_add(excludes, rest);
+            continue;
+        }
+        if (host_prefix_ci(line, "SPECS")) {
+            host_trim_span(line + 5, strlen(line + 5), rest, sizeof rest);
+            if (rest[0] != '\0')
+                host_list_add(specs, rest);
+        }
+    }
+}
+
+static void host_hyper_defaults(HostList *specs, HostList *excludes)
+{
+    static const char *default_specs[] = {
+        "Resources/Library/Sources/forth.s",
+        "Resources/Library/Sources/boot_words.inc",
+        "Resources/Library/Sources/boot_words_end.inc",
+        "Resources/Library/Sources/colon_words.inc",
+        "Resources/Library/Sources/kernel_api.h",
+        "Resources/Library/**/*.fth",
+        "Resources/Library/**/*.FTH",
+    };
+    static const char *default_excludes[] = {
+        "Testing", "HayesTest", "ANSValidate", "DbgSpanSmoke",
+        "Benchmarks", "HYPER.NDX",
+    };
+    int i;
+
+    if (specs->n == 0) {
+        for (i = 0; i < (int)(sizeof default_specs / sizeof default_specs[0]); i++)
+            host_list_add(specs, default_specs[i]);
+    }
+    if (excludes->n == 0) {
+        for (i = 0; i < (int)(sizeof default_excludes / sizeof default_excludes[0]); i++)
+            host_list_add(excludes, default_excludes[i]);
+    }
+}
+
+static char *host_read_file(const char *path)
+{
+    FILE *fp = NULL;
+    char *buf;
+    long sz;
+
+    if (fopen_s(&fp, path, "rb") != 0 || fp == NULL)
+        return NULL;
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        fclose(fp);
+        return NULL;
+    }
+    sz = ftell(fp);
+    if (sz < 0 || sz > 1024 * 1024) {
+        fclose(fp);
+        return NULL;
+    }
+    if (fseek(fp, 0, SEEK_SET) != 0) {
+        fclose(fp);
+        return NULL;
+    }
+    buf = (char *)malloc((size_t)sz + 1);
+    if (buf == NULL) {
+        fclose(fp);
+        return NULL;
+    }
+    if (sz > 0 && fread(buf, 1, (size_t)sz, fp) != (size_t)sz) {
+        free(buf);
+        fclose(fp);
+        return NULL;
+    }
+    buf[sz] = '\0';
+    fclose(fp);
+    return buf;
+}
+
+static int host_excluded(const char *ndx, const char *full, const HostList *excludes)
+{
+    int i;
+
+    for (i = 0; i < excludes->n; i++) {
+        if (host_contains_ci(ndx, excludes->v[i]) || host_contains_ci(full, excludes->v[i]))
+            return 1;
+    }
+    return 0;
+}
+
+/* Generated list, or NULL so OPEN-FILE fails and Forth uses its fallback.
+   The bytes stay in the file slot. A Windows tmpfile was still at EOF when
+   READ-LINE ran, so the indexer treated the list as empty. */
+static char *host_hyper_specs_text(long long *out_len)
+{
+    char cfg_path[HOST_PATH];
+    char user[HOST_PATH];
+    char *cfg = NULL;
+    char *text = NULL;
+    char ndx[HOST_PATH];
+    HostList specs;
+    HostList excludes;
+    HostList seen;
+    size_t total;
+    size_t used;
+    int i;
+    int n;
+
+    memset(&specs, 0, sizeof specs);
+    memset(&excludes, 0, sizeof excludes);
+    memset(&seen, 0, sizeof seen);
+    if (host_user_dir(user, sizeof user)) {
+        n = snprintf(cfg_path, sizeof cfg_path, "%s\\Config\\HYPER.CFG", user);
+        if (n > 0 && (size_t)n < sizeof cfg_path)
+            cfg = host_read_file(cfg_path);
+    }
+    host_parse_hyper_cfg(cfg, &specs, &excludes);
+    free(cfg);
+    host_hyper_defaults(&specs, &excludes);
+
+    for (i = 0; i < specs.n; i++) {
+        HostList batch;
+        int j;
+
+        memset(&batch, 0, sizeof batch);
+        host_expand_spec(specs.v[i], &batch);
+        if (batch.n > 1)
+            qsort(batch.v, (size_t)batch.n, sizeof(char *), host_path_cmp);
+        for (j = 0; j < batch.n; j++) {
+            if (!host_to_ndx(batch.v[j], ndx, sizeof ndx))
+                continue;
+            if (host_excluded(ndx, batch.v[j], &excludes))
+                continue;
+            if (host_list_has_ci(&seen, ndx))
+                continue;
+            host_list_add(&seen, ndx);
+        }
+        host_list_free(&batch);
+    }
+    host_list_free(&specs);
+    host_list_free(&excludes);
+
+    total = 1;
+    for (i = 0; i < seen.n; i++)
+        total += strlen(seen.v[i]) + 1;
+    if (seen.n == 0)
+        total = 2;
+    text = (char *)malloc(total);
+    if (text == NULL) {
+        host_list_free(&seen);
+        return NULL;
+    }
+    if (seen.n == 0) {
+        text[0] = '\n';
+        text[1] = '\0';
+        *out_len = 1;
+        host_list_free(&seen);
+        return text;
+    }
+    used = 0;
+    for (i = 0; i < seen.n; i++) {
+        size_t len = strlen(seen.v[i]);
+        memcpy(text + used, seen.v[i], len);
+        used += len;
+        text[used++] = '\n';
+    }
+    text[used] = '\0';
+    *out_len = (long long)used;
+    host_list_free(&seen);
+    return text;
+}
+
+static int host_is_hyper_specs(const char *path)
+{
+    const char *base;
+    const char *end;
+    size_t n;
+
+    if (path == NULL)
+        return 0;
+    end = path + strlen(path);
+    while (end > path && (end[-1] == ' ' || end[-1] == '\t' ||
+                          end[-1] == '\\' || end[-1] == '/'))
+        end--;
+    base = path;
+    for (const char *p = path; p < end; p++) {
+        if (*p == '\\' || *p == '/')
+            base = p + 1;
+    }
+    n = (size_t)(end - base);
+    return n == 11 && _strnicmp(base, "HYPER.SPECS", 11) == 0;
+}
+
 long long host_open(const char *p, long long n, long long fam)
 {
     char path[HOST_PATH];
@@ -223,6 +740,16 @@ long long host_open(const char *p, long long n, long long fam)
     slot = host_slot();
     if (slot == 0)
         return 0;
+    if (host_is_hyper_specs(path)) {
+        long long len = 0;
+        char *text = host_hyper_specs_text(&len);
+        if (text == NULL)
+            return 0;
+        host_mem[slot] = text;
+        host_mem_len[slot] = len;
+        host_mem_pos[slot] = 0;
+        return slot;
+    }
     mode = (fam == 2 || fam == 3) ? "r+b" : "rb";
     if (fopen_s(&fp, path, mode) != 0 || fp == NULL)
         return 0;
@@ -251,7 +778,16 @@ long long host_create(const char *p, long long n, long long fam)
 
 long long host_close(long long id)
 {
-    FILE *fp = host_lookup(id);
+    FILE *fp;
+
+    if (id >= 1 && id < HOST_FILES && host_mem[id] != NULL) {
+        free(host_mem[id]);
+        host_mem[id] = NULL;
+        host_mem_len[id] = 0;
+        host_mem_pos[id] = 0;
+        return 0;
+    }
+    fp = host_lookup(id);
     if (fp == NULL)
         return -1;
     host_fp[id] = NULL;
@@ -260,9 +796,23 @@ long long host_close(long long id)
 
 long long host_read(char *buf, long long n, long long id)
 {
-    FILE *fp = host_lookup(id);
+    FILE *fp;
     size_t got;
 
+    if (id >= 1 && id < HOST_FILES && host_mem[id] != NULL) {
+        long long left;
+        long long take;
+        if (buf == NULL || n < 0)
+            return -1;
+        if (n == 0 || host_mem_pos[id] >= host_mem_len[id])
+            return 0;
+        left = host_mem_len[id] - host_mem_pos[id];
+        take = n < left ? n : left;
+        memcpy(buf, host_mem[id] + host_mem_pos[id], (size_t)take);
+        host_mem_pos[id] += take;
+        return take;
+    }
+    fp = host_lookup(id);
     if (fp == NULL || buf == NULL || n < 0)
         return -1;
     if (n == 0)
@@ -288,10 +838,13 @@ long long host_write(const char *buf, long long n, long long id)
 
 long long host_size(long long id)
 {
-    FILE *fp = host_lookup(id);
+    FILE *fp;
     __int64 pos;
     __int64 sz;
 
+    if (id >= 1 && id < HOST_FILES && host_mem[id] != NULL)
+        return host_mem_len[id];
+    fp = host_lookup(id);
     if (fp == NULL)
         return -1;
     pos = _ftelli64(fp);
@@ -308,8 +861,18 @@ long long host_size(long long id)
 
 long long host_repos(long long id, long long lo, long long hi)
 {
-    FILE *fp = host_lookup(id);
-    if (fp == NULL || hi != 0)
+    FILE *fp;
+
+    if (hi != 0)
+        return -1;
+    if (id >= 1 && id < HOST_FILES && host_mem[id] != NULL) {
+        if (lo < 0)
+            return -1;
+        host_mem_pos[id] = lo > host_mem_len[id] ? host_mem_len[id] : lo;
+        return 0;
+    }
+    fp = host_lookup(id);
+    if (fp == NULL)
         return -1;
     if (_fseeki64(fp, (__int64)lo, SEEK_SET) != 0)
         return -1;
@@ -318,7 +881,11 @@ long long host_repos(long long id, long long lo, long long hi)
 
 long long host_flush(long long id)
 {
-    FILE *fp = host_lookup(id);
+    FILE *fp;
+
+    if (id >= 1 && id < HOST_FILES && host_mem[id] != NULL)
+        return 0;
+    fp = host_lookup(id);
     if (fp == NULL)
         return -1;
     return fflush(fp) == 0 ? 0 : -1;
@@ -1283,12 +1850,46 @@ static int key_c(void)
 
 long long host_read_line(char *buf, long long n, long long id, long long *flag)
 {
-    FILE *fp = host_lookup(id);
+    FILE *fp;
     long long i = 0;
     int c;
 
     if (flag != NULL)
         *flag = 0;
+    if (id >= 1 && id < HOST_FILES && host_mem[id] != NULL) {
+        long long pos = host_mem_pos[id];
+        long long len = host_mem_len[id];
+        const char *base = host_mem[id];
+        if (n < 0 || (buf == NULL && n > 0))
+            return -1;
+        if (pos >= len)
+            return 0;
+        if (flag != NULL)
+            *flag = -1;
+        while (pos < len) {
+            char ch = base[pos++];
+            if (ch == '\n') {
+                host_mem_pos[id] = pos;
+                return i;
+            }
+            if (ch == '\r') {
+                if (pos < len && base[pos] == '\n')
+                    pos++;
+                host_mem_pos[id] = pos;
+                return i;
+            }
+            if (i >= n) {
+                host_mem_pos[id] = pos - 1;
+                return i;
+            }
+            if (buf != NULL)
+                buf[i] = ch;
+            i++;
+        }
+        host_mem_pos[id] = pos;
+        return i;
+    }
+    fp = host_lookup(id);
     if (fp == NULL || n < 0 || (buf == NULL && n > 0))
         return -1;
     c = fgetc(fp);
@@ -1331,9 +1932,12 @@ long long host_write_line(const char *buf, long long n, long long id)
 
 long long host_position(long long id)
 {
-    FILE *fp = host_lookup(id);
+    FILE *fp;
     __int64 pos;
 
+    if (id >= 1 && id < HOST_FILES && host_mem[id] != NULL)
+        return host_mem_pos[id];
+    fp = host_lookup(id);
     if (fp == NULL)
         return -1;
     pos = _ftelli64(fp);

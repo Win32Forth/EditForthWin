@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Updated Oct 18, 2026 for version 1.2.2. ARM64 is `1.2.2`, built Oct 18, 2026 5:44 AM. x64 is `1.2.2-x64`, built Oct 18, 2026 6:22 AM. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
+Updated Oct 18, 2026 for version 1.2.3. ARM64 is `1.2.3`, built Oct 18, 2026 4:52 PM. x64 is `1.2.3-x64`, built Oct 18, 2026 4:53 PM. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
@@ -40,6 +40,8 @@ The assembler and the emitter were not loaded for the checks above. An unknown w
 `(APP-OPEN)` and the other `(APP-*)` names are moved into `GRAPHICS` at cold start. A source file that calls them needs `ALSO GRAPHICS`.
 
 Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 7, and `T-WIN\T-WIN.exe` beside the source file showed `hello 42` plus blue, green, and red squares. `EMIT-WINDOW-APP` is not that path yet. On x64, `forthx64.exe` has the same print, file, and float spans. An agent load printed `42`, wrote and read `hi`, and `3 S>F 4 S>F F+ F>S` printed `7`. `EMIT-APP` from `forthx64.exe` packs `Library/Emitter/runner/emit-win-x64.exe`. A rebuilt `HI\HI.exe` printed `42`, and `T-WIN\T-WIN.exe` showed `hello 42` plus the same three squares. Hayes and ANS-VALIDATE were not run for 1.2.2.
+
+1.2.3 does not add boot words. `HYPER-REINDEX` builds `Config/HYPER.SPECS` from `Config/HYPER.CFG` and indexes `Library` plus the running kernel assembly. Ctrl-click opens that stamp through the same path resolution as `VIEW`, under `Documents\EditForthWin\Library\Sources`, and the editor puts the file in browse mode. Hayes and ANS-VALIDATE were not run for 1.2.3.
 
 ## Hayes
 

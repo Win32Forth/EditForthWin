@@ -678,9 +678,17 @@ void MainWindow::openRequestedFile(const QString &text, int line) {
                         start.endsWith(QLatin1Char('/'));
     if (!dialog) {
         openFile(start);
+        CodeEdit *edit = currentEdit();
+        if (edit == nullptr)
+            return;
+        const QString canonical = QFileInfo(start).absoluteFilePath();
+        if (edit->property(kPath).toString().compare(canonical, Qt::CaseInsensitive) != 0)
+            return;
+        // VIEW and Ctrl-click carry a line. Those opens are browse mode,
+        // including a file that was already open for editing.
         if (line > 0) {
-            if (CodeEdit *edit = currentEdit())
-                edit->gotoLine(line);
+            edit->setBrowse(true);
+            edit->gotoLine(line);
         }
         return;
     }

@@ -32,6 +32,7 @@ void host_user_tree(int mode);
 void host_set_sink(void (*fn)(const void *, size_t));
 void host_set_edit(void (*fn)(const char *path, int kind));
 void host_set_edit_at(void (*fn)(const char *path, long long line));
+void host_edit_at(const char *p, long long n, long long line);
 void host_outs(const char *s);
 int forth_eval(const char *text, size_t n);
 void forth_prompt(void);
@@ -502,7 +503,8 @@ static void send_last_name(void)
         pipe_send_text("last", name, (int)strlen(name));
 }
 
-/* VIEW stamp on the word: open its source. Hyper is not required. */
+/* VIEW stamp on the word. host_edit_at resolves Library/… the same way
+   typed VIEW does, under Documents\EditForthWin, then opens that file. */
 static void send_view(const char *name)
 {
     char token[64];
@@ -559,7 +561,7 @@ static void send_view(const char *name)
     }
     memcpy(path, slot + 1, (size_t)n);
     path[n] = '\0';
-    pipe_send_edit(path, n, (long long)line);
+    host_edit_at(path, n, (long long)line);
 }
 
 static int break_toggle(const char *name)
