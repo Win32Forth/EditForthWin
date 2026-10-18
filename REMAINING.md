@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Updated Oct 16, 2026 for version 1.2.1 (ARM64 `1.2.1`, x64 `1.2.1-x64`, built Oct 16, 2026 7:02 PM). The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
+Updated Oct 18, 2026 for version 1.2.2 on ARM64 (`1.2.2`, built Oct 18, 2026 5:44 AM). x64 stays `1.2.1-x64`, built Oct 16, 2026 7:02 PM. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
@@ -29,7 +29,17 @@ These bodies are in the kernel and were checked on both `fortharm64.exe` and `fo
 - `USER-DICT` returns the base of the user dictionary.
 - `GROWMEMORYMB` grows that dictionary to the given number of megabytes once per session. It does not shrink, and the maximum is 256.
 
-The assembler and the emitter were not loaded. An unknown word typed at the console stops on the first name, turns compiling off, and clears both stacks. `.` on an empty stack prints `0 stack underflow` and returns to `ok(0)>`. `VIEW` stamps come from Hyper after `HYPER-REINDEX`. `DUP` opens the running kernel's `prims.asm`. Cold colon words such as `VIEW-LINE` open `Library/Sources/kernel1.fth`. The shipped autoload still leaves Hyper commented out.
+The assembler and the emitter were not loaded for the checks above. An unknown word typed at the console stops on the first name, turns compiling off, and clears both stacks. `.` on an empty stack prints `0 stack underflow` and returns to `ok(0)>`. `VIEW` stamps come from Hyper after `HYPER-REINDEX`. `DUP` opens the running kernel's `prims.asm`. Cold colon words such as `VIEW-LINE` open `Library/Sources/kernel1.fth`. The shipped autoload still leaves Hyper commented out.
+
+## Emitter on ARM64
+
+1.2.2 adds the stand-alone file and float spans. `(SA-PRINT)` was already in 1.2.1. `ALLOCATE` and `FREE` now have end labels so the slicer can copy them and bind `host_alloc` / `host_free`.
+
+`FROMLIB FLOAD Emitter/emitter.fth` loads the slicer. On Windows, `EMIT-APP` does not call `app-build.sh`. `Library/Emitter/app-win.fth` writes `<outdir>/<NAME>/<NAME>.exe` plus `app.img`. The exe is `Library/Emitter/runner/emit-win.exe`. It loads the image, binds the graphics host slots, and opens one window. Text arrives through `(APP-BLIT)`. Depth 4 on `(APP-CBLIT)` is a list of squares, five cells each: `color x y w h`, colors as 32-bit BGR. `(APP-KEY)` waits until a key arrives in that window. `KEY` is the console key and is not valid inside the emitted exe.
+
+`(APP-OPEN)` and the other `(APP-*)` names are moved into `GRAPHICS` at cold start. A source file that calls them needs `ALSO GRAPHICS`.
+
+Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 7, and `emit-win-out\T-WIN\T-WIN.exe` showed `hello 42` plus blue, green, and red squares. `EMIT-WINDOW-APP` is not that path yet. The x64 emitter was not built. Hayes and ANS-VALIDATE were not run for 1.2.2.
 
 ## Hayes
 
@@ -37,7 +47,7 @@ The assembler and the emitter were not loaded. An unknown word typed at the cons
 
 ## Still no Windows boot word
 
-The five names that were open at 1.2.0 are in the kernel. What remains are the emitter labels below. The emitter was not turned on.
+The five names that were open at 1.2.0 are in the kernel. The ARM64 stand-alone spans for print, files, and float are in the kernel. What remains for a graphics application is `EMIT-WINDOW-APP`. The x64 kernel does not include the new spans.
 
 ## Names that are not missing features
 

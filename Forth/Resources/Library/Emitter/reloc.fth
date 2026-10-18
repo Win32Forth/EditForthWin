@@ -392,6 +392,10 @@ VARIABLE SA-BLOCK-N
   DUP 8 + TGT-DATA-DP !
   8 TGT-DATA-BYTES +! ;
 
+\ Code-image address of the Windows function DCQ, for emit-win host.fix.
+VARIABLE SA-WIN-PUT
+VARIABLE SA-WIN-FILE
+
 : SA-PRINT-PATCH-POOL  ( new u -- )
   {: new u | pool z -- :}
   u 32 U< IF  ." sa-print: block too small" CR ABORT  THEN
@@ -404,12 +408,15 @@ VARIABLE SA-BLOCK-N
   pool 8 + 0 PTR-RELOC-ADD        \ code abs of z
   z pool 16 + !           \ emit_buf_ptr  → zero cell
   pool 16 + 0 PTR-RELOC-ADD
+  pool 8 - SA-WIN-PUT !          \ sa_win_putchar DCQ just before the pool
   ." sa-print pool @ " pool U.
   ?EMIT-WINDOW IF  ."  (window: ITC I/O→GRAPHICS; sa hooks still write1)"  THEN
   CR ;
 
 \ After MOVE of SA-FILES: last 32 bytes are the literal pool.
-\ hook_ptr → in-block zero cell (forces Darwin svc; 0 would ADRP host).
+\ hook_ptr → in-block zero cell. The loaded value is 0, so the block
+\ takes its OS path (Darwin svc, or Windows BLR sa_win_file_op).
+\ A zero hook cell would ADRP file_op_hook instead.
 : SA-FILES-PATCH-POOL  ( new u -- )
   {: new u | pool z -- :}
   u 32 U< IF  ." sa-files: block too small" CR ABORT  THEN
@@ -420,6 +427,7 @@ VARIABLE SA-BLOCK-N
   pool 0 PTR-RELOC-ADD            \ code abs of z
   0 pool 16 + !
   0 pool 24 + !
+  pool 8 - SA-WIN-FILE !         \ sa_win_file_op DCQ just before the pool
   ." sa-files pool @ " pool U. CR ;
 
 \ After MOVE of SA-FLOAT: last 32 bytes are the literal pool.
@@ -448,6 +456,8 @@ VARIABLE SA-BLOCK-N
   ." sa-float pool @ " pool U. ." state @ " st U. CR ;
 
 : SA-BLOCK-SETUP  ( -- )
+  0 SA-WIN-PUT !
+  0 SA-WIN-FILE !
   SA-BLOCK-CLEAR
   S" (SA-PRINT)" ['] SA-PRINT-PATCH-POOL SA-BLOCK-REGISTER
   S" (SA-FILES)" ['] SA-FILES-PATCH-POOL SA-BLOCK-REGISTER
@@ -665,8 +675,9 @@ CREATE SA-BSS-HOST  #SA-BSS CELLS ALLOT
 CREATE SA-BSS-DATA  #SA-BSS CELLS ALLOT
 CREATE SA-BSS-LEN   #SA-BSS CELLS ALLOT   \ byte length of each span
 VARIABLE SA-BSS-N
-VARIABLE SA-XC   \ host cfa_catch_ok (for FIX-CFA)
-VARIABLE SA-DC   \ data cfa_catch_ok
+VARIABLE SA-XC   \ host cell whose stand-in NEXT uses as the CATCH IP
+VARIABLE SA-DC   \ data stand-in for that cell
+VARIABLE SA-IP19 \ true when CATCH addresses that cell with X19
 
 \ Locals BSS sizes must match Kernel/forth.s LOCAL_* layout.
 8    CONSTANT /SA-LOC-DEPTH     \ local_frame_depth
@@ -730,7 +741,7 @@ VARIABLE SA-DC   \ data cfa_catch_ok
 
 : SA-BSS-RESET  ( -- )
   0 SA-BSS-N !
-  0 SA-XC !  0 SA-DC ! ;
+  0 SA-XC !  0 SA-DC !  0 SA-IP19 ! ;
 
 : SA-BSS-FIND  ( host -- data|0 )
   {: h | i -- :}
@@ -909,14 +920,17 @@ $D63F0120 CONSTANT ARM-BLR-X9
   npc abs SA-BSS-ENSURE PATCH-ADRP-ADD
   TRUE ;
 
-\ CATCH ADRP+ADD order (Kernel/forth.s XCATCH):
+\ Mac CATCH ADRP+ADD order (Kernel/forth.s XCATCH):
 \   0 throw_handler  1 eval_resume_sp  2 source_sp
 \   3 cfa_catch_ok   4 catch_ok_cell   (+ optional debug_*)
-\ Older code treated index 1 as cfa_catch_ok; FIX-CFA then wrote the
-\ (CATCH-OK) CFA into eval_resume_sp. catch_ok_cell stayed 0 → NEXT
-\ after the body loaded a null CFA (window flash / SIGSEGV x21=0).
+\ Mac copies [cfa_catch_ok] into catch_ok_cell, then points IP (X19) there.
+\ Windows CATCH points X19 straight at catch_ok_cell (no copy). Index 3
+\ on Windows is source_sp. Writing the CFA there leaves the IP cell 0,
+\ so NEXT after the xt loads x21=0. An ADRP X19 selects that IP cell.
+\ No X19 means the Mac index-3 cell.
 : SA-EXCEPT-DISCOVER  ( -- )
-  {: code u off n abs -- :}
+  \ Names before "|" are taken from the data stack. These five are temps.
+  {: | code u off n abs -- :}
   SA-XC @ IF  EXIT  THEN
   ['] CATCH PRIM-SPAN TO u TO code
   0 TO off  0 TO n
@@ -924,7 +938,14 @@ $D63F0120 CONSTANT ARM-BLR-X9
     code off ADRP-ADD-ABS TO abs
     abs IF
       abs SA-BSS-ENSURE DROP
-      n 3 = IF
+      \ ADRP X19 is the Windows IP cell (catch_ok_cell).
+      code off + W@ $1F AND 19 = IF
+        abs SA-XC !
+        abs SA-BSS-FIND SA-DC !
+        1 SA-IP19 !
+      THEN
+      \ Mac has no ADRP X19; index 3 is cfa_catch_ok.
+      SA-IP19 @ 0= n 3 = AND IF
         abs SA-XC !
         abs SA-BSS-FIND SA-DC !
       THEN

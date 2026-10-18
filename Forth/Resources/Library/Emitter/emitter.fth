@@ -27,6 +27,8 @@ FROMLIB FLOAD Emitter/reloc.fth
 FROMLIB FLOAD Emitter/run.fth
 FROMLIB FLOAD Emitter/save.fth
 FROMLIB FLOAD Emitter/app.fth
+FROMLIB FLOAD Emitter/app-win.fth
 
 \ app.fth leaves FORTH as CURRENT with EMITTER on the search order.
+\ app-win.fth does the same. On Windows it retargets EMIT-OS-PACK.
 \ .( emitter loaded — EMITTER slicer + FORTH EMIT-APP.) CR

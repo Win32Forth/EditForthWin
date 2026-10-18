@@ -10,6 +10,9 @@
         EXPORT bye_flag
         EXPORT inited
         EXPORT emit_fn
+        EXPORT file_op_hook
+        EXPORT float_op_hook
+        EXTERN host_float_op
         EXPORT key_fn
         EXPORT facility_op_hook
         EXPORT vm_tos
@@ -127,6 +130,8 @@ kernel_inited
 inited      DCQ     0
 emit_hook
 emit_fn     DCQ     0
+file_op_hook DCQ    0
+float_op_hook DCQ   host_float_op
 key_hook
 key_fn      DCQ     0
 facility_op_hook DCQ 0

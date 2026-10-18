@@ -1,7 +1,8 @@
 ; Primitives kernel2.fth compiles and runs. Labels match the Mac kernel.
 ; An end argument of 0 means the Mac catalog has no end label.
 ; File, block, debug, and float words are present so the file can compile.
-; OPEN-FILE and the other file words call the C host. REFILL returns false
+; OPEN-FILE and the other file words bl _file_op_call in (SA-FILES).
+; REFILL returns false
 ; on EVALUATE. In (LINE-SOURCE) it advances to the next line. When BLK is
 ; set, backslash ends at the next 64-character boundary and REFILL loads
 ; the following block.
@@ -71,14 +72,9 @@
         EXTERN emit_str
         EXTERN XTYPE
         EXTERN host_ms
-        EXTERN host_open
-        EXTERN host_create
-        EXTERN host_close
+        EXTERN _file_op_call
         EXTERN host_read
-        EXTERN host_write
-        EXTERN host_size
         EXTERN host_repos
-        EXTERN host_flush
         EXTERN host_alloc
         EXTERN host_free
         EXTERN host_resolve
@@ -87,13 +83,6 @@
         EXTERN host_register
         EXTERN host_was_included
         EXTERN host_accept
-        EXTERN host_read_line
-        EXTERN host_write_line
-        EXTERN host_position
-        EXTERN host_resize_file
-        EXTERN host_delete
-        EXTERN host_rename
-        EXTERN host_file_status
         EXTERN host_resize
         EXTERN host_sleep
         EXTERN host_time_date
@@ -122,7 +111,7 @@
         EXTERN host_dir
         EXTERN host_last_included
         EXTERN host_dot_included
-        EXTERN host_float_op
+        EXTERN _float_op_call
         EXTERN host_include_dialog
         EXTERN host_alloc_exec
         EXTERN host_free_exec
@@ -1981,15 +1970,7 @@ XFLIT
         mov     x3, #0
         mov     x4, #0
         mov     x5, #0
-        sub     sp, sp, #80
-        stp     x29, x30, [sp, #32]
-        add     x6, sp, #48
-        str     xzr, [sp, #48]
-        str     xzr, [sp, #56]
-        str     xzr, [sp, #64]
-        bl      host_float_op
-        ldp     x29, x30, [sp, #32]
-        add     sp, sp, #80
+        bl      _float_op_call
 XFLIT_END
         NEXT
 
@@ -2073,21 +2054,10 @@ _fo_cu
         ldr     x5, [x22], #8
         ldr     x20, [x22], #8
 _fo_go
-        sub     sp, sp, #96
-        stp     x29, x30, [sp, #32]
-        str     x9, [sp, #80]
-        str     xzr, [sp, #48]
-        str     xzr, [sp, #56]
-        str     xzr, [sp, #64]
+        str     x9, [x23, #-8]!
         mov     x0, x9
-        add     x6, sp, #48
-        bl      host_float_op
-        ldr     x6, [sp, #48]
-        ldr     x7, [sp, #56]
-        ldr     x8, [sp, #64]
-        ldr     x9, [sp, #80]
-        ldp     x29, x30, [sp, #32]
-        add     sp, sp, #96
+        bl      _float_op_call
+        ldr     x9, [x23], #8
         cmp     x9, #31
         b.eq    _fo_push2
         cmp     x9, #38
@@ -2267,16 +2237,18 @@ XSYSTEM_END
 ; File ids are 1-based host slots. ior is 0 or -1.
 ; ---------------------------------------------------------------------
 
-        BOOT_WORD R/O, R/O ( -- fam ) read-only file access method, 0, XRO, 0
+        BOOT_WORD R/O, R/O ( -- fam ) read-only file access method, 0, XRO, XRO_END
 XRO
         str     x20, [x22, #-8]!
         mov     x20, #1
+XRO_END
         NEXT
 
-        BOOT_WORD R/W, R/W ( -- fam ) read-write file access method, 0, XRW, 0
+        BOOT_WORD R/W, R/W ( -- fam ) read-write file access method, 0, XRW, XRW_END
 XRW
         str     x20, [x22, #-8]!
         mov     x20, #3
+XRW_END
         NEXT
 
         BOOT_WORD W/O, W/O ( -- fam ) write-only file access method, 0, XW_O, XW_O_END
@@ -2290,76 +2262,79 @@ XW_O_END
 XBIN
         NEXT
 
-        BOOT_WORD OPEN-FILE, OPEN-FILE ( c-addr u fam -- fileid ior ) open an existing file, 0, XOPEN_FILE, 0
+        BOOT_WORD OPEN-FILE, OPEN-FILE ( c-addr u fam -- fileid ior ) open an existing file, 0, XOPEN_FILE, XOPEN_FILE_END
 XOPEN_FILE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x2, x20
-        ldr     x1, [x22], #8
-        ldr     x0, [x22], #8
-        bl      host_open
+        mov     x3, x20
+        ldr     x2, [x22], #8
+        ldr     x5, [x22], #8
+        mov     x0, #1
+        mov     x1, #0
+        mov     x4, #0
+        bl      _file_op_call
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
-        cbz     x0, _open_fail
-        str     x0, [x22, #-8]!
-        mov     x20, #0
-        NEXT
-_open_fail
-        str     xzr, [x22, #-8]!
-        mov     x20, #-1
+        str     x6, [x22, #-8]!
+        mov     x20, x0
+XOPEN_FILE_END
         NEXT
 
-        BOOT_WORD CREATE-FILE, CREATE-FILE ( c-addr u fam -- fileid ior ) create or truncate a file, 0, XCREATE_FILE, 0
+        BOOT_WORD CREATE-FILE, CREATE-FILE ( c-addr u fam -- fileid ior ) create or truncate a file, 0, XCREATE_FILE, XCREATE_FILE_END
 XCREATE_FILE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x2, x20
-        ldr     x1, [x22], #8
-        ldr     x0, [x22], #8
-        bl      host_create
+        mov     x3, x20
+        ldr     x2, [x22], #8
+        ldr     x5, [x22], #8
+        mov     x0, #2
+        mov     x1, #0
+        mov     x4, #0
+        bl      _file_op_call
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
-        cbz     x0, _create_fail
-        str     x0, [x22, #-8]!
-        mov     x20, #0
-        NEXT
-_create_fail
-        str     xzr, [x22, #-8]!
-        mov     x20, #-1
+        str     x6, [x22, #-8]!
+        mov     x20, x0
+XCREATE_FILE_END
         NEXT
 
-        BOOT_WORD FILE-SIZE, FILE-SIZE ( fileid -- ud ior ) size of an open file, 0, XFILE_SIZE, 0
+        BOOT_WORD FILE-SIZE, FILE-SIZE ( fileid -- ud ior ) size of an open file, 0, XFILE_SIZE, XFILE_SIZE_END
 XFILE_SIZE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x0, x20
-        bl      host_size
+        mov     x1, x20
+        mov     x0, #9
+        mov     x2, #0
+        mov     x3, #0
+        mov     x4, #0
+        mov     x5, #0
+        bl      _file_op_call
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
-        cmp     x0, #0
-        b.lt    _size_fail
-        str     x0, [x22, #-8]!
-        str     xzr, [x22, #-8]!
-        mov     x20, #0
-        NEXT
-_size_fail
-        str     xzr, [x22, #-8]!
-        str     xzr, [x22, #-8]!
-        mov     x20, #-1
+        str     x6, [x22, #-8]!
+        str     x7, [x22, #-8]!
+        mov     x20, x0
+XFILE_SIZE_END
         NEXT
 
-        BOOT_WORD CLOSE-FILE, CLOSE-FILE ( fileid -- ior ) close an open file, 0, XCLOSE_FILE, 0
+        BOOT_WORD CLOSE-FILE, CLOSE-FILE ( fileid -- ior ) close an open file, 0, XCLOSE_FILE, XCLOSE_FILE_END
 XCLOSE_FILE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x0, x20
-        bl      host_close
+        mov     x1, x20
+        mov     x0, #3
+        mov     x2, #0
+        mov     x3, #0
+        mov     x4, #0
+        mov     x5, #0
+        bl      _file_op_call
         mov     x20, x0
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
+XCLOSE_FILE_END
         NEXT
 
-        BOOT_WORD ALLOCATE, ALLOCATE ( u -- a-addr ior ) allocate heap memory, 0, XALLOCATE, 0
+        BOOT_WORD ALLOCATE, ALLOCATE ( u -- a-addr ior ) allocate heap memory, 0, XALLOCATE, XALLOCATE_END
 XALLOCATE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
@@ -2370,13 +2345,15 @@ XALLOCATE
         cbz     x0, _alloc_fail
         str     x0, [x22, #-8]!
         mov     x20, #0
-        NEXT
+        b       _alloc_leave
 _alloc_fail
         str     xzr, [x22, #-8]!
         mov     x20, #-1
+_alloc_leave
+XALLOCATE_END
         NEXT
 
-        BOOT_WORD FREE, FREE ( a-addr -- ior ) release heap memory, 0, XFREE, 0
+        BOOT_WORD FREE, FREE ( a-addr -- ior ) release heap memory, 0, XFREE, XFREE_END
 XFREE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
@@ -2385,6 +2362,7 @@ XFREE
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
         mov     x20, #0
+XFREE_END
         NEXT
 
         BOOT_WORD RESIZE, RESIZE ( a-addr1 u -- a-addr2 ior ) resize heap memory, 0, XRESIZE, XRESIZE_END
@@ -2408,85 +2386,91 @@ _resize_fail
 XRESIZE_END
         NEXT
 
-        BOOT_WORD READ-FILE, READ-FILE ( c-addr u1 fileid -- u2 ior ) read from an open file, 0, XREAD_FILE, 0
+        BOOT_WORD READ-FILE, READ-FILE ( c-addr u1 fileid -- u2 ior ) read from an open file, 0, XREAD_FILE, XREAD_FILE_END
 XREAD_FILE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x2, x20
-        ldr     x1, [x22], #8
-        ldr     x0, [x22], #8
-        bl      host_read
+        mov     x1, x20
+        ldr     x2, [x22], #8
+        ldr     x5, [x22], #8
+        mov     x0, #4
+        mov     x3, #0
+        mov     x4, #0
+        bl      _file_op_call
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
-        cmp     x0, #0
-        b.lt    _read_fail
-        str     x0, [x22, #-8]!
-        mov     x20, #0
-        NEXT
-_read_fail
-        str     xzr, [x22, #-8]!
-        mov     x20, #-1
+        str     x6, [x22, #-8]!
+        mov     x20, x0
+XREAD_FILE_END
         NEXT
 
-        BOOT_WORD WRITE-FILE, WRITE-FILE ( c-addr u fileid -- ior ) write to an open file, 0, XWRITE_FILE, 0
+        BOOT_WORD WRITE-FILE, WRITE-FILE ( c-addr u fileid -- ior ) write to an open file, 0, XWRITE_FILE, XWRITE_FILE_END
 XWRITE_FILE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x2, x20
-        ldr     x1, [x22], #8
-        ldr     x0, [x22], #8
-        bl      host_write
+        mov     x1, x20
+        ldr     x2, [x22], #8
+        ldr     x5, [x22], #8
+        mov     x0, #5
+        mov     x3, #0
+        mov     x4, #0
+        bl      _file_op_call
         mov     x20, x0
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
+XWRITE_FILE_END
         NEXT
 
-        BOOT_WORD REPOSITION-FILE, REPOSITION-FILE ( ud fileid -- ior ) seek in an open file, 0, XREPOSITION_FILE, 0
+        BOOT_WORD REPOSITION-FILE, REPOSITION-FILE ( ud fileid -- ior ) seek in an open file, 0, XREPOSITION_FILE, XREPOSITION_FILE_END
 XREPOSITION_FILE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x0, x20
+        mov     x1, x20
+        ldr     x3, [x22], #8
         ldr     x2, [x22], #8
-        ldr     x1, [x22], #8
-        bl      host_repos
+        mov     x0, #10
+        mov     x4, #0
+        mov     x5, #0
+        bl      _file_op_call
         mov     x20, x0
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
+XREPOSITION_FILE_END
         NEXT
 
-        BOOT_WORD FLUSH-FILE, FLUSH-FILE ( fileid -- ior ) flush an open file, 0, XFLUSH_FILE, 0
+        BOOT_WORD FLUSH-FILE, FLUSH-FILE ( fileid -- ior ) flush an open file, 0, XFLUSH_FILE, XFLUSH_FILE_END
 XFLUSH_FILE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x0, x20
-        bl      host_flush
+        mov     x1, x20
+        mov     x0, #15
+        mov     x2, #0
+        mov     x3, #0
+        mov     x4, #0
+        mov     x5, #0
+        bl      _file_op_call
         mov     x20, x0
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
+XFLUSH_FILE_END
         NEXT
 
         BOOT_WORD READ-LINE, READ-LINE ( c-addr u1 fileid -- u2 flag ior ) read one line. flag is true when a line was read, 0, XREAD_LINE, XREAD_LINE_END
 XREAD_LINE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x2, x20
-        ldr     x1, [x22], #8
-        ldr     x0, [x22], #8
-        add     x3, sp, #48
-        bl      host_read_line
-        ldr     x1, [sp, #48]
+        mov     x1, x20
+        ldr     x2, [x22], #8
+        ldr     x5, [x22], #8
+        mov     x0, #6
+        mov     x3, #0
+        mov     x4, #0
+        bl      _file_op_call
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
-        cmp     x0, #0
-        b.lt    _readline_fail
-        str     x0, [x22, #-8]!
-        str     x1, [x22, #-8]!
-        mov     x20, #0
-        NEXT
-_readline_fail
-        str     xzr, [x22, #-8]!
-        str     xzr, [x22, #-8]!
-        mov     x20, #-1
+        str     x6, [x22, #-8]!
+        str     x7, [x22, #-8]!
+        mov     x20, x0
 XREAD_LINE_END
         NEXT
 
@@ -2494,10 +2478,13 @@ XREAD_LINE_END
 XWRITE_LINE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x2, x20
-        ldr     x1, [x22], #8
-        ldr     x0, [x22], #8
-        bl      host_write_line
+        mov     x1, x20
+        ldr     x2, [x22], #8
+        ldr     x5, [x22], #8
+        mov     x0, #7
+        mov     x3, #0
+        mov     x4, #0
+        bl      _file_op_call
         mov     x20, x0
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
@@ -2508,20 +2495,18 @@ XWRITE_LINE_END
 XFILE_POSITION
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x0, x20
-        bl      host_position
+        mov     x1, x20
+        mov     x0, #8
+        mov     x2, #0
+        mov     x3, #0
+        mov     x4, #0
+        mov     x5, #0
+        bl      _file_op_call
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
-        cmp     x0, #0
-        b.lt    _fpos_fail
-        str     x0, [x22, #-8]!
-        str     xzr, [x22, #-8]!
-        mov     x20, #0
-        NEXT
-_fpos_fail
-        str     xzr, [x22, #-8]!
-        str     xzr, [x22, #-8]!
-        mov     x20, #-1
+        str     x6, [x22, #-8]!
+        str     x7, [x22, #-8]!
+        mov     x20, x0
 XFILE_POSITION_END
         NEXT
 
@@ -2529,10 +2514,13 @@ XFILE_POSITION_END
 XRESIZE_FILE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x0, x20
+        mov     x1, x20
+        ldr     x3, [x22], #8
         ldr     x2, [x22], #8
-        ldr     x1, [x22], #8
-        bl      host_resize_file
+        mov     x0, #11
+        mov     x4, #0
+        mov     x5, #0
+        bl      _file_op_call
         mov     x20, x0
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
@@ -2543,9 +2531,13 @@ XRESIZE_FILE_END
 XDELETE_FILE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x1, x20
-        ldr     x0, [x22], #8
-        bl      host_delete
+        mov     x2, x20
+        ldr     x5, [x22], #8
+        mov     x0, #12
+        mov     x1, #0
+        mov     x3, #0
+        mov     x4, #0
+        bl      _file_op_call
         mov     x20, x0
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
@@ -2556,11 +2548,13 @@ XDELETE_FILE_END
 XRENAME_FILE
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x3, x20
+        mov     x4, x20
+        ldr     x3, [x22], #8
         ldr     x2, [x22], #8
-        ldr     x1, [x22], #8
-        ldr     x0, [x22], #8
-        bl      host_rename
+        ldr     x5, [x22], #8
+        mov     x0, #13
+        mov     x1, #0
+        bl      _file_op_call
         mov     x20, x0
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
@@ -2571,14 +2565,16 @@ XRENAME_FILE_END
 XFILE_STATUS
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        mov     x1, x20
-        ldr     x0, [x22], #8
-        add     x2, sp, #48
-        bl      host_file_status
-        ldr     x1, [sp, #48]
+        mov     x2, x20
+        ldr     x5, [x22], #8
+        mov     x0, #14
+        mov     x1, #0
+        mov     x3, #0
+        mov     x4, #0
+        bl      _file_op_call
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
-        str     x1, [x22, #-8]!
+        str     x6, [x22, #-8]!
         mov     x20, x0
 XFILE_STATUS_END
         NEXT

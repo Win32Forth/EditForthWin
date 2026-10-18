@@ -1172,6 +1172,94 @@ void host_dot_included(void)
 int host_facility_emit(unsigned char byte);
 void host_facility_op(int64_t op, int64_t a, int64_t b);
 
+long long host_read_line(char *buf, long long n, long long id, long long *flag);
+long long host_write_line(const char *buf, long long n, long long id);
+long long host_position(long long id);
+long long host_resize_file(long long id, long long lo, long long hi);
+long long host_delete(const char *p, long long n);
+long long host_rename(const char *a, long long an, const char *b, long long bn);
+long long host_file_status(const char *p, long long n, long long *attr);
+
+/* Stand-alone (SA-FILES) calls this when the file hook cell is zero.
+   op: 1 open 2 create 3 close 4 read 5 write 6 rline 7 wline
+       8 pos 9 size 10 repos 11 resize 12 delete 13 rename 14 status 15 flush
+   Returns ior (0 or -1). o1/o2/o3 are the extra results. */
+long long sa_win_file_op(long long op, long long a, long long b, long long c,
+                         long long d, void *ptr, long long *o1, long long *o2,
+                         long long *o3)
+{
+    long long n;
+    long long flag;
+
+    if (o1 != NULL)
+        *o1 = 0;
+    if (o2 != NULL)
+        *o2 = 0;
+    if (o3 != NULL)
+        *o3 = 0;
+    switch ((int)op) {
+    case 1:
+    case 2:
+        n = (op == 1) ? host_open(ptr, b, c) : host_create(ptr, b, c);
+        if (n == 0)
+            return -1;
+        if (o1 != NULL)
+            *o1 = n;
+        return 0;
+    case 3:
+        return host_close(a);
+    case 4:
+        n = host_read(ptr, b, a);
+        if (n < 0)
+            return -1;
+        if (o1 != NULL)
+            *o1 = n;
+        return 0;
+    case 5:
+        return host_write(ptr, b, a);
+    case 6:
+        flag = 0;
+        n = host_read_line(ptr, b, a, &flag);
+        if (n < 0)
+            return -1;
+        if (o1 != NULL)
+            *o1 = n;
+        if (o2 != NULL)
+            *o2 = flag;
+        return 0;
+    case 7:
+        return host_write_line(ptr, b, a);
+    case 8:
+        n = host_position(a);
+        if (n < 0)
+            return -1;
+        if (o1 != NULL)
+            *o1 = n;
+        return 0;
+    case 9:
+        n = host_size(a);
+        if (n < 0)
+            return -1;
+        if (o1 != NULL)
+            *o1 = n;
+        return 0;
+    case 10:
+        return host_repos(a, b, c);
+    case 11:
+        return host_resize_file(a, b, c);
+    case 12:
+        return host_delete(ptr, b);
+    case 13:
+        return host_rename(ptr, b, (const char *)c, d);
+    case 14:
+        return host_file_status(ptr, b, o1);
+    case 15:
+        return host_flush(a);
+    default:
+        return -1;
+    }
+}
+
 /* Stand-alone (SA-PRINT) calls this when the emit hook cell is zero. */
 void sa_win_putchar(unsigned long long c)
 {

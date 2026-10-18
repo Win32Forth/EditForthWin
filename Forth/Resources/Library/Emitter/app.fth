@@ -29,7 +29,10 @@
 \ emitting. WINDOW-OFF still runs after the handler.
 \
 \ Forces /EMIT-STANDALONE + /EMIT-UNBOUND, TGT-BUILDs, SAVE-IMAGEs, then
-\ runs Library/Emitter/app-build.sh via SYSTEM (found via LIBRARY-PATH).
+\ EMIT-OS-PACK. The Mac packer runs Library/Emitter/app-build.sh (a .app).
+\ Windows packaging is a separate file, app-win.fth. It redirects
+\ EMIT-OS-MKDIR and EMIT-OS-PACK when cmd.exe is present. EMIT-APP and
+\ EMIT-WINDOW-APP both use those two hooks.
 \
 \ Quiet log (host): EMIT-APP / EMIT-WINDOW-APP console chatter is captured to
 \ <stem>.emit.log beside the .app; the Forth console gets a one-line summary.
@@ -66,11 +69,18 @@ CREATE EMIT-TITLE      64 ALLOT         \ counted title for SLITERAL into wrappe
   DUP [CHAR] a >= OVER [CHAR] z <= AND IF  32 -  THEN ;
 
 \ Absolute or ~ path? (does not consume FROMLIB)
+\ `/…`, `\…`, `~…`, and a Windows drive (`C:…`) are absolute.
 : (EMIT-ABS?)  ( c-addr u -- flag )
   DUP 0= IF  2DROP FALSE EXIT  THEN
   OVER C@ [CHAR] / = IF  2DROP TRUE EXIT  THEN
+  OVER C@ [CHAR] \ = IF  2DROP TRUE EXIT  THEN
   OVER C@ [CHAR] ~ = IF  2DROP TRUE EXIT  THEN
-  2DROP FALSE ;
+  DUP 2 < IF  2DROP FALSE EXIT  THEN
+  OVER 1+ C@ [CHAR] : <> IF  2DROP FALSE EXIT  THEN
+  OVER C@ (EMIT-UPC)  DUP [CHAR] A <  SWAP [CHAR] Z >  OR IF
+    2DROP FALSE EXIT
+  THEN
+  2DROP TRUE ;
 
 \ Resolve outdir: relative + FROMLIB? → under LIBRARY-PATH (then FROMLIB-OFF).
 \ Absolute unchanged. Relative without FROMLIB stays cwd-relative.
@@ -125,7 +135,7 @@ CREATE EMIT-TITLE      64 ALLOT         \ counted title for SLITERAL into wrappe
   0 TO base
   0 TO i
   BEGIN  i u <  WHILE
-    a i + C@ [CHAR] / = IF  i 1+ TO base  THEN
+    a i + C@ DUP [CHAR] / = SWAP [CHAR] \ = OR IF  i 1+ TO base  THEN
     i 1+ TO i
   REPEAT
   u base - TO blen
@@ -172,7 +182,9 @@ CREATE EMIT-TITLE      64 ALLOT         \ counted title for SLITERAL into wrappe
   dest (EMIT-S0)
   oa ou dest (EMIT-S+)
   ou IF
-    oa ou + 1- C@ [CHAR] / <> IF  [CHAR] / dest (EMIT-CH+)  THEN
+    oa ou + 1- C@ DUP [CHAR] / = SWAP [CHAR] \ = OR 0= IF
+      [CHAR] / dest (EMIT-CH+)
+    THEN
   THEN
   na nu dest (EMIT-S+)
   sa su dest (EMIT-S+) ;
@@ -208,13 +220,23 @@ CREATE EMIT-TITLE      64 ALLOT         \ counted title for SLITERAL into wrappe
   EMIT-CMDBUF COUNT SYSTEM IF
     ." EMIT-APP: app-build.sh failed" CR
     ."   cmd: " EMIT-CMDBUF COUNT TYPE CR ABORT
-  THEN ;
+  THEN
+  CR ." EMIT-APP: built " EMIT-APPBUF COUNT TYPE CR
+  ."   image: " EMIT-IMGBUF COUNT TYPE CR
+  ."   open " EMIT-APPBUF COUNT TYPE CR ;
+
+\ Mac defaults. app-win.fth retargets both when this process is Windows.
+\ EMIT-APP and EMIT-WINDOW-APP share the hooks.
+DEFER EMIT-OS-MKDIR
+DEFER EMIT-OS-PACK
+' (EMIT-MKDIR) IS EMIT-OS-MKDIR
+' (EMIT-PACK) IS EMIT-OS-PACK
 
 : (EMIT-SAVE+PACK)  ( xt c-addr u -- )
   {: xt oa ou -- :}
   oa ou (EMIT-RESOLVE-OUT)          \ → EMIT-TMP; may consume FROMLIB
   xt (EMIT-APP-NAME!)
-  EMIT-TMP COUNT (EMIT-MKDIR)
+  EMIT-TMP COUNT EMIT-OS-MKDIR
   EMIT-TMP COUNT  EMIT-NAMEBUF COUNT  S" .img"  EMIT-IMGBUF  (EMIT-JOIN)
   EMIT-TMP COUNT  EMIT-NAMEBUF COUNT  S" .app"  EMIT-APPBUF  (EMIT-JOIN)
   /EMIT-CONSOLE                     \ terminal I/O (SA-PRINT → write(1))
@@ -222,10 +244,7 @@ CREATE EMIT-TITLE      64 ALLOT         \ counted title for SLITERAL into wrappe
   /EMIT-UNBOUND
   xt TGT-BUILD
   xt EMIT-IMGBUF COUNT SAVE-IMAGE
-  (EMIT-PACK)
-  CR ." EMIT-APP: built " EMIT-APPBUF COUNT TYPE CR
-  ."   image: " EMIT-IMGBUF COUNT TYPE CR
-  ."   open " EMIT-APPBUF COUNT TYPE CR ;
+  EMIT-OS-PACK ;
 
 \ Like (EMIT-SAVE+PACK) but EMIT-NAMEBUF already set (for :NONAME wrappers).
 \ Caller arms /EMIT-WINDOW or /EMIT-CONSOLE before this (see *-APP-XT-TO).
@@ -235,17 +254,14 @@ CREATE EMIT-TITLE      64 ALLOT         \ counted title for SLITERAL into wrappe
   EMIT-NAMEBUF C@ 0= IF
     ." EMIT-WINDOW-APP: empty app name" CR ABORT
   THEN
-  EMIT-TMP COUNT (EMIT-MKDIR)
+  EMIT-TMP COUNT EMIT-OS-MKDIR
   EMIT-TMP COUNT  EMIT-NAMEBUF COUNT  S" .img"  EMIT-IMGBUF  (EMIT-JOIN)
   EMIT-TMP COUNT  EMIT-NAMEBUF COUNT  S" .app"  EMIT-APPBUF  (EMIT-JOIN)
   /EMIT-STANDALONE
   /EMIT-UNBOUND
   xt TGT-BUILD
   xt EMIT-IMGBUF COUNT SAVE-IMAGE
-  (EMIT-PACK)
-  CR ." EMIT-APP: built " EMIT-APPBUF COUNT TYPE CR
-  ."   image: " EMIT-IMGBUF COUNT TYPE CR
-  ."   open " EMIT-APPBUF COUNT TYPE CR ;
+  EMIT-OS-PACK ;
 
 \ --- public FORTH API ---
 ONLY FORTH DEFINITIONS
@@ -528,8 +544,11 @@ VARIABLE EMIT-OPT
   u TO i
   BEGIN  i  WHILE
     i 1- TO i
-    a i + C@ [CHAR] / = IF
-      i 0= IF  S" /" EXIT  THEN
+    a i + C@ DUP [CHAR] / = SWAP [CHAR] \ = OR IF
+      i 0= IF
+        a C@ [CHAR] \ = IF  S" \" EXIT  THEN
+        S" /" EXIT
+      THEN
       a i EXIT
     THEN
   REPEAT
@@ -544,7 +563,9 @@ VARIABLE EMIT-OPT
   EMIT-OUTDIR (EMIT-S0)
   da du EMIT-OUTDIR (EMIT-S+)
   du IF
-    da du + 1- C@ [CHAR] / <> IF  [CHAR] / EMIT-OUTDIR (EMIT-CH+)  THEN
+    da du + 1- C@ DUP [CHAR] / = SWAP [CHAR] \ = OR 0= IF
+      [CHAR] / EMIT-OUTDIR (EMIT-CH+)
+    THEN
   ELSE
     [CHAR] / EMIT-OUTDIR (EMIT-CH+)
   THEN

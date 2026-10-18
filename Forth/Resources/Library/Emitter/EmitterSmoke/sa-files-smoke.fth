@@ -23,20 +23,20 @@ CR .( --- sa-files-smoke ---) CR
 
 (CK-SA-FILES)
 
-\ Create / write / close / open / read / close under /tmp.
+\ Create / write / close / open / read / close a file in the working directory.
 \ Use . for status (TYPE may not appear in agent transcript the same way).
 VARIABLE SF-FID
 CREATE SF-BUF  16 ALLOT
 
 : T-FILES  ( -- )
-  S" /tmp/64forth-sa-files.txt" W/O CREATE-FILE
+  S" sa-files-smoke.txt" W/O CREATE-FILE
   IF  1 . EXIT  THEN                 \ 1 = CREATE fail
   SF-FID !
   S" hi" SF-FID @ WRITE-FILE
   IF  2 . EXIT  THEN                 \ 2 = WRITE fail
   SF-FID @ CLOSE-FILE
   IF  3 . EXIT  THEN                 \ 3 = CLOSE fail
-  S" /tmp/64forth-sa-files.txt" R/O OPEN-FILE
+  S" sa-files-smoke.txt" R/O OPEN-FILE
   IF  4 . EXIT  THEN                 \ 4 = OPEN fail
   SF-FID !
   SF-BUF 2 SF-FID @ READ-FILE
@@ -45,7 +45,7 @@ CREATE SF-BUF  16 ALLOT
   SF-BUF C@ [CHAR] h = 0= IF  7 . EXIT  THEN
   SF-BUF 1+ C@ [CHAR] i = 0= IF  8 . EXIT  THEN
   SF-FID @ CLOSE-FILE DROP
-  S" /tmp/64forth-sa-files.txt" DELETE-FILE DROP
+  S" sa-files-smoke.txt" DELETE-FILE DROP
   42 .                               \ success marker like sa-print-smoke
   ;
 

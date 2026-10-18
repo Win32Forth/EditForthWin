@@ -452,7 +452,7 @@ VARIABLE DOES-N
           v MAP-FIND ?DUP IF  DROP  \ keep mapped xt
           ELSE
             v DATA-REBASE IF  a !   \ slide into sliced data
-            ELSE  0 a !  THEN       \ foreign (host heap, etc.) → 0
+            ELSE  DROP 0 a !  THEN  \ foreign (host heap, etc.) → 0
           THEN
         THEN
       THEN

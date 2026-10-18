@@ -184,6 +184,9 @@ VARIABLE RET-BODY
 
 : TGT-RUN-AT  ( cfa -- )
   HOST-BIND-IF-NEEDED
+  \ ALLOCATE-EXEC is RW. TGT-BUILD protects, but LOAD-IMAGE does not.
+  \ No host slots means HOST-BIND-IF-NEEDED skips that protect.
+  TGT-PROTECT
   RUN-OPEN
   RUN-EMIT-CFA
   RUN-PROTECT
