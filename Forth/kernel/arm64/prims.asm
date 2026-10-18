@@ -11,6 +11,8 @@
 
         EXTERN _putchar
         EXTERN _print_signed
+        EXTERN _sa_putchar
+        EXTERN _sa_print_signed
         EXTERN emit_cstr
         EXTERN _print_unsigned
         EXTERN dstack
@@ -39,6 +41,11 @@
         EXPORT XRSDOT
         EXPORT XCR
         EXPORT XBYE
+
+        BOOT_WORD (NEXT), (NEXT) ITC dispatch, 0, XNEXT, XNEXT_END
+XNEXT
+        NEXT
+XNEXT_END
 
         BOOT_WORD (DOCOL), (DOCOL) colon runtime, 0, DOCOL, DOCOL_END
 DOCOL
@@ -144,9 +151,9 @@ XDOT
         ldr     x20, [x22], #8
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        bl      _print_signed
+        bl      _sa_print_signed
         mov     x0, #32
-        bl      _putchar
+        bl      _sa_putchar
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
 XDOT_END

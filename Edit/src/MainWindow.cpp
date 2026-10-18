@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "AskForth.h"
 #include "CodeEdit.h"
 #include "DebugBar.h"
 #include "DiskDiff.h"
@@ -327,8 +328,41 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_editors = new QSplitter(Qt::Horizontal, this);
     m_editors->addWidget(m_tabs);
     m_editors->addWidget(m_right);
+    m_askPanel = new AskForthPanel(m_editors);
+    m_askPanel->setForthExeFinder([this] { return m_pipe->forthPath(); });
+    m_askPanel->setFileOpener([this](const QString &path) -> CodeEdit * {
+        openFile(path);
+        const QString canonical = QFileInfo(path).absoluteFilePath();
+        for (int i = 0; i < m_tabs->count(); ++i) {
+            CodeEdit *edit = editAt(i);
+            if (edit != nullptr &&
+                edit->property(kPath).toString().compare(canonical, Qt::CaseInsensitive) == 0)
+                return edit;
+        }
+        return nullptr;
+    });
+    m_askPanel->setSelectionSource([this] {
+        CodeEdit *edit = nullptr;
+        for (QWidget *widget = QApplication::focusWidget(); widget != nullptr;
+             widget = widget->parentWidget()) {
+            if (auto *found = qobject_cast<CodeEdit *>(widget)) {
+                edit = found;
+                break;
+            }
+        }
+        if (edit == nullptr)
+            edit = currentEdit();
+        if (edit == nullptr)
+            return QString();
+        QString text = edit->textCursor().selectedText();
+        text.replace(QChar(0x2029), QLatin1Char('\n'));
+        return text;
+    });
+    m_editors->addWidget(m_askPanel);
     m_editors->setStretchFactor(0, 1);
     m_editors->setStretchFactor(1, 1);
+    m_editors->setStretchFactor(2, 0);
+    m_askPanel->hide();
 
     auto *top = new QWidget(this);
     auto *topLayout = new QVBoxLayout(top);
@@ -480,6 +514,21 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         QSettings().setValue(QStringLiteral("showLineNumbers"), on);
         applyLineNumbers();
     });
+    m_askAction = viewMenu->addAction(QStringLiteral("Ask Forth"));
+    m_askAction->setCheckable(true);
+    m_askAction->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_A));
+    connect(m_askAction, &QAction::toggled, this, &MainWindow::showAskPanel);
+    m_askToggle = new QPushButton(QStringLiteral("Show"), menuBar());
+    m_askToggle->setFlat(true);
+    m_askToggle->setFocusPolicy(Qt::NoFocus);
+    m_askToggle->setToolTip(QStringLiteral("Show or hide Ask Forth (Ctrl+Alt+A)"));
+    m_askToggle->setFixedHeight(menuBar()->fontMetrics().height() + 8);
+    menuBar()->setCornerWidget(m_askToggle, Qt::TopRightCorner);
+    connect(m_askToggle, &QPushButton::clicked, this, [this] {
+        if (m_askAction != nullptr)
+            m_askAction->setChecked(!m_askAction->isChecked());
+    });
+    m_askAction->setChecked(settings.value(QStringLiteral("showAIAssistant"), false).toBool());
     viewMenu->addAction(QStringLiteral("Open Web Page"), this, &MainWindow::openWebPage);
     m_splitAction = viewMenu->addAction(QStringLiteral("Split Editor"), this, &MainWindow::toggleSplit);
     auto *wrapMenu = viewMenu->addMenu(QStringLiteral("Wrap at Column"));
@@ -1341,8 +1390,47 @@ void MainWindow::compareWithDisk() {
     syncTabChrome();
 }
 
+void MainWindow::showEvent(QShowEvent *event) {
+    QMainWindow::showEvent(event);
+    if (m_askPanel != nullptr && m_askPanel->isVisible()) {
+        const QList<int> sizes = m_editors->sizes();
+        if (sizes.size() == 3 && sizes.first() < 200)
+            showAskPanel(true);
+    }
+}
+
+void MainWindow::showAskPanel(bool on) {
+    if (m_askPanel == nullptr)
+        return;
+    m_askPanel->setVisible(on);
+    if (m_askToggle != nullptr)
+        m_askToggle->setText(on ? QStringLiteral("Hide") : QStringLiteral("Show"));
+    QSettings().setValue(QStringLiteral("showAIAssistant"), on);
+    if (!on)
+        return;
+    m_askPanel->prepareEnvironment();
+    QList<int> sizes = m_editors->sizes();
+    if (sizes.size() < 3)
+        return;
+    const int total = qMax(m_editors->width(), sizes[0] + sizes[1] + sizes[2]);
+    if (total < 640)
+        return;
+    const int ask = 360;
+    const int mid = m_right != nullptr && m_right->isVisible() ? qBound(160, sizes[1], total / 2) : 0;
+    const int left = total - mid - ask;
+    if (left < 240)
+        return;
+    m_editors->setSizes({left, mid, ask});
+}
+
 void MainWindow::openWebPage() {
     auto *tab = new WebTab;
+    connect(tab, &WebTab::sendToAskForth, this, [this](const QString &url) {
+        if (m_askAction != nullptr)
+            m_askAction->setChecked(true);
+        if (m_askPanel != nullptr)
+            m_askPanel->appendPageUrl(url);
+    });
     const int index = m_tabs->addTab(tab, QStringLiteral("Web"));
     m_tabs->setCurrentIndex(index);
     syncTabChrome();

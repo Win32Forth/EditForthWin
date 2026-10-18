@@ -1172,12 +1172,18 @@ void host_dot_included(void)
 int host_facility_emit(unsigned char byte);
 void host_facility_op(int64_t op, int64_t a, int64_t b);
 
-static void emit_c(int c)
+/* Stand-alone (SA-PRINT) calls this when the emit hook cell is zero. */
+void sa_win_putchar(unsigned long long c)
 {
     unsigned char b = (unsigned char)c;
     if (host_facility_emit(b))
         return;
     host_out(&b, 1);
+}
+
+static void emit_c(int c)
+{
+    sa_win_putchar((unsigned long long)(unsigned char)c);
 }
 
 static int key_c(void)

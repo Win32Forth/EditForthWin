@@ -4,7 +4,7 @@ project(EditForthWinEditor LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 qt_standard_project_setup()
 
 qt_add_executable(editforthwin WIN32
@@ -18,9 +18,11 @@ qt_add_executable(editforthwin WIN32
     src/ForthConsole.cpp
     src/ForthPipe.cpp
     src/WebTab.cpp
+    src/AskForth.cpp
+    src/AskForthEmbed.cpp
 )
 
-target_link_libraries(editforthwin PRIVATE Qt6::Widgets)
+target_link_libraries(editforthwin PRIVATE Qt6::Widgets Qt6::Network advapi32)
 
 # build.bat passes arm64. build-x64.bat passes x64. The name is
 # editforthwinarm64.exe or editforthwinx64.exe.

@@ -35,6 +35,7 @@ public:
     void requestTree(const QString &mode);
     void requestRunTo(int utf8Offset);
     bool signalBreak();
+    QString forthPath() const;
 
 public slots:
     void eval(const QString &line);
@@ -64,7 +65,6 @@ signals:
     void versionReceived(const QString &text);
 
 private:
-    QString forthPath() const;
     void post(const QByteArray &json);
 
     QProcess *m_proc = nullptr;

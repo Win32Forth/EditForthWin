@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QString>
 
+class AskForthPanel;
 class CodeEdit;
 class DebugBar;
 class FindBar;
@@ -11,6 +12,7 @@ class ForthConsole;
 class ForthFloat;
 class ForthPipe;
 class QComboBox;
+class QPushButton;
 class QShortcut;
 class QSplitter;
 class QTabWidget;
@@ -28,6 +30,7 @@ public:
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    void showEvent(QShowEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
@@ -57,6 +60,7 @@ private:
     void searchInFolders();
     void compareWithDisk();
     void openWebPage();
+    void showAskPanel(bool on);
     void floadDialog();
     void chdirDialog();
     void restoreShipped();
@@ -97,6 +101,9 @@ private:
     QSplitter *m_split = nullptr;
     QSplitter *m_editors = nullptr;
     QWidget *m_right = nullptr;
+    AskForthPanel *m_askPanel = nullptr;
+    QAction *m_askAction = nullptr;
+    QPushButton *m_askToggle = nullptr;
     QComboBox *m_splitPick = nullptr;
     CodeEdit *m_splitEdit = nullptr;
     CodeEdit *m_splitSource = nullptr;

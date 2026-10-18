@@ -7,4 +7,7 @@ class WebTab : public QWidget {
     Q_OBJECT
 public:
     explicit WebTab(QWidget *parent = nullptr);
+
+signals:
+    void sendToAskForth(const QString &url);
 };

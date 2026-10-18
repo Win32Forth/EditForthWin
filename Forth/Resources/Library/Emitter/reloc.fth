@@ -149,13 +149,13 @@ DEFER SA-PATCH-BL-HELPER  ( npc tgt -- )
 
 : PATCH-BL-ABS  ( npc insn tgt -- )
   {: npc insn tgt | ven ret -- :}
-  \ Stand-alone: no host process. SA-PATCH-BL-HELPER embeds pure helpers
-  \ (e.g. _udivmod128); host-only BLs (EXIT locals) stay NOP.
+  \ Stand-alone BL embeds a closed helper. A bare B (DOCOL's empty
+  \ body branches to _quit_exit) keeps the in-process absolute veneer
+  \ so TGT-RUN can finish. SAVE-IMAGE does not rebase that veneer yet.
   ?EMIT-STANDALONE IF
     insn $FC000000 AND $94000000 = IF
       npc tgt SA-PATCH-BL-HELPER  EXIT
     THEN
-    ." PATCH-BL-ABS: stand-alone cannot veneer abs B to " tgt U. CR ABORT
   THEN
   TGT-END-ALIGN4
   TGT-END @ TO ven
@@ -335,7 +335,15 @@ VARIABLE SA-BLOCK-N
   {: addr len patch | code u i -- :}
   addr len BOOT-SPAN-NAMED TO u TO code
   code 0= IF
-    ." sa-block missing " addr len TYPE CR ABORT
+    \ In-process slice veneers out to the live kernel. The stand-alone
+    \ blocks are not in this image yet; only /EMIT-STANDALONE requires them.
+    ?EMIT-STANDALONE IF
+      \ (SA-FILES) and (SA-FLOAT) are not in this kernel yet.
+      \ A print slice can still build. A call into a missing block
+      \ is not copied.
+      ." sa-block missing " addr len TYPE CR
+    THEN
+    EXIT
   THEN
   SA-BLOCK-N @ #SA-BLOCK U< 0= IF
     ." too many sa-blocks" CR ABORT
@@ -483,6 +491,11 @@ VARIABLE SA-BLOCK-N
 \ DEFER stays on (SA-PATCH-BL-NOP) until then — avoids a redefine warning.
 
 : HOST-APP-SET  ( xt slot -- )
+  \ Unlabeled boot words (end = 0) have no slice span. Leave the slot
+  \ empty; HOST-BIND only reads a slot that a relocated call actually uses.
+  OVER CODE-BOUNDS NIP 0= IF
+    NIP 0 SWAP CELLS HOST-APP-VA + ! EXIT
+  THEN
   SWAP HOST-PRIM-VA  SWAP CELLS HOST-APP-VA + ! ;
 
 \ (APP-*) live in GRAPHICS (FORTH>GRAPHICS). wid = >BODY of the
@@ -626,6 +639,16 @@ S" KEY?"  (GFX-IO-XT) CONSTANT GFX-KEY?
   NIP                           \ Rd imm
   $90000000 OR OR ;             \ ADRP | imm | Rd
 
+\ ADRP reaches ±4 GiB. A Windows ALLOCATE-EXEC page is often farther
+\ from the kernel than that, so re-encoding would wrap. Replace
+\ ADRP+ADD with LDR Xt, =abs in this image.
+: ADRP-FITS?  ( tgt pc -- flag )
+  SWAP $FFFFFFFFFFFFF000 AND
+  SWAP $FFFFFFFFFFFFF000 AND
+  - 12 ARSHIFT
+  DUP -1048576 < IF  DROP FALSE EXIT  THEN
+  1048575 > 0= ;
+
 \ --- SA-BSS: host ADRP+ADD → RW TGT-DATA via LDR-lit ---------------------
 \ Stand-alone cannot keep host BSS (throw_handler, host_tmp*, debug_*, …).
 \ Each distinct host absolute gets a zeroed TGT-DATA span; ADRP+ADD is
@@ -661,6 +684,25 @@ VARIABLE SA-DC   \ data cfa_catch_ok
 
 : ADD64-IMM12!  ( imm insn -- insn' )
   $FFC003FF AND  SWAP $FFF AND 10 LSHIFT OR ;
+
+: PATCH-ADRP-FAR  ( npc tgt insn -- )
+  {: npc tgt insn | rd add abs lit -- :}
+  insn $1F AND TO rd
+  npc 4 + W@ TO add
+  add ADD64-IMM12? 0= IF
+    ." adrp far: expected ADD after ADRP @ " npc U. CR ABORT
+  THEN
+  add 5 RSHIFT $1F AND rd <> IF
+    ." adrp far: ADD Rn is not Rd @ " npc U. CR ABORT
+  THEN
+  tgt $FFFFFFFFFFFFF000 AND  add ADD64-IMM12@ +  TO abs
+  TGT-END-ALIGN8
+  TGT-END @ TO lit
+  lit 8 + TGT-LIMIT @ U> IF  ." adrp far: literal pool overflow" CR ABORT  THEN
+  npc lit rd ENC-LDR64-LIT  npc W!
+  ARM-NOP npc 4 + W!
+  abs lit !
+  8 TGT-END +! ;
 
 \ Absolute symbol at code+off if ADRP ; ADD Xd,Xn,#imm12 follows.
 : ADRP-ADD-ABS  ( code off -- abs | 0 )
@@ -802,7 +844,9 @@ VARIABLE SA-BI-SLOT
     THEN
     4 SA-BI-OFF +!
   REPEAT
-  ." sa-bss: BI-MUL host_tmp0 discover failed" CR ABORT
+  \ Windows BI-MUL calls the C host. It has no host_tmp ADRP.
+  ." sa-bss: BI-MUL has no host_tmp ADRP" CR
+  EXIT
   ;
 
 \ BI-* : ldr x9,[hook]; cbz x9,1f; …; blr x9
@@ -919,7 +963,9 @@ $D63F0120 CONSTANT ARM-BLR-X9
   S" (CATCH-OK)" ['] SYSVOC 2 CELLS + SEARCH-WORDLIST
   0= IF  ." sa-bss: (CATCH-OK) missing" CR ABORT  THEN
   MAP-FIND ?DUP 0= IF
-    ." sa-bss: (CATCH-OK) not mapped" CR ABORT
+    \ This slice does not include CATCH. Windows CATCH's ADRP order
+    \ is not the Mac cfa_catch_ok index, so do not write a CFA.
+    EXIT
   THEN
   SA-DC @ !
   \ The cell holds a sliced CFA. SAVE-IMAGE must rebase it or the
@@ -993,7 +1039,12 @@ $D63F0120 CONSTANT ARM-BLR-X9
   THEN
   insn CBNZ-X28? IF  ARM-NOP npc W!  EXIT  THEN
   insn B/BL?     IF  npc insn tgt PATCH-BL  EXIT  THEN
-  insn ADRP?     IF  tgt npc insn ENC-ADRP npc W!  EXIT  THEN
+  insn ADRP? IF
+    tgt npc ADRP-FITS? IF
+      tgt npc insn ENC-ADRP npc W! EXIT
+    THEN
+    npc tgt insn PATCH-ADRP-FAR EXIT
+  THEN
   ;
 
 \ REL-TGT needs ( insn pc ). Fix the loop without nested mess:

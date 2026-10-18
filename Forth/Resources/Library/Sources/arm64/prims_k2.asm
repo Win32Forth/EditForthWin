@@ -65,6 +65,8 @@
         EXTERN _cursor_commit
         EXTERN _putchar
         EXTERN _print_unsigned
+        EXTERN _sa_putchar
+        EXTERN _sa_print_unsigned
         EXTERN emit_cstr
         EXTERN emit_str
         EXTERN XTYPE
@@ -1003,9 +1005,9 @@ XUDOT
         ldr     x20, [x22], #8
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        bl      _print_unsigned
+        bl      _sa_print_unsigned
         mov     x0, #32
-        bl      _putchar
+        bl      _sa_putchar
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
 XUDOT_END
