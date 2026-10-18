@@ -135,7 +135,12 @@ CREATE EMIT-COPYBUF   4096 ALLOT
   THEN
   EMIT-WIN-EXE (EMIT-S0)
   EMIT-WIN-EXE (EMIT-S+)
-  S" /Emitter/runner/emit-win.exe" EMIT-WIN-EXE (EMIT-S+)
+  X64-HOST? IF
+    S" /Emitter/runner/emit-win-x64.exe"
+  ELSE
+    S" /Emitter/runner/emit-win.exe"
+  THEN
+  EMIT-WIN-EXE (EMIT-S+)
   EMIT-WIN-EXE COUNT FILE-STATUS NIP IF
     ." EMIT-APP: emit-win.exe missing: " EMIT-WIN-EXE COUNT TYPE CR ABORT
   THEN

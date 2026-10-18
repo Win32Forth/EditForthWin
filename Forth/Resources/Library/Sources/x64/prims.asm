@@ -41,6 +41,8 @@ EXTRN _print_signed:PROC
 EXTRN _print_unsigned:PROC
 EXTRN _putchar:PROC
 EXTRN _quit_exit:PROC
+EXTRN _sa_print_signed:PROC
+EXTRN _sa_putchar:PROC
 EXTRN debug_break_asap:BYTE
 EXTRN debug_floor:BYTE
 EXTRN dstack:BYTE
@@ -67,6 +69,63 @@ PUBLIC XDOTS
 PUBLIC XRSDOT
 PUBLIC XCR
 PUBLIC XBYE
+BWSTR SEGMENT ALIGN(1) READ
+nm_XNEXT:
+    ; DCB "(NEXT)", 0
+    DB "(NEXT)", 0
+hl_XNEXT:
+    ; DCB "(NEXT) ITC dispatch", 0
+    DB "(NEXT) ITC dispatch", 0
+BWSTR ENDS
+BOOTWORD SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+row_XNEXT:
+    ; DCQ     nm_XNEXT, hl_XNEXT
+    DQ OFFSET nm_XNEXT, OFFSET hl_XNEXT
+    ; DCQ     0
+    DQ 0
+    ; DCQ     XNEXT, XNEXT_END
+    DQ OFFSET XNEXT, OFFSET XNEXT_END
+BOOTWORD ENDS
+BOOTPTR SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+    ; DCQ     row_XNEXT
+    DQ OFFSET row_XNEXT
+BOOTPTR ENDS
+.CODE
+XNEXT:
+    ; cbnz    x28, next_debug_gate
+    mov rax, QWORD PTR arm_x28
+    cmp rax, 0
+    jne next_debug_gate
+    ; lea x1, debug_break_asap
+    lea rax, debug_break_asap
+    mov QWORD PTR arm_x1, rax
+    ; ldr     x1, [x1]
+    mov r10, QWORD PTR arm_x1
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; cbnz    x1, next_debug_gate
+    mov rax, QWORD PTR arm_x1
+    cmp rax, 0
+    jne next_debug_gate
+    ; ldr     x21, [x19], #8
+    mov r10, QWORD PTR arm_x19
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x21, rax
+    mov rax, QWORD PTR arm_x19
+    add rax, 8
+    mov QWORD PTR arm_x19, rax
+    ; ldr     x1, [x21]
+    mov r10, QWORD PTR arm_x21
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; br      x1
+    mov rax, QWORD PTR arm_x1
+    jmp rax
+XNEXT_END:
 BWSTR SEGMENT ALIGN(1) READ
 nm_DOCOL:
     ; DCB "(DOCOL)", 0
@@ -1064,18 +1123,18 @@ XDOT:
     mov QWORD PTR [r10+0], rax
     mov rax, QWORD PTR arm_x30
     mov QWORD PTR [r10+8], rax
-    ; bl      _print_signed
+    ; bl      _sa_print_signed
     lea rax, xret_9
     mov QWORD PTR arm_x30, rax
-    jmp _print_signed
+    jmp _sa_print_signed
     xret_9:
     ; mov     x0, #32
     mov rax, 20h
     mov QWORD PTR arm_x0, rax
-    ; bl      _putchar
+    ; bl      _sa_putchar
     lea rax, xret_10
     mov QWORD PTR arm_x30, rax
-    jmp _putchar
+    jmp _sa_putchar
     xret_10:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]

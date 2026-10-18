@@ -327,7 +327,7 @@ nd_floor:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -340,6 +340,8 @@ nd_floor:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_debug_paint
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -2470,7 +2472,7 @@ XDBGHOSTPAINT:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -2483,6 +2485,8 @@ XDBGHOSTPAINT:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_debug_paint
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -2578,7 +2582,7 @@ XDBGHOSTSPAN:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -2591,6 +2595,8 @@ XDBGHOSTSPAN:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_debug_set_span
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -2687,7 +2693,7 @@ XDBGHOSTSPANAT:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -2700,6 +2706,8 @@ XDBGHOSTSPANAT:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_debug_get_span
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -2842,7 +2850,7 @@ XDBGVIEWUPD:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -2855,6 +2863,8 @@ XDBGVIEWUPD:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_debug_paint
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -3480,7 +3490,7 @@ XDBGGO:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -3493,6 +3503,8 @@ XDBGGO:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_debug_paint
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -3595,7 +3607,7 @@ XDBGABORT:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -3608,6 +3620,8 @@ XDBGABORT:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_debug_paint
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -4223,7 +4237,7 @@ XDBGOFF:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -4236,6 +4250,8 @@ XDBGOFF:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_debug_paint
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -5533,7 +5549,7 @@ pause_chevrons:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -5546,6 +5562,8 @@ pause_chevrons:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_debug_paint
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -6219,7 +6237,7 @@ pause_key_abort:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -6232,6 +6250,8 @@ pause_key_abort:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_debug_paint
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -6296,7 +6316,7 @@ pause_go:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -6309,6 +6329,8 @@ pause_go:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_debug_paint
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -7379,7 +7401,7 @@ _debug_wheel:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -7392,6 +7414,8 @@ _debug_wheel:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_debug_paint
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -10914,7 +10938,7 @@ _getchar:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -10927,6 +10951,8 @@ _getchar:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     mov r11, QWORD PTR arm_x1
     call r11
     mov QWORD PTR arm_x0, rax

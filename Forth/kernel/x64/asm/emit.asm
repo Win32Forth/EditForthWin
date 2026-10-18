@@ -140,7 +140,7 @@ emit_char_hook:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -153,6 +153,8 @@ emit_char_hook:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     mov r11, QWORD PTR arm_x16
     call r11
     mov QWORD PTR arm_x0, rax

@@ -42,6 +42,17 @@ VARIABLE TGT-ALLOC    \ length given to ALLOCATE-EXEC / FREE-EXEC
 : TGT-W,  ( u32 -- )
   TGT-HERE TGT-W!  4 TGT-ALLOT ;
 
+\ x64 images are relocated by Emitter/x64reloc.fth. These stay no-ops
+\ until that file installs them. On ARM64, X64-HOST? is false.
+DEFER X64-JMP,     ( target -- )
+DEFER X64-0BRANCH  ( -- )
+DEFER X64-BUILD-RESET ( -- )
+: (X64-JMP-NOP)    ( target -- )  DROP ;
+: (X64-0BRANCH-NOP) ( -- )  ;
+' (X64-JMP-NOP) IS X64-JMP,
+' (X64-0BRANCH-NOP) IS X64-0BRANCH
+' (X64-0BRANCH-NOP) IS X64-BUILD-RESET
+
 VARIABLE TGT-DATA         \ RW ALLOCATE base (stand-alone data segment)
 VARIABLE TGT-DATA-ORG
 VARIABLE TGT-DATA-DP
@@ -117,6 +128,10 @@ VARIABLE TGT-MAPN
   THEN
   R> DROP
   2DUP SWAP - NIP ;
+
+\ Translated x64 prims begin with REX.W MOV (48 8B ...). ARM64 LOCAL-INIT does not.
+: X64-HOST?  ( -- flag )
+  ['] LOCAL-INIT PRIM-SPAN DROP C@ $48 = ;
 
 \ CREATE/VALUE/CONSTANT/DOES>: default identity map (in-process TGT-RUN).
 \ /EMIT-STANDALONE copies each data region into the target image (Phase 1).
@@ -309,7 +324,9 @@ VARIABLE DE-BEST
   DROP                         \ ( xt )
   8 TGT-ALLOT
   DUP 0BRANCH-ADDR = IF
-    DROP WRITE-0BRANCH-SA EXIT
+    DROP
+    X64-HOST? IF  X64-0BRANCH EXIT  THEN
+    WRITE-0BRANCH-SA EXIT
   THEN
   PRIM-SPAN COPY-BYTES ;
 
@@ -596,6 +613,7 @@ VARIABLE DOES-N
   SWAP PRIM-SPAN NIP +              \ addr just after copied bytes
   TGT-DP !
   ['] (NEXT) MAP-FIND 8 +           \ NEXT payload
+  X64-HOST? IF  X64-JMP, EXIT  THEN
   ARM-B, ;
 
 : TGT-STITCH  {: | i -- :}
@@ -628,6 +646,7 @@ VARIABLE DOES-N
   (CATCH-OK-XT) (MARK) ;
 
 : TGT-BUILD  ( xt -- )
+  X64-BUILD-RESET
   TGT-CLOSE
   0 TGT-DATA-BYTES !
   PTR-RELOC-CLEAR

@@ -38,6 +38,7 @@ EXTRN arm_v:BYTE
 EXTRN XCATCH_OK:PROC
 EXTRN XRESTART:PROC
 EXTRN XTW_CONTINUE:PROC
+EXTRN host_float_op:PROC
 .DATA
 PUBLIC latest_var
 PUBLIC last_cfa
@@ -47,6 +48,8 @@ PUBLIC state_var
 PUBLIC bye_flag
 PUBLIC inited
 PUBLIC emit_fn
+PUBLIC file_op_hook
+PUBLIC float_op_hook
 PUBLIC key_fn
 PUBLIC facility_op_hook
 PUBLIC vm_tos
@@ -194,6 +197,12 @@ emit_hook:
 emit_fn:
     ; DCQ     0
     DQ 0
+file_op_hook:
+    ; DCQ    0
+    DQ 0
+float_op_hook:
+    ; DCQ   host_float_op
+    DQ OFFSET host_float_op
 key_hook:
 key_fn:
     ; DCQ     0

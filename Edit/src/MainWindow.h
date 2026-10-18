@@ -96,6 +96,8 @@ private:
     void ensureFloat();
     void syncConsoleChrome();
     void showAbout();
+    void showStartupMessages();
+    QString consumeStartup(const QString &text);
 
     QTabWidget *m_tabs = nullptr;
     QSplitter *m_split = nullptr;
@@ -153,4 +155,7 @@ private:
     QString m_engineVersion;
     QString m_engineBuilt;
     QString m_consoleName;
+    bool m_captureStartup = true;
+    QString m_startupPartial;
+    QString m_startupLog;
 };

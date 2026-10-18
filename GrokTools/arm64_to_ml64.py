@@ -28,6 +28,9 @@ FILES = [
     "prims_k1.asm",
     "prims_k2.asm",
     "prims_k3.asm",
+    "sa_print.asm",
+    "sa_files.asm",
+    "sa_float.asm",
     "prims_dbg.asm",
     "dict.asm",
     "entry.asm",
@@ -52,6 +55,8 @@ OPCODES = {
     "adrp", "adr", "lea",
     "cbz", "cbnz", "tbz", "tbnz", "b", "bl", "br", "blr", "ret",
     "csel", "csneg", "cset", "csetm", "ccmp", "extr",
+    "fmov", "fadd", "fsub", "fmul", "fdiv", "fmax", "fmin",
+    "fneg", "fabs", "fsqrt", "fcmp", "fcvt", "fcvtzs", "scvtf", "ucvtf",
     "dcb", "dcq", "dcd", "space", "align",
 }
 
@@ -579,6 +584,13 @@ class Translator:
         if op == "extr":
             self.emit_extr(ops)
             return
+        if op == "adr":
+            self.emit_adr(ops)
+            return
+        if op in ("fmov", "fadd", "fsub", "fmul", "fdiv", "fmax", "fmin",
+                  "fneg", "fabs", "fsqrt", "fcmp", "fcvt", "fcvtzs", "scvtf", "ucvtf"):
+            self.emit_fp(op, ops)
+            return
         raise AsmError("unhandled " + op)
 
     def normalize(self, ops: list[str]) -> list[str]:
@@ -632,6 +644,10 @@ class Translator:
         reg = re.fullmatch(r"([xw])(\d+)", low)
         if reg:
             return {"kind": "reg", "num": int(reg.group(2)), "width": 32 if reg.group(1) == "w" else 64,
+                    "shift": shift}
+        freg = re.fullmatch(r"([ds])(\d+)", low)
+        if freg:
+            return {"kind": "freg", "num": int(freg.group(2)), "width": 64 if freg.group(1) == "d" else 32,
                     "shift": shift}
         if body.startswith("[") or body.startswith('"') or body.startswith("'"):
             return {"kind": "raw", "text": text}
@@ -847,7 +863,7 @@ class Translator:
         self.L("push rbx")
         self.L("mov rbx, rsp")
         self.L("and rsp, -16")
-        self.L("sub rsp, 64")
+        self.L("sub rsp, 80")
         self.L("mov rcx, QWORD PTR arm_x0")
         self.L("mov rdx, QWORD PTR arm_x1")
         self.L("mov r8, QWORD PTR arm_x2")
@@ -855,6 +871,9 @@ class Translator:
         for reg, slot in ((4, 32), (5, 40), (6, 48), (7, 56)):
             self.L(f"mov rax, QWORD PTR arm_x{reg}")
             self.L(f"mov QWORD PTR [rsp+{slot}], rax")
+        # ARM64 keeps the 9th integer arg at [sp]. File ops pass o3* there.
+        self.L("mov rax, QWORD PTR [rbx+8]")
+        self.L("mov QWORD PTR [rsp+64], rax")
         if arm is not None:
             self.load(arm, "r11", 64)
             self.L("call r11")
@@ -1072,6 +1091,13 @@ class Translator:
         mem = self.parse_mem(ops[1])
         post = self.emit_ea(mem)
         if op in ("str", "strb"):
+            if reg["kind"] == "freg":
+                mov = "movss" if reg["width"] == 32 else "movsd"
+                ptr = "DWORD" if reg["width"] == 32 else "QWORD"
+                self.L(f"{mov} {ptr} PTR [r10], {self.xmm(reg)}")
+                if post:
+                    self.add_base(mem["base"], post)
+                return
             size = 1 if op == "strb" else (4 if reg["width"] == 32 else 8)
             if reg["kind"] == "zr":
                 ptr = {8: "QWORD", 4: "DWORD", 1: "BYTE"}[size]
@@ -1085,6 +1111,13 @@ class Translator:
                 else:
                     self.L("mov BYTE PTR [r10], al")
         else:
+            if reg["kind"] == "freg":
+                mov = "movss" if reg["width"] == 32 else "movsd"
+                ptr = "DWORD" if reg["width"] == 32 else "QWORD"
+                self.L(f"{mov} {self.xmm(reg)}, {ptr} PTR [r10]")
+                if post:
+                    self.add_base(mem["base"], post)
+                return
             size = 1 if op == "ldrb" else (4 if reg["width"] == 32 else 8)
             if size == 8:
                 self.L("mov rax, QWORD PTR [r10]")
@@ -1179,6 +1212,121 @@ class Translator:
         self.L("mov rdx, rcx")
         self.L(f"shrd rax, rdx, {count}")
         self.store(dest)
+
+    def xmm(self, operand: dict) -> str:
+        return f"xmm{operand['num']}"
+
+    def emit_adr(self, ops: list[str]) -> None:
+        dest = self.parse_op(ops[0])
+        label = ops[1]
+        self.use_label(label)
+        self.L(f"lea rax, {label}")
+        self.store(dest)
+
+    def movfp(self, dest: dict, src: dict) -> None:
+        if dest["num"] == src["num"] and dest["width"] == src["width"]:
+            return
+        ins = "movss" if dest["width"] == 32 or src["width"] == 32 else "movsd"
+        self.L(f"{ins} {self.xmm(dest)}, {self.xmm(src)}")
+
+    def snap_float(self) -> None:
+        # ARM FCMP flags from ucomisd: N=less, Z=equal, C=not less, V=unordered.
+        self.L("setb al")
+        self.L("setp cl")
+        self.L("setz dl")
+        self.L("mov r11b, al")
+        self.L("or r11b, cl")
+        self.L("xor r11b, cl")
+        self.L("mov BYTE PTR arm_n, r11b")
+        self.L("mov r11b, dl")
+        self.L("or r11b, cl")
+        self.L("xor r11b, cl")
+        self.L("mov BYTE PTR arm_z, r11b")
+        self.L("mov BYTE PTR arm_v, cl")
+        self.L("mov r11b, BYTE PTR arm_n")
+        self.L("xor r11b, 1")
+        self.L("mov BYTE PTR arm_c, r11b")
+
+    def emit_fp(self, op: str, ops: list[str]) -> None:
+        if op == "fcmp":
+            left = self.parse_op(ops[0])
+            right_text = ops[1].strip()
+            if right_text in ("#0.0", "#0", "0.0", "#0.0"):
+                self.L("xorpd xmm15, xmm15")
+                self.L(f"ucomisd {self.xmm(left)}, xmm15")
+            else:
+                right = self.parse_op(right_text)
+                self.L(f"ucomisd {self.xmm(left)}, {self.xmm(right)}")
+            self.snap_float()
+            return
+        if op == "fmov":
+            dest = self.parse_op(ops[0])
+            src = self.parse_op(ops[1])
+            if dest["kind"] == "freg" and src["kind"] == "freg":
+                self.movfp(dest, src)
+            elif dest["kind"] == "freg" and src["kind"] == "zr":
+                self.L(f"xorpd {self.xmm(dest)}, {self.xmm(dest)}")
+            elif dest["kind"] == "freg" and src["kind"] == "reg":
+                self.load(src, "rax", 64)
+                self.L(f"movq {self.xmm(dest)}, rax")
+            elif dest["kind"] == "reg" and src["kind"] == "freg":
+                self.L(f"movq rax, {self.xmm(src)}")
+                self.store(dest)
+            else:
+                raise AsmError("bad fmov")
+            return
+        if op == "fcvt":
+            dest = self.parse_op(ops[0])
+            src = self.parse_op(ops[1])
+            if dest["width"] == 64 and src["width"] == 32:
+                self.L(f"cvtss2sd {self.xmm(dest)}, {self.xmm(src)}")
+            elif dest["width"] == 32 and src["width"] == 64:
+                self.L(f"cvtsd2ss {self.xmm(dest)}, {self.xmm(src)}")
+            else:
+                self.movfp(dest, src)
+            return
+        if op == "fcvtzs":
+            dest = self.parse_op(ops[0])
+            src = self.parse_op(ops[1])
+            self.L(f"cvttsd2si rax, {self.xmm(src)}")
+            self.store(dest)
+            return
+        if op in ("scvtf", "ucvtf"):
+            dest = self.parse_op(ops[0])
+            src = self.parse_op(ops[1])
+            self.load(src, "rax", 64)
+            self.L(f"cvtsi2sd {self.xmm(dest)}, rax")
+            if op == "ucvtf":
+                skip = self.lab("ucv")
+                self.L("test rax, rax")
+                self.L(f"jns {skip}")
+                self.L("mov rcx, 43F0000000000000h")
+                self.L("movq xmm15, rcx")
+                self.L(f"addsd {self.xmm(dest)}, xmm15")
+                self.L(f"{skip}:")
+            return
+        if op in ("fneg", "fabs", "fsqrt"):
+            dest = self.parse_op(ops[0])
+            src = self.parse_op(ops[1])
+            self.movfp(dest, src)
+            if op == "fsqrt":
+                self.L(f"sqrtsd {self.xmm(dest)}, {self.xmm(dest)}")
+            elif op == "fabs":
+                self.L("mov rax, 7FFFFFFFFFFFFFFFh")
+                self.L("movq xmm15, rax")
+                self.L(f"andpd {self.xmm(dest)}, xmm15")
+            else:
+                self.L("mov rax, 8000000000000000h")
+                self.L("movq xmm15, rax")
+                self.L(f"xorpd {self.xmm(dest)}, xmm15")
+            return
+        dest = self.parse_op(ops[0])
+        src1 = self.parse_op(ops[1])
+        src2 = self.parse_op(ops[2])
+        self.movfp(dest, src1)
+        ins = {"fadd": "addsd", "fsub": "subsd", "fmul": "mulsd", "fdiv": "divsd",
+               "fmax": "maxsd", "fmin": "minsd"}[op]
+        self.L(f"{ins} {self.xmm(dest)}, {self.xmm(src2)}")
 
     def emit_dcb(self, ops: list[str]) -> None:
         parts = []

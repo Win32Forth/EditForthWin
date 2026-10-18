@@ -16,6 +16,9 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDesktopServices>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QPlainTextEdit>
 #include <QEvent>
 #include <QDir>
 #include <QFile>
@@ -236,7 +239,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             syncConsoleChrome();
         }
         m_console->setEngineAlive(true);
-        m_console->appendOutput(text);
+        const QString shown = consumeStartup(text);
+        if (!shown.isEmpty())
+            m_console->appendOutput(shown);
     });
     connect(m_pipe, &ForthPipe::engineStopped, this, [this] {
         m_connected = false;
@@ -632,6 +637,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     forthMenu->addAction(QStringLiteral("Show &Config"), this, [this] { showUserFolder(QStringLiteral("Config")); });
 
     auto *helpMenu = menuBar()->addMenu(QStringLiteral("&Help"));
+    helpMenu->addAction(QStringLiteral("EditForthWin Startup &Messages"), this,
+                        &MainWindow::showStartupMessages);
     helpMenu->addAction(QStringLiteral("&About EditForthWin"), this, &MainWindow::showAbout);
 
     statusBar();
@@ -1074,6 +1081,59 @@ void MainWindow::toggleCaretBreak() {
     }
     m_debug->setError(QString());
     m_pipe->toggleBreak(word);
+}
+
+QString MainWindow::consumeStartup(const QString &text) {
+    if (!m_captureStartup)
+        return text;
+    m_startupPartial += text;
+    QString visible;
+    while (true) {
+        const int nl = m_startupPartial.indexOf(QLatin1Char('\n'));
+        if (nl < 0)
+            break;
+        QString line = m_startupPartial.left(nl);
+        m_startupPartial.remove(0, nl + 1);
+        if (line.endsWith(QLatin1Char('\r')))
+            line.chop(1);
+        const bool cold = line.startsWith(QLatin1String("Loading: ")) ||
+                          line.startsWith(QLatin1String("Finished Loading: "));
+        if (cold) {
+            if (!m_startupLog.isEmpty())
+                m_startupLog += QLatin1Char('\n');
+            m_startupLog += line;
+            continue;
+        }
+        visible += line;
+        visible += QLatin1Char('\n');
+        if (line.startsWith(QLatin1String("=== EditForthWin "))) {
+            m_captureStartup = false;
+            visible += m_startupPartial;
+            m_startupPartial.clear();
+            break;
+        }
+    }
+    return visible;
+}
+
+void MainWindow::showStartupMessages() {
+    auto *dlg = new QDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setWindowTitle(QStringLiteral("EditForthWin Startup Messages"));
+    dlg->resize(640, 320);
+    auto *text = new QPlainTextEdit(dlg);
+    text->setReadOnly(true);
+    text->setLineWrapMode(QPlainTextEdit::NoWrap);
+    text->setFont(m_console->font());
+    text->setPlainText(m_startupLog.isEmpty()
+                           ? QStringLiteral("No startup messages were captured.")
+                           : m_startupLog);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, dlg);
+    connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::close);
+    auto *layout = new QVBoxLayout(dlg);
+    layout->addWidget(text);
+    layout->addWidget(buttons);
+    dlg->open();
 }
 
 void MainWindow::showAbout() {

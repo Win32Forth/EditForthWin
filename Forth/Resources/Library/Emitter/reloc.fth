@@ -224,8 +224,23 @@ DEFER SA-PATCH-BL-HELPER  ( npc tgt -- )
   OVER CBNZ-X28? IF  CBNZ-TGT    EXIT  THEN
   2DROP 0 ;
 
+DEFER X64-HOST-PRIM-VA  ( xt -- va | 0 )
+DEFER X64-LOCALS-DISCOVER ( -- )
+DEFER X64-EXCEPT-DISCOVER ( -- )
+DEFER X64-RELOC-PRIM ( xt -- )
+DEFER X64-FINISH ( -- )
+: (X64-NOP0) ( -- ) ;
+: (X64-NOP-VA) ( xt -- va ) DROP 0 ;
+: (X64-NOP-XT) ( xt -- ) DROP ;
+' (X64-NOP-VA) IS X64-HOST-PRIM-VA
+' (X64-NOP0) IS X64-LOCALS-DISCOVER
+' (X64-NOP0) IS X64-EXCEPT-DISCOVER
+' (X64-NOP-XT) IS X64-RELOC-PRIM
+' (X64-NOP0) IS X64-FINISH
+
 \ First out-of-span BL/B target in a CODE prim (= _host_app_* VA).
 : HOST-PRIM-VA  ( xt -- va | 0 )
+  X64-HOST? IF  X64-HOST-PRIM-VA EXIT  THEN
   {: xt | code u off insn tgt -- :}
   xt PRIM-SPAN TO u TO code
   0 TO off
@@ -807,6 +822,7 @@ VARIABLE SA-LOC-N
 VARIABLE SA-LOC-ABS
 
 : SA-LOCALS-DISCOVER  ( -- )
+  X64-HOST? IF  X64-LOCALS-DISCOVER EXIT  THEN
   ['] LOCAL-INIT PRIM-SPAN SA-LOC-U ! SA-LOC-CODE !
   0 SA-LOC-OFF !  0 SA-LOC-N !
   BEGIN  SA-LOC-OFF @ 4 + SA-LOC-U @ <  SA-LOC-N @ 4 < AND  WHILE
@@ -929,6 +945,7 @@ $D63F0120 CONSTANT ARM-BLR-X9
 \ so NEXT after the xt loads x21=0. An ADRP X19 selects that IP cell.
 \ No X19 means the Mac index-3 cell.
 : SA-EXCEPT-DISCOVER  ( -- )
+  X64-HOST? IF  X64-EXCEPT-DISCOVER EXIT  THEN
   \ Names before "|" are taken from the data stack. These five are temps.
   {: | code u off n abs -- :}
   SA-XC @ IF  EXIT  THEN
@@ -1071,6 +1088,7 @@ $D63F0120 CONSTANT ARM-BLR-X9
 \ REL-TGT needs ( insn pc ). Fix the loop without nested mess:
 
 : RELOC-PRIM  {: xt | new code u off insn tgt npc -- :}
+  X64-HOST? IF  xt X64-RELOC-PRIM EXIT  THEN
   xt COLON-WORD? IF  EXIT  THEN
   xt DATA-WORD? IF  EXIT  THEN   \ host import — never patch host CFA/PFA
   \ 0BRANCH is always a custom guard-free body (no host data_stack ADRP).
@@ -1126,10 +1144,16 @@ $D63F0120 CONSTANT ARM-BLR-X9
     i 1+ TO i
   REPEAT
   SA-EXCEPT-FIX-CFA
-  SA-DOCOL-IP8
-  SA-FIX-BI-HOOKS
-  SA-FIX-TIME-DATE
-  SA-FIX-SYSTEM
+  X64-HOST? IF
+    X64-FINISH
+  ELSE
+    SA-DOCOL-IP8
+    SA-FIX-BI-HOOKS
+    SA-FIX-TIME-DATE
+    SA-FIX-SYSTEM
+  THEN
   ." host-relocs " HOST-RELOC-N @ . CR ;
+
+FROMLIB FLOAD Emitter/x64reloc.fth
 
 ' (TGT-RELOC) IS TGT-RELOC  \ fill forward reference.

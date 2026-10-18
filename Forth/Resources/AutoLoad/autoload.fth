@@ -19,10 +19,10 @@
     \ ITC DEBUG (hub loads Debugger/*; leaves ALSO DEBUGGER on the order)
     REQUIRE Library/Debugger/debugger.fth
     [UNDEFINED] EDITOR [IF] VOCABULARY EDITOR [THEN]
-    \ Emitter and Hyper are commented so boot can reach the debugger.
-    \ Restore these lines when those loads should run on Windows again.
-    \ Hyper clears DBG-HL-XT, so the re-arm below belongs with that restore.
-    \ REQUIRE Library/Emitter/emitter.fth
+    \ Emitter loads at boot. Hyper stays commented until that index should
+    \ rebuild here. Hyper clears DBG-HL-XT, so the re-arm below belongs
+    \ with that restore.
+    REQUIRE Library/Emitter/emitter.fth
     \ REQUIRE Library/HYPER/HYPER.fth
     \ ALSO HYPER-VOC MIN-HYPER-NOISE ON PREVIOUS
     \ HYPER-REINDEX

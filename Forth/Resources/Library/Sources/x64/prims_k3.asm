@@ -2523,7 +2523,7 @@ XAPP_OPEN:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -2536,6 +2536,8 @@ XAPP_OPEN:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_open
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -2663,7 +2665,7 @@ XOOP_CALL:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -2676,6 +2678,8 @@ XOOP_CALL:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_oop_call
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -2765,7 +2769,7 @@ XAPP_CLOSE:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -2778,6 +2782,8 @@ XAPP_CLOSE:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_close
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -2874,7 +2880,7 @@ XAPP_BLIT:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -2887,6 +2893,8 @@ XAPP_BLIT:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_blit
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -2983,7 +2991,7 @@ XAPP_PBLIT:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -2996,6 +3004,8 @@ XAPP_PBLIT:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_pblit
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -3099,7 +3109,7 @@ XAPP_CBLIT:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -3112,6 +3122,8 @@ XAPP_CBLIT:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_cblit
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -3191,7 +3203,7 @@ XAPP_KEYQ:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -3204,6 +3216,8 @@ XAPP_KEYQ:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_keyq
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -3293,7 +3307,7 @@ XAPP_KEY:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -3306,6 +3320,8 @@ XAPP_KEY:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_key
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -3412,7 +3428,7 @@ XAPP_NAME:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -3425,6 +3441,8 @@ XAPP_NAME:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_name
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -3521,7 +3539,7 @@ XAPP_TONE:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -3534,6 +3552,8 @@ XAPP_TONE:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_tone
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -3613,7 +3633,7 @@ XAPP_PUMP:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -3626,6 +3646,8 @@ XAPP_PUMP:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_pump
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -3731,7 +3753,7 @@ XAPP_MOUSE:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -3744,6 +3766,8 @@ XAPP_MOUSE:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_mouse
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -3883,7 +3907,7 @@ XAPP_SIZE:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -3896,6 +3920,8 @@ XAPP_SIZE:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_size
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -4012,7 +4038,7 @@ XAPP_IMG_CHOOSE:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -4025,6 +4051,8 @@ XAPP_IMG_CHOOSE:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_img_choose
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -4131,7 +4159,7 @@ XAPP_IMG_LOAD:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -4144,6 +4172,8 @@ XAPP_IMG_LOAD:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_img_load
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -4251,7 +4281,7 @@ XAPP_IMG_SIZE:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -4264,6 +4294,8 @@ XAPP_IMG_SIZE:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_img_size
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -4418,7 +4450,7 @@ XAPP_IMG_RENDER:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -4431,6 +4463,8 @@ XAPP_IMG_RENDER:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_img_render
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -4520,7 +4554,7 @@ XAPP_FILE_CHOOSE:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -4533,6 +4567,8 @@ XAPP_FILE_CHOOSE:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_file_choose
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -4622,7 +4658,7 @@ XAPP_FILE_SAVE_AS:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -4635,6 +4671,8 @@ XAPP_FILE_SAVE_AS:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_file_save_as
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -4741,7 +4779,7 @@ XAPP_FILE_PATH:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -4754,6 +4792,8 @@ XAPP_FILE_PATH:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_file_path
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -4870,7 +4910,7 @@ XAPP_FILE_SLURP:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -4883,6 +4923,8 @@ XAPP_FILE_SLURP:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_file_slurp
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -5004,7 +5046,7 @@ XAPP_FILE_SPEW:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -5017,6 +5059,8 @@ XAPP_FILE_SPEW:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_app_file_spew
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx

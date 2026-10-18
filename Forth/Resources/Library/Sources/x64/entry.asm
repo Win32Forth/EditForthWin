@@ -1553,7 +1553,7 @@ _try_float:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -1566,6 +1566,8 @@ _try_float:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_float_op
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx
@@ -1658,7 +1660,7 @@ _try_float:
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 64
+    sub rsp, 80
     mov rcx, QWORD PTR arm_x0
     mov rdx, QWORD PTR arm_x1
     mov r8, QWORD PTR arm_x2
@@ -1671,6 +1673,8 @@ _try_float:
     mov QWORD PTR [rsp+48], rax
     mov rax, QWORD PTR arm_x7
     mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_float_op
     mov QWORD PTR arm_x0, rax
     mov rsp, rbx

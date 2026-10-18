@@ -20,7 +20,11 @@
 #define EW_ROWS_MAX 128
 #define EW_KEYS 64
 
+#ifdef _M_X64
+extern void run_itc(void *dsp, void *rp, void *cfa, void *xt, void *regfile);
+#else
 extern void run_itc(void *dsp, void *rp, void *cfa, void *body);
+#endif
 
 static int g_dump;
 static int g_cols = 80;
@@ -689,11 +693,20 @@ int main(int argc, char **argv) {
     if ((uint64_t)flen < 64 + code_len + data_len + host_bytes + 8 + ptr_n * 8)
         die("truncated image (ptr)");
 
+#ifdef _M_X64
+    /* Code is padded to 4096. Data, including the register file, follows it. */
+    if (data_len < 256)
+        die("x64 image has no register file");
+    code_bytes = (size_t)code_len;
+    code = alloc_rw(code_bytes + (size_t)((data_len + 4095) & ~(uint64_t)4095));
+    data = code + code_len;
+#else
     code_bytes = (size_t)((code_len + EW_PAGE - 1) & ~(uint64_t)(EW_PAGE - 1));
     if (code_bytes < EW_PAGE)
         code_bytes = EW_PAGE;
     code = alloc_rw(code_bytes);
     data = alloc_rw(data_len ? (size_t)((data_len + 4095) & ~(uint64_t)4095) : 4096);
+#endif
     memcpy(code, file + 64, (size_t)code_len);
     if (data_len)
         memcpy(data, file + 64 + code_len, (size_t)data_len);
@@ -725,6 +738,24 @@ int main(int argc, char **argv) {
     apply_host_fix(code, code_len);
 
     gadget = alloc_rw(EW_PAGE);
+#ifdef _M_X64
+    {
+        uint8_t *regfile = data + data_len - 256;
+        uint64_t x23 = (uint64_t)(uintptr_t)(regfile + 23 * 8);
+        uint64_t *q;
+        /* pop the Forth return stack (arm_x23) and jump to that address */
+        gadget[0] = 0x48; gadget[1] = 0xB8;
+        memcpy(gadget + 2, &x23, 8);
+        gadget[10] = 0x48; gadget[11] = 0x8B; gadget[12] = 0x08;
+        gadget[13] = 0x48; gadget[14] = 0x8B; gadget[15] = 0x11;
+        gadget[16] = 0x48; gadget[17] = 0x83; gadget[18] = 0xC1; gadget[19] = 0x08;
+        gadget[20] = 0x48; gadget[21] = 0x89; gadget[22] = 0x08;
+        gadget[23] = 0xFF; gadget[24] = 0xE2;
+        q = (uint64_t *)(gadget + 32);
+        q[0] = (uint64_t)(uintptr_t)gadget;
+        q[1] = (uint64_t)(uintptr_t)(gadget + 32);
+    }
+#else
     {
         uint32_t *ins = (uint32_t *)gadget;
         uint64_t *q = (uint64_t *)(gadget + 16);
@@ -733,6 +764,7 @@ int main(int argc, char **argv) {
         q[0] = (uint64_t)(uintptr_t)gadget;
         q[1] = (uint64_t)(uintptr_t)(gadget + 16);
     }
+#endif
     {
         DWORD oldp = 0;
         if (!VirtualProtect(code, code_bytes, PAGE_EXECUTE_READ, &oldp))
@@ -741,13 +773,17 @@ int main(int argc, char **argv) {
             die("protect gadget");
     }
     FlushInstructionCache(GetCurrentProcess(), code, code_bytes);
-    FlushInstructionCache(GetCurrentProcess(), gadget, 32);
+    FlushInstructionCache(GetCurrentProcess(), gadget, 64);
 
     stack = alloc_rw(0x110000);
     dsp = stack + 0x100000 - 64;
     rp = (uint8_t *)dsp - 0x8000;
     cfa = code + entry_off;
+#ifdef _M_X64
+    run_itc(dsp, rp, cfa, gadget + 40, data + data_len - 256);
+#else
     run_itc(dsp, rp, cfa, gadget + 24);
+#endif
     write_dump();
     if (g_hwnd) {
         pump();
