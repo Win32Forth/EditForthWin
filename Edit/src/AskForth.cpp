@@ -211,8 +211,8 @@ QString resolveKey(const QString &id) {
 
 QVector<Profile> cannedProfiles() {
     QVector<Profile> list;
-    list << makeProfile(QStringLiteral("Ollama gemma4:e4b"), QStringLiteral("ollama"),
-                        QStringLiteral("gemma4:e4b"), QStringLiteral("http://127.0.0.1:11434"));
+    list << makeProfile(QStringLiteral("Ollama qwen2.5-coder:7b"), QStringLiteral("ollama"),
+                        QStringLiteral("qwen2.5-coder:7b"), QStringLiteral("http://127.0.0.1:11434"));
     list << makeProfile(QStringLiteral("SpaceXAI grok-4.7"), QStringLiteral("openai"),
                         QStringLiteral("grok-4.7"), QStringLiteral("https://api.x.ai/v1"));
     Profile mlx = makeProfile(QStringLiteral("Local mlx :1234"), QStringLiteral("openai"),
@@ -242,7 +242,7 @@ QVector<Profile> loadProfiles() {
     }
     auto hasOllama = [&] {
         for (const Profile &p : list)
-            if (p.provider == QLatin1String("ollama") && p.model == QLatin1String("gemma4:e4b"))
+            if (p.provider == QLatin1String("ollama") && p.model == QLatin1String("qwen2.5-coder:7b"))
                 return true;
         return false;
     };
@@ -1346,7 +1346,7 @@ void AskForthPanel::buildUi() {
     help->setPlainText(QStringLiteral(
         "Type a Prompt and click Ask. The reply streams into Documents/EditForthWin/AskForth/AskForth-N.fth. "
         "Then click Agent Enhance Reply to append a second section. Library defaults to Library/Sample.\n\n"
-        "Local Ask needs Ollama (https://ollama.com) and a chat model: ollama pull gemma4:e4b. "
+        "Local Ask needs Ollama (https://ollama.com) and a chat model: ollama pull qwen2.5-coder:7b. "
         "SpaceXAI uses Models… and the XAI_API_KEY environment variable, or a key saved for that profile. "
         "Hybrid and Semantic Library search uses nomic-embed-text on local Ollama. Until that index is ready, the status line says keyword (no embed index)."));
     help->setLineWrapMode(QPlainTextEdit::WidgetWidth);
@@ -1692,7 +1692,7 @@ void AskForthPanel::refreshBanner() {
             if (reply->error() != QNetworkReply::NoError) {
                 finishBanner(QStringLiteral(
                     "Ask Forth needs Ollama. Install from https://ollama.com , start it, then run: ollama pull %1")
-                                 .arg(model.isEmpty() ? QStringLiteral("gemma4:e4b") : model));
+                                 .arg(model.isEmpty() ? QStringLiteral("qwen2.5-coder:7b") : model));
                 return;
             }
             const QJsonArray models = QJsonDocument::fromJson(reply->readAll()).object()
@@ -1926,7 +1926,7 @@ void AskForthPanel::editModels() {
     connect(add, &QPushButton::clicked, &dialog, [&] {
         storeForm();
         list << makeProfile(QStringLiteral("New profile"), QStringLiteral("ollama"),
-                            QStringLiteral("gemma4:e4b"), QStringLiteral("http://127.0.0.1:11434"));
+                            QStringLiteral("qwen2.5-coder:7b"), QStringLiteral("http://127.0.0.1:11434"));
         fillList(list.last().id);
     });
     connect(remove, &QPushButton::clicked, &dialog, [&] {

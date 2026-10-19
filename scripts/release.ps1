@@ -9,12 +9,14 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release.ps1 build-x64
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release.ps1 installers
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release.ps1 banners
+#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release.ps1 validate
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release.ps1 prep 1.2.8 --stamp "Oct 19, 2026 10:29 AM"
 #
 # bump updates both kernel identity files, the installer version, the current
 # README and REMAINING stamps, and the dist gitignore exceptions.
 # It does not rewrite older version paragraphs.
 # build runs build.bat and build-x64.bat in separate cmd processes.
+# validate runs ANS-VALIDATE and Hayes on both forth executables, with autoload.
 # Does not delete old installers, commit, push, or create a GitHub release.
 
 param(
@@ -22,7 +24,9 @@ param(
     [string]$Command = 'help',
     [Parameter(Position = 1)]
     [string]$Version = '',
-    [string]$Stamp = ''
+    [string]$Stamp = '',
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Rest = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,7 +42,10 @@ EditForthWin release helper (ARM64 and x64)
   build                        Both architectures, ARM64 then x64
   installers                   Install\build-installers.bat (both installers)
   banners                      Check both forth executables against identity.asm
-  prep <ver> [--stamp "..."]   bump, build, banners, installers
+  validate                     ANS-VALIDATE and Hayes on ARM64, then x64
+  prep <ver> [--stamp "..."]   bump, build, banners, validate, installers
+
+  --skip-validate              prep: skip ANS-VALIDATE and Hayes
 
 Does NOT delete old dist installers, commit, push, or create GitHub releases.
 '@
@@ -82,12 +89,15 @@ switch ($Command) {
         Invoke-BannerCheck 'arm64'
         Invoke-BannerCheck 'x64'
     }
+    'validate' { Invoke-Validate }
     'prep' {
         Invoke-Bump
         Invoke-ReleaseCmd 'build.bat' 'build-arm64.txt' | Out-Null
         Invoke-ReleaseCmd 'build-x64.bat' 'build-x64.txt' | Out-Null
         Invoke-BannerCheck 'arm64'
         Invoke-BannerCheck 'x64'
+        if ($Rest -contains '--skip-validate') { Write-Note 'skipping validate' }
+        else { Invoke-Validate }
         Invoke-ReleaseCmd 'Install\build-installers.bat' 'installers.txt' | Out-Null
         Show-ReleaseHandoff
     }

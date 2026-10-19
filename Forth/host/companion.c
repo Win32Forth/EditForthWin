@@ -26,7 +26,15 @@ extern uint64_t debug_runto_status;
 extern uint64_t last_cfa;
 extern uint64_t view_file_n;
 extern unsigned char view_paths[];
+/* ARM64 _find_word is a C function. The x64 image is a register-file
+   translation and must be entered through host_find_word. */
+#if defined(_M_X64)
+extern uint64_t host_find_word(const char *token, uint64_t len);
+#define find_word host_find_word
+#else
 extern uint64_t _find_word(const char *token, uint64_t len);
+#define find_word _find_word
+#endif
 void host_user_tree(int mode);
 
 void host_set_sink(void (*fn)(const void *, size_t));
@@ -535,7 +543,7 @@ static void send_view(const char *name)
         pipe_send_text("err", "VIEW needs a single token", 25);
         return;
     }
-    xt = _find_word(token, (uint64_t)len);
+    xt = find_word(token, (uint64_t)len);
     if (xt == 0 || (xt & 7) != 0) {
         n = snprintf(msg, sizeof msg, "undefined: %.60s", token);
         if (n > 0)
@@ -580,7 +588,7 @@ static int break_toggle(const char *name)
         n--;
     if (n == 0 || n >= 64)
         return 0;
-    xt = _find_word(name, (uint64_t)n);
+    xt = find_word(name, (uint64_t)n);
     if (xt == 0)
         return 0;
     for (i = 0; i < 8; i++) {

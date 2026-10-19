@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Updated Oct 19, 2026 1:21 PM for version 1.2.9. ARM64 is `1.2.9`, built Oct 19, 2026 1:21 PM. x64 is `1.2.9-x64`, built Oct 19, 2026 1:21 PM. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
+Updated Oct 19, 2026 3:47 PM for version 1.3.0. ARM64 is `1.3.0`, built Oct 19, 2026 3:47 PM. x64 is `1.3.0-x64`, built Oct 19, 2026 3:47 PM. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
@@ -54,6 +54,8 @@ Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 
 1.2.8 does not add boot words. ARM64 and x64 were both rebuilt. On Windows, `FALIGNED` and `DFALIGNED` return the next 8-byte-aligned address, and `SFALIGNED` returns the next 4-byte-aligned address. The ANS-VALIDATE host checks compare those addresses. That host section is 40 passed, 0 failed on `fortharm64.exe` and on `forthx64.exe`. The rest of ANS-VALIDATE was not run again, and Hayes was not run for 1.2.8.
 
 1.2.9 does not add boot words. ARM64 and x64 were both rebuilt. `Sample/CLOCK.fth` aligns after `,"`, and `FOR`/`NEXT` counts from n down through 0, so the box, the hour scale, and the bars finish and the clock loop runs. `EMIT-WINDOW-APP` closes the host graphics window and clears `G-OPEN?`, `G-BUF`, `G-DIRTY?`, `G-CX`, and `G-CY` before the image is saved. `DATA-END` walks `FORTH-WORDLIST` as well as the registered wordlists, and keeps the wordlist index on the data stack, so a `CREATE` body such as the roman numerals is copied through to the next header. CLOCK was emitted on ARM64 and on x64. Each `CLOCK.exe` stayed open with window title `CLOCK`, and the image contains the roman digit table. Hayes and ANS-VALIDATE were not run for 1.2.9.
+
+1.3.0 does not add boot words. ARM64 and x64 were both rebuilt. Ctrl+click VIEW on x64 stays in the editor. The companion calls `host_find_word` so the translated word finder receives the token and the virtual register file is restored. A breakpoint toggle uses that same entry. Ask Forth's starter Ollama profile is `qwen2.5-coder:7b`. `scripts\release.ps1 validate` runs ANS-VALIDATE and Hayes on both executables. ANS-VALIDATE is 394 passed, 0 failed on `fortharm64.exe` and on `forthx64.exe`. Hayes finished with `ALL COUNTS ZERO — PASS` on both.
 
 ## Hayes
 

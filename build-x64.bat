@@ -38,11 +38,13 @@ ml64 /nologo /c /Fo Forth\build\x64\cold.obj Forth\kernel\x64\asm\cold.asm
 if errorlevel 1 exit /b 1
 ml64 /nologo /c /Fo Forth\build\x64\vmregs.obj Forth\kernel\x64\vmregs.asm
 if errorlevel 1 exit /b 1
+ml64 /nologo /c /Fo Forth\build\x64\find_host.obj Forth\kernel\x64\find_host.asm
+if errorlevel 1 exit /b 1
 ml64 /nologo /c /Fo Forth\build\x64\identity.obj Forth\kernel\x64\identity.asm
 if errorlevel 1 exit /b 1
 ml64 /nologo /c /Fo Forth\build\x64\boot_end.obj Forth\kernel\x64\asm\boot_end.asm
 if errorlevel 1 exit /b 1
-cl /nologo /W3 /std:c11 /I Forth\include /Fe:Forth\build\x64\forthx64.exe /Fo:Forth\build\x64\ Forth\host\main.c Forth\host\console_win.c Forth\host\companion.c Forth\host\bigint.c Forth\host\gfx_win.c Forth\host\debug_win.c Forth\host\facility_win.c Forth\host\float_win.c Forth\host\exec_win.c Forth\build\x64\state.obj Forth\build\x64\emit.obj Forth\build\x64\boot_begin.obj Forth\build\x64\prims.obj Forth\build\x64\prims_k1.obj Forth\build\x64\prims_k2.obj Forth\build\x64\prims_k3.obj Forth\build\x64\sa_print.obj Forth\build\x64\sa_files.obj Forth\build\x64\sa_float.obj Forth\build\x64\prims_dbg.obj Forth\build\x64\dict.obj Forth\build\x64\entry.obj Forth\build\x64\cold.obj Forth\build\x64\vmregs.obj Forth\build\x64\identity.obj Forth\build\x64\boot_end.obj /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib shell32.lib comdlg32.lib windowscodecs.lib ole32.lib
+cl /nologo /W3 /std:c11 /I Forth\include /Fe:Forth\build\x64\forthx64.exe /Fo:Forth\build\x64\ Forth\host\main.c Forth\host\console_win.c Forth\host\companion.c Forth\host\bigint.c Forth\host\gfx_win.c Forth\host\debug_win.c Forth\host\facility_win.c Forth\host\float_win.c Forth\host\exec_win.c Forth\build\x64\state.obj Forth\build\x64\emit.obj Forth\build\x64\boot_begin.obj Forth\build\x64\prims.obj Forth\build\x64\prims_k1.obj Forth\build\x64\prims_k2.obj Forth\build\x64\prims_k3.obj Forth\build\x64\sa_print.obj Forth\build\x64\sa_files.obj Forth\build\x64\sa_float.obj Forth\build\x64\prims_dbg.obj Forth\build\x64\dict.obj Forth\build\x64\entry.obj Forth\build\x64\cold.obj Forth\build\x64\vmregs.obj Forth\build\x64\find_host.obj Forth\build\x64\identity.obj Forth\build\x64\boot_end.obj /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib shell32.lib comdlg32.lib windowscodecs.lib ole32.lib
 if errorlevel 1 exit /b 1
 if not exist Forth\Resources\Library\Sources\x64 mkdir Forth\Resources\Library\Sources\x64
 copy /Y Forth\kernel\x64\asm\*.asm Forth\Resources\Library\Sources\x64\ >nul
@@ -51,12 +53,15 @@ copy /Y Forth\kernel\x64\identity.asm Forth\Resources\Library\Sources\x64\ >nul
 if errorlevel 1 exit /b 1
 copy /Y Forth\kernel\x64\vmregs.asm Forth\Resources\Library\Sources\x64\ >nul
 if errorlevel 1 exit /b 1
+copy /Y Forth\kernel\x64\find_host.asm Forth\Resources\Library\Sources\x64\ >nul
+if errorlevel 1 exit /b 1
 echo Copied ml64 sources to Forth\Resources\Library\Sources\x64
 if exist "%USERPROFILE%\Documents\EditForthWin\Library\Sources" (
   if not exist "%USERPROFILE%\Documents\EditForthWin\Library\Sources\x64" mkdir "%USERPROFILE%\Documents\EditForthWin\Library\Sources\x64"
   copy /Y Forth\kernel\x64\asm\*.asm "%USERPROFILE%\Documents\EditForthWin\Library\Sources\x64\" >nul
   copy /Y Forth\kernel\x64\identity.asm "%USERPROFILE%\Documents\EditForthWin\Library\Sources\x64\" >nul
   copy /Y Forth\kernel\x64\vmregs.asm "%USERPROFILE%\Documents\EditForthWin\Library\Sources\x64\" >nul
+  copy /Y Forth\kernel\x64\find_host.asm "%USERPROFILE%\Documents\EditForthWin\Library\Sources\x64\" >nul
   echo Copied ml64 sources to Documents\EditForthWin\Library\Sources\x64
 )
 

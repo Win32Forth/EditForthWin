@@ -38,11 +38,11 @@
 
 ### Highlights since 2.3.3
 
-- **Model profiles** — named saved setups (Ollama + OpenAI-compatible) with panel picker + **Models…** dialog; per-profile Base URL and Keychain API key; migrates legacy single Provider/Model/key and seeds **Ollama gemma4:e4b**, **SpaceXAI grok-4.7**, **Local mlx :1234**.
+- **Model profiles** — named saved setups (Ollama + OpenAI-compatible) with panel picker + **Models…** dialog; per-profile Base URL and Keychain API key; migrates legacy single Provider/Model/key and seeds **Ollama qwen2.5-coder:7b**, **SpaceXAI grok-4.7**, **Local mlx :1234**.
 - **Temperature** — per-profile slider (default **0.3**, range 0…2); sent on every Ask / Enhance (`options.temperature` / `temperature`).
 - **Completion budget** — **8192** tokens (`max_tokens` / `num_predict`) so long Forth listings are less likely to truncate mid-definition.
 - **Stop** — cancel in-flight Ask / Enhance from the panel (Escape); local servers may keep generating until unloaded.
-- **Library hybrid / semantic RAG** — Ollama **`nomic-embed-text`** (~274 MB) indexes Sample + always **Reference** (ANS Forth-2012 `.txt` + **`Stack-effects-cheatsheet.txt`**); Library… **Retrieve mode** Keyword / Semantic / **Hybrid** (default); **Rebuild Index…** plus **auto-rebuild** when the Library folder or files change (`needsRefresh` / `ensureFresh`). Status `· Library N hybrid: …`. Chat model stays separate (e.g. `qwen2.5-coder:7b` or `gemma4:e4b`). Grounding prompts: treat Library as authoritative for stack effects; say not found instead of inventing APIs. Files: `AskForthEmbeddingClient.swift`, `ForthLibraryEmbedIndex.swift`; index under Application Support `AskForthEmbedIndex/`.
+- **Library hybrid / semantic RAG** — Ollama **`nomic-embed-text`** (~274 MB) indexes Sample + always **Reference** (ANS Forth-2012 `.txt` + **`Stack-effects-cheatsheet.txt`**); Library… **Retrieve mode** Keyword / Semantic / **Hybrid** (default); **Rebuild Index…** plus **auto-rebuild** when the Library folder or files change (`needsRefresh` / `ensureFresh`). Status `· Library N hybrid: …`. Chat model stays separate (e.g. `qwen2.5-coder:7b`). Grounding prompts: treat Library as authoritative for stack effects; say not found instead of inventing APIs. Files: `AskForthEmbeddingClient.swift`, `ForthLibraryEmbedIndex.swift`; index under Application Support `AskForthEmbedIndex/`.
 - **Swift 6 isolation cleanups** — AskForthToolAgent / ForthAgentRunner / OpenAI key resolve / DockController MainActor warnings addressed.
 - How-to: `Forth/Resources/Docs/Ask-Forth.md` (Library embeddings section). Prep validated ANS, Hayes, dbg-span, and VED64 emit.
 
@@ -61,7 +61,7 @@
 ### Highlights
 
 - **Include web search** — opt-in (default off) DuckDuckGo Lite search from the Prompt; injects hit titles / URLs / snippets into Ask / Agent Enhance Reply; `\ Web search:` audit lines in `AskForth-N.fth`.
-- **Tool agent** — opt-in (default off) tool loop (`web_search`, `fetch_url`, `library_search`); transcript + `\ Tool agent:` audit lines. Needs a tools-capable model (e.g. `gemma4:e4b`).
+- **Tool agent** — opt-in (default off) tool loop (`web_search`, `fetch_url`, `library_search`); transcript + `\ Tool agent:` audit lines. Needs a tools-capable model (e.g. `qwen2.5-coder:7b`).
 - **OpenAI-compatible provider** — panel Provider picker: Ollama (local) or OpenAI-compatible HTTP (default SpaceXAI `https://api.x.ai/v1`, Keychain API key / `XAI_API_KEY`, model e.g. `grok-4.7`). Also works with local LM Studio / mlx_lm (`http://127.0.0.1:1234/v1`, dummy key `local`).
 - **Library RAG** — indexes `.md` / `.swift` as well as Forth/text; point **Library…** at the EditForth project (or `Editor/`) for app/UI questions; skips heavy dirs (`.git`, `DerivedData`, `finetune`, build products). Library button title shows the folder leaf; wider settings sheet.
 - **Ask Forth UX** — answers under `~/Documents/EditForth/AskForth/`; **Output** opens that folder in Finder; Capture / Output / toggle hover tips; streaming scroll stays put while reading; Ask panel can widen with the window.
@@ -122,7 +122,7 @@
 ### Highlights
 
 - **Ask Forth** first ship — **View → Ask Forth** (⌥⌘A), local Ollama, Library RAG, `--agent` eval / Fix. How-to: `Forth/Resources/Docs/Ask-Forth.md`.
-- Models: `gemma4:e4b` (default); also `gemma4:12b`, `gemma4:31b-cloud`.
+- Models: `qwen2.5-coder:7b` (default); also `gemma4:12b`, `gemma4:31b-cloud`.
 
 ---
 

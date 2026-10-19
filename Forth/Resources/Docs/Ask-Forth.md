@@ -14,14 +14,14 @@ Talks to **[Ollama](https://ollama.com)** on this Mac (`http://127.0.0.1:11434`)
 2. Pull a **chat** model (EditForth does **not** auto-download multi‑GB chat models):
 
 ```bash
-ollama pull gemma4:e4b
+ollama pull qwen2.5-coder:7b
 ```
 
-3. Pick an Ollama profile in Ask Forth (starter: **Ollama gemma4:e4b**).
+3. Pick an Ollama profile in Ask Forth (starter: **Ollama qwen2.5-coder:7b**).
 
 When you open Ask Forth, an orange **setup banner** appears if Ollama is down or the selected chat model is missing (with the exact `ollama pull …` command).
 
-**Default chat model tag:** **`gemma4:e4b`**. Also useful: **`qwen2.5-coder:7b`**, **`gemma4:12b`**, **`gemma4:31b-cloud`**. Create or pick a profile in **Models…** for the tag you pulled.
+**Default chat model tag:** **`qwen2.5-coder:7b`**. Also useful: **`gemma4:12b`**, **`gemma4:31b-cloud`**. Create or pick a profile in **Models…** for the tag you pulled.
 
 The **chat** model answers questions. Library **Hybrid/Semantic** retrieve uses a separate **embedding** model (`nomic-embed-text`) — see [Library embeddings](#library-embeddings-nomic-embed-text) below.
 
@@ -33,7 +33,7 @@ Uses HTTP **`/v1/chat/completions`**. In **Models…**, set **Base URL** (SpaceX
 2. In **Models…**, paste the key for that profile and click **Save** (Keychain **per profile**). Or export **`XAI_API_KEY`** before launch (SpaceXAI fallback). Local servers often use a dummy key such as **`local`**.  
 3. Set **Model** (e.g. **`grok-4.7`**, or a full on-disk MLX path for `mlx_lm.server`).
 
-First launch migrates your previous Provider / Model / Base URL / key into profiles and adds starters **Ollama gemma4:e4b**, **SpaceXAI grok-4.7**, and **Local mlx :1234** when appropriate.
+First launch migrates your previous Provider / Model / Base URL / key into profiles and adds starters **Ollama qwen2.5-coder:7b**, **SpaceXAI grok-4.7**, and **Local mlx :1234** when appropriate.
 
 Streaming and Tool agent use the same OpenAI tools message shape. Cloud use needs network access and incurs provider charges.
 
@@ -69,7 +69,7 @@ To **fine-tune** a local model for 64Forth style (MLX → Ollama), see repo root
 3. Optionally leave **Include Library context** on (default folder **`~/Documents/EditForth/Library/Sample`**; **Library…** to change).  
 4. Optionally leave **Fetch URLs in Prompt** on. If the Prompt contains `http://` or `https://` links, EditForth fetches those pages (plain text / HTML stripped), caps the excerpts, and adds them to the model context before Ask / Agent Enhance Reply.  
 5. Optionally turn on **Include web search** (default **off**). EditForth searches the web (DuckDuckGo Lite, no API key) using the Prompt text and adds top hit titles, URLs, and snippets to the model context.  
-6. Optionally turn on **Tool agent** (default **off**). The model may call `web_search`, `fetch_url`, or `library_search` before answering (Ollama tools; needs a tools-capable model such as `gemma4:e4b`). Slower; use **Show Agent Transcript** to see tool steps. When Tool agent is on, automatic URL fetch / web search are skipped.  
+6. Optionally turn on **Tool agent** (default **off**). The model may call `web_search`, `fetch_url`, or `library_search` before answering (Ollama tools; needs a tools-capable model such as `qwen2.5-coder:7b`). Slower; use **Show Agent Transcript** to see tool steps. When Tool agent is on, automatic URL fetch / web search are skipped.  
 7. Click **Ask** (below the Prompt, on the right). EditForth creates **`~/Documents/EditForth/AskForth/AskForth-N.fth`**, writes an F-PC block-comment header (`\\` … `{`) with the active **model**, **temperature**, any checked options (**Include Library context** with Library path / retrieve mode / max snippets / context lines / max characters, **Fetch URLs**, **web search**, **Tool agent**), and a **Prompt:** section, then **streams the model reply into that tab**.  
 8. Click **Agent Enhance Reply** to improve the answer in one step: a headless `64Forth --agent` run (Library **Autoload** always on) captures a transcript, then the model appends an **`Agent Enhanced Reply`** section to the same file.  
 9. Hand-edit the file as needed (model prose/comments are often not loadable as-is), then use the status-strip **INCLUDE** button to load it into the live companion.
