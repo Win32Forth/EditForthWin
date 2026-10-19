@@ -2,16 +2,16 @@
 
 Windows sibling of [EditForth](https://github.com/Win32Forth/EditForth). This tree holds the Forth console and the Qt editor.
 
-**Version 1.2.5** on ARM64 and **1.2.5-x64** on x64. ARM64 was built Oct 19, 2026 7:03 AM. x64 was built Oct 19, 2026 7:04 AM.
+**Version 1.2.6** on ARM64 and **1.2.6-x64** on x64. ARM64 was built Oct 19, 2026 8:32 AM. x64 was built Oct 19, 2026 8:33 AM.
 
 Starting `fortharm64.exe` or `forthx64.exe` opens a window. The cold-load lines appear, then the banner, then a prompt. The editor keeps those same lines under Help → EditForthWin Startup Messages and starts the Forth pane at the banner:
 
 ```
-=== EditForthWin 1.2.5 === Oct 19, 2026 7:03 AM ===
+=== EditForthWin 1.2.6 === Oct 19, 2026 8:32 AM ===
 ok(0)>
 ```
 
-The banner matches the Mac EditForth console. The version, the date and time, and the console window title live in the kernel assembly, so the ARM64 and x64 images can differ. ARM64 is `Forth\kernel\arm64\identity.asm` (`1.2.5`, `Oct 19, 2026 7:03 AM`, window title `EditForthWin Arm64`). x64 is `Forth\kernel\x64\identity.asm` (`1.2.5-x64`, `Oct 19, 2026 7:04 AM`, window title `EditForthWin x64`). The console prints the version and the date, and Help > About EditForthWin shows that pair after the engine reports it. The Hayes suite passed on both executables for 1.2.0 on Oct 16, 2026. It was not run again for 1.2.1. `REMAINING.md` records that run and the boot words that are still absent. Return evaluates the line at the prompt. Up and Down recall earlier lines. `BYE` closes the window.
+The banner matches the Mac EditForth console. The version, the date and time, and the console window title live in the kernel assembly, so the ARM64 and x64 images can differ. ARM64 is `Forth\kernel\arm64\identity.asm` (`1.2.6`, `Oct 19, 2026 8:32 AM`, window title `EditForthWin Arm64`). x64 is `Forth\kernel\x64\identity.asm` (`1.2.6-x64`, `Oct 19, 2026 8:33 AM`, window title `EditForthWin x64`). The console prints the version and the date, and Help > About EditForthWin shows that pair after the engine reports it. The Hayes suite passed on both executables for 1.2.0 on Oct 16, 2026. It was not run again for 1.2.1. `REMAINING.md` records that run and the boot words that are still absent. Return evaluates the line at the prompt. Up and Down recall earlier lines. `BYE` closes the window.
 
 1.2.1 adds `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. `XEMIT` sends one xchar as UTF-8. `EMIT` is unchanged. An unknown word at the console stops on the first name, turns compiling off, and clears both stacks. `.` on an empty stack prints `0 stack underflow` and returns to `ok(0)>`. `VIEW` of `DUP` opens the running kernel assembly, `Library/Sources/arm64/prims.asm` or `Library/Sources/x64/prims.asm`. `VIEW` of a cold colon word such as `VIEW-LINE` opens that word's file under `Library/Sources`, for example `kernel1.fth` line 69. Those stamps come from Hyper. The shipped `AutoLoad\autoload.fth` loads the Emitter. Hyper stays commented. Uncomment the Hyper lines, and leave `HYPER-REINDEX` after `REQUIRE` returns, when that index should rebuild at boot. The editor can find and replace in the open file, search a folder, diff a file against disk, and open a page in the system browser. While a debug step is showing source, that pane stays in browse mode with an Edit button, and the caret stays in the Forth console except for a double-click. View → Ask Forth (Ctrl+Alt+A) streams a reply into Documents\EditForthWin\AskForth\AskForth-N.fth. Hybrid and Semantic library search uses a local nomic-embed-text index and falls back to keyword matching until that index is ready. 1.2.2 is on ARM64 and x64. The stand-alone spans `(SA-PRINT)`, `(SA-FILES)`, and `(SA-FLOAT)` are in both kernels. `EMIT-APP` on Windows writes a folder, not a Mac `.app`: `NAME.exe` and `app.img` are the `64EMIT02` image. ARM64 packs `emit-win.exe`. x64 packs `emit-win-x64.exe`. A word that calls `(APP-OPEN)`, `(APP-BLIT)`, `(APP-CBLIT)`, and `(APP-KEY)` draws text and color squares in that window and waits for a key. `(APP-*)` names live in `GRAPHICS`, so the source needs `ALSO GRAPHICS`. Depth 4 on `(APP-CBLIT)` is a Windows square list of `color x y w h` cells. `EMIT-WINDOW-APP` still shares the Mac graphics path and is not the Windows graphics emit. The seven cold-load sources are unchanged. The Hayes suite was not run again.
 
@@ -20,6 +20,8 @@ The banner matches the Mac EditForth console. The version, the date and time, an
 1.2.4 does not add boot words. The emitter packs programs that use `THROW`, `*/`, `TIME&DATE`, and the graphics window. Windows `THROW` has no end label, so on ARM64 the slicer copies the body through the next boot word and turns the host quit branch into a no-op. `CATCH` still receives the code. `DEPTH`, `SP0`, `CLEARSTACK`, and `EXECUTE` read the runner's empty data stack, so `APP-NAME` gets the real string and the window title is the program name. `*/` copies the unsigned divide span. `TIME&DATE` is host slot 27. An outdir of `"."` is the folder of the last included source, so the bundle sits beside that file. The runner stretches the picture when the window is resized, paints light text on a dark cell, loads BMP, PNG, JPEG, GIF, and TIFF through WIC, and opens the image dialog. `GCLOCK`, `IMAGEVIEW64`, and `MIDNIGHT` were emitted on ARM64 and those windows ran. The x64 runner is built from the same C source. x64 `THROW` still has no span, so a program that reaches `THROW` does not emit on x64. Hayes and ANS-VALIDATE were not run for 1.2.4.
 
 1.2.5 does not add boot words. On x64, `THROW` is a fixed 512-byte body, `EXECUTE`, `DEPTH`, `SP0`, and `CLEARSTACK` read the runner's empty data stack, and `*/` copies the unsigned divide helper. `GCLOCK`, `IMAGEVIEW64`, and `MIDNIGHT` were emitted on x64 and those windows ran. The Windows packer moves `<NAME>.img` into the bundle folder beside `<NAME>.exe` and `app.img`. The runner opens the Open and Save dialogs, then reads or writes the chosen file. ARM64 `VED64` opened Save File and Open File, wrote the buffer, loaded a file back, and S on the quit prompt saved and quit. Hayes and ANS-VALIDATE were not run for 1.2.5.
+
+1.2.6 does not add boot words. On x64, a CALL or JMP that lands in any bounded boot word is copied, not only a `FLAG_EMM` helper, and a CALL into the unsigned divide helper is copied the same way as a JMP. The byte `E8` inside `sub r64, imm8` in `(LOCAL-FRAME-EXIT)` is not treated as a CALL. That was the `op 232` abort while emitting `VED64`. `VED64` was emitted with the x64 engine and the build finished. An install leaves `Documents\EditForthWin\Library\Emitter` in place when that folder is already there, so copy `Resources\Library\Emitter` over it, or remove it before installing, then restart the editor. Hayes and ANS-VALIDATE were not run for 1.2.6.
 
 `--agent` runs the same kernel with no window and writes the transcript to the console that launched it:
 
@@ -47,7 +49,7 @@ build.bat
 
 `build.bat` writes `Forth\build\arm64\fortharm64.exe` and `Edit\build\arm64\editforthwinarm64.exe`. It uses Qt 6.11.3 at `C:\Qt\6.11.3\msvc2022_arm64` and CMake at `C:\Qt\Tools\cmake-4.4.4-windows-arm64`. `build-x64.bat` writes `Forth\build\x64\forthx64.exe` and `Edit\build\x64\editforthwinx64.exe`, using Qt at `C:\Qt\6.11.3\msvc2022_64`. In VS Code, Ctrl+Shift+B builds the ARM64 pair. The **build x64** task runs `build-x64.bat`. F5 uses the selected launch entry: Run ARM64 Forth, Run Editor, Run x64 Forth, or Run x64 Editor. Close a running `fortharm64.exe` or `forthx64.exe` before rebuilding that one, or the linker cannot replace it.
 
-`Install\build-installers.bat` writes two per-user installers, `dist\EditForthWin-1.2.5-arm64.exe` and `dist\EditForthWin-1.2.5-x64.exe`. Build both architectures first. Each one installs that architecture's editor, Forth program, and `Forth\Resources` under `%LOCALAPPDATA%\Programs\EditForthWin-ARM64` or `EditForthWin-x64`. It then copies `Library`, `AutoLoad`, `Docs`, and `Config` into `Documents\EditForthWin`. A file that is already there is left as it is. The tasks page offers a desktop shortcut to the editor. The shortcut is not created unless that box is checked. Uninstall removes the program and does not remove `Documents\EditForthWin`.
+`Install\build-installers.bat` writes two per-user installers, `dist\EditForthWin-1.2.6-arm64.exe` and `dist\EditForthWin-1.2.6-x64.exe`. Build both architectures first. Each one installs that architecture's editor, Forth program, and `Forth\Resources` under `%LOCALAPPDATA%\Programs\EditForthWin-ARM64` or `EditForthWin-x64`. It then copies `Library`, `AutoLoad`, `Docs`, and `Config` into `Documents\EditForthWin`. A file that is already there is left as it is. The tasks page offers a desktop shortcut to the editor. The shortcut is not created unless that box is checked. Uninstall removes the program and does not remove `Documents\EditForthWin`.
 
 ## Editor
 
@@ -126,17 +128,3 @@ The assembly words still open are listed in `REMAINING.md`.
 ## Later
 
 `ALLOCATE-EXEC`, `FREE-EXEC`, `MPROTECT`, `ICACHE-INVAL`, `CALL-NATIVE`, `CALL-NATIVE-LEAF`, `NATIVE-SMOKE`, `JIT-WPROTECT`, `DOCON-ADDR`, and `(DOCON)` are in the kernel. On ARM64, `CALL-NATIVE` runs the buffer with the argument in x0 and the data stack in x19. On x64 the same word calls host machine code. The x64 console matches the ARM64 word set. `FILE-EXT`, `FLOATING`, and `BLOCK` report true. `FACILITY` and `FACILITY-EXT` report false. Emitter and Hyper stay commented out of autoload.
-
-## Debug Notes
-
-sa-block (SA-PRINT) 3376 bytes
-sa-block (SA-FILES) 640 bytes
-sa-block (SA-FLOAT) 7024 bytes
-sa-block (LOCAL-FRAME-EXIT) 202 bytes
-x64 locals sized
-sa-bss: BI-MUL has no host_tmp ADRP
-x64 catch leas n=5 cfa-ok 1506752658680 
-sa-help 202 bytes @ 1506726735616 
-x64: branch target 140702558877040 op 232 
- throw -1
-ok(3)> 

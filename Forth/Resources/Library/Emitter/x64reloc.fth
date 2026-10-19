@@ -335,7 +335,27 @@ DEFER X64-RELOC-RANGE ( host new u -- )
   ." x64 udiv " u . CR
   npc X64-DISP-AT new X64-PATCH-CODE ;
 
-: X64-FIX-OUT {: npc tgt kind op | code u new -- :}
+\ Any bounded boot word, not only FLAG_EMM. A CALL into an ordinary
+\ primitive was aborting with op 232.
+: X64-BOOT-SPAN ( va -- code u | 0 0 )
+  {: va | row code end u -- :}
+  BOOT-WORD-TABLE BOOT-WORD-TABLE-END
+  BEGIN  2DUP <  WHILE
+    OVER @ TO row
+    row BOOT-WORD-CODE TO code
+    row BOOT-WORD-END TO end
+    end IF
+      va code end WITHIN IF
+        end code - TO u
+        u 16384 U> IF  2DROP 0 0 EXIT  THEN
+        2DROP  code u EXIT
+      THEN
+    THEN
+    SWAP CELL+ SWAP
+  REPEAT
+  2DROP 0 0 ;
+
+: X64-FIX-OUT {: host npc tgt kind op | code u new -- :}
   kind 1 = IF
     tgt X64-REG-BASE DUP 248 + WITHIN IF
       npc X64-DISP-AT 1 tgt X64-REG-BASE - 8 / npc op X64-TAIL X64-FIX-ADD EXIT
@@ -368,6 +388,7 @@ DEFER X64-RELOC-RANGE ( host new u -- )
   THEN
   DROP
   tgt EMM-SPAN-OF TO u TO code
+  code 0= IF  tgt X64-BOOT-SPAN TO u TO code  THEN
   code IF
     code SA-HELP-FIND ?DUP IF
       tgt code - + TO new
@@ -379,14 +400,16 @@ DEFER X64-RELOC-RANGE ( host new u -- )
     THEN
     npc X64-DISP-AT new X64-PATCH-CODE EXIT
   THEN
-  kind 2 = op $E9 = AND IF
-    \ jmp _udivmod128 sits just below UM/MOD. Copy that gap once.
-    \ DOCOL's empty-body exit is not in that window; it still goes to NEXT.
+  \ CALL and JMP into _udivmod128. The opcode stays; only the disp changes.
+  kind 2 = op $E8 = op $E9 = OR AND IF
     tgt X64-UDIV-GAP ?DUP IF
       DROP
       npc tgt X64-UDIV-NEW
       EXIT
     THEN
+  THEN
+  kind 2 = op $E9 = AND IF
+    \ DOCOL's empty-body exit is not the divide helper; it still goes to NEXT.
     npc X64-DISP-AT
     ['] (NEXT) MAP-FIND 8 +
     X64-PATCH-CODE
@@ -396,7 +419,11 @@ DEFER X64-RELOC-RANGE ( host new u -- )
     0 npc X64-DISP-AT X64-ST32
     EXIT
   THEN
-  ." x64: branch target " tgt U. ." op " op U. CR ABORT ;
+  ." x64: branch target " tgt U. ." op " op U.
+  ." at " host U. ." bytes"
+  host C@ .  host 1+ C@ .  host 2 + C@ .  host 3 + C@ .
+  host 4 + C@ .  host 5 + C@ .  host 6 + C@ .  host 7 + C@ . CR
+  ABORT ;
 
 : (X64-RELOC-RANGE) {: host new u | off wu len tgt kind op da -- :}
   host u X64-WALK-U TO wu
@@ -408,6 +435,15 @@ DEFER X64-RELOC-RANGE ( host new u -- )
       wu TO off
     ELSE
       host off + X64-REL TO op TO kind TO tgt
+      \ `sub r64, imm8` is REX 83 E8 ib. A short length lands on that E8
+      \ and reports a CALL. Step over the ModR/M and the imm8.
+      op $E8 = kind 2 = AND off 2 U< 0= AND IF
+        host off + 2 - C@ $40 $50 WITHIN
+        host off + 1- C@ $83 = AND IF
+          0 TO kind
+          2 TO len
+        THEN
+      THEN
       kind IF
         tgt host host wu + WITHIN 0= IF
           tgt host host u + 32 + WITHIN IF
@@ -415,7 +451,7 @@ DEFER X64-RELOC-RANGE ( host new u -- )
             new off + X64-DISP-AT SWAP
             kind 3 = IF  X64-PATCH-REL8  ELSE  X64-PATCH-CODE  THEN
           ELSE
-            new off + tgt kind op X64-FIX-OUT
+            host new off + tgt kind op X64-FIX-OUT
           THEN
         THEN
       THEN
