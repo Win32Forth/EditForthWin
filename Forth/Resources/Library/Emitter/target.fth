@@ -119,10 +119,51 @@ VARIABLE TGT-MAPN
   TGT-MAPN @ CELLS TGT-OLD + !
   1 TGT-MAPN +! ;
 
+\ Smallest boot-code address strictly above addr, or 0.
+\ Windows THROW's BOOT_WORD end field is 0, but the body is contiguous
+\ in .text up to the next boot word (PARSE). That gap is the span.
+: NEXT-CODE-AFTER  ( addr -- end|0 )
+  {: addr | best row c -- :}
+  0 TO best
+  BOOT-WORD-TABLE BOOT-WORD-TABLE-END
+  BEGIN  2DUP <  WHILE
+    OVER @ TO row
+    row BOOT-WORD-CODE TO c
+    c addr U> IF
+      best 0=  c best U<  OR IF  c TO best  THEN
+    THEN
+    SWAP CELL+ SWAP
+  REPEAT
+  2DROP best ;
+
+VARIABLE SA-THROW-SEEN
+\ ( code -- code u )  ARM THROW only. x64 still has no span.
+: THROW-OPEN-SPAN  ( code -- code u )
+  DUP NEXT-CODE-AFTER
+  DUP 0= IF
+    DROP ." prim: THROW has no following boot code" CR ABORT
+  THEN
+  OVER -
+  DUP 64 U<  OVER 512 U>  OR IF
+    ." prim: THROW open span " . ." out of range" CR ABORT
+  THEN
+  SA-THROW-SEEN @ 0= IF
+    ." sa-throw span " DUP . CR
+    1 SA-THROW-SEEN !
+  THEN ;
+
 : PRIM-SPAN  ( xt -- code u )
   \ Unknown / non-boot CODE must not be sliced (end=0 ⇒ garbage length).
   DUP >R CODE-BOUNDS
   DUP 0= IF
+    \ Live kernel: BOOT_WORD THROW, ..., XTHROW, 0. Mac has XTHROW_END.
+    \ First insn is CBZ (top byte $B4). x64 THROW is not that encoding.
+    \ X64-HOST? is defined later and itself calls PRIM-SPAN.
+    R@ ['] THROW = IF
+      OVER 3 + C@ $B4 = IF
+        DROP R> DROP THROW-OPEN-SPAN EXIT
+      THEN
+    THEN
     DROP DROP
     ." prim: no CODE-BOUNDS for " R> NAME>STRING TYPE CR ABORT
   THEN
@@ -299,6 +340,35 @@ VARIABLE DE-BEST
   ['] (NEXT) MAP-FIND 8 + B-ABS,
   ;
 
+\ DEPTH / SP0 / CLEARSTACK ADRP the host data_stack and add 4096.
+\ A stand-alone image has no such stack. One RW cell holds this magic
+\ until the runner stores the empty DSP (x22 at entry) over it.
+\ emit-win.c and TGT-RUN both know SA-DSP0-MAGIC.
+$C0DE0000000000D0 CONSTANT SA-DSP0-MAGIC
+VARIABLE SA-DSP0-CELL
+VARIABLE SA-DSP0-LIT
+
+: SA-DSP-PRIM?  ( xt -- flag )
+  DUP ['] DEPTH = IF  DROP TRUE EXIT  THEN
+  DUP ['] SP0 = IF  DROP TRUE EXIT  THEN
+  DUP ['] CLEARSTACK = IF  DROP TRUE EXIT  THEN
+  \ EXECUTE ADRPs data_stack+4096 to see an empty stack. The stand-in
+  \ is always below the real DSP, so the empty path keeps TOS = 0 and
+  \ the xt's arguments stay buried (APP-NAME then sees length 0).
+  ['] EXECUTE = ;
+
+\ Bodies live in reloc.fth (they emit LDR-lit veneers). Installed there.
+DEFER WRITE-DEPTH-SA       ( -- )
+DEFER WRITE-SP0-SA         ( -- )
+DEFER WRITE-CLEARSTACK-SA  ( -- )
+DEFER WRITE-EXECUTE-SA     ( -- )
+: (WRITE-DSP-MISSING)  ( -- )
+  ." sa-dsp: reloc not loaded" CR ABORT ;
+' (WRITE-DSP-MISSING) IS WRITE-DEPTH-SA
+' (WRITE-DSP-MISSING) IS WRITE-SP0-SA
+' (WRITE-DSP-MISSING) IS WRITE-CLEARSTACK-SA
+' (WRITE-DSP-MISSING) IS WRITE-EXECUTE-SA
+
 : WRITE-SA-GLOBAL  ( xt -- )
   {: xt | new -- :}
   xt NAME>STRING TYPE SPACE ." sa-global" CR
@@ -327,6 +397,15 @@ VARIABLE DE-BEST
     DROP
     X64-HOST? IF  X64-0BRANCH EXIT  THEN
     WRITE-0BRANCH-SA EXIT
+  THEN
+  \ Stand-alone ARM: host DEPTH/SP0/CLEARSTACK ADRP data_stack.
+  ?EMIT-STANDALONE X64-HOST? 0= AND IF
+    DUP SA-DSP-PRIM? IF
+      DUP ['] DEPTH = IF  DROP WRITE-DEPTH-SA EXIT  THEN
+      DUP ['] SP0 = IF  DROP WRITE-SP0-SA EXIT  THEN
+      DUP ['] EXECUTE = IF  DROP WRITE-EXECUTE-SA EXIT  THEN
+      DROP WRITE-CLEARSTACK-SA EXIT
+    THEN
   THEN
   PRIM-SPAN COPY-BYTES ;
 
@@ -647,6 +726,7 @@ VARIABLE DOES-N
 
 : TGT-BUILD  ( xt -- )
   X64-BUILD-RESET
+  0 SA-DSP0-CELL !  0 SA-DSP0-LIT !  0 SA-THROW-SEEN !
   TGT-CLOSE
   0 TGT-DATA-BYTES !
   PTR-RELOC-CLEAR

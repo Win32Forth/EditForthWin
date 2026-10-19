@@ -190,8 +190,12 @@ VARIABLE RET-BODY
   RUN-OPEN
   RUN-EMIT-CFA
   RUN-PROTECT
+  \ Stand-alone DEPTH/SP0/CLEARSTACK load this cell. Restore the magic
+  \ so a later SAVE-IMAGE still has a value the exe runner can patch.
+  SA-DSP0-CELL @ ?DUP IF  RUN-DSP @ SWAP !  THEN
   0  RUN-DSP @  RUN-ORG @  CALL-NATIVE
   DROP
+  SA-DSP0-CELL @ ?DUP IF  SA-DSP0-MAGIC SWAP !  THEN
   RUN-CLOSE ;
 
 : TGT-RUN  ( xt -- )

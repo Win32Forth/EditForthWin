@@ -5,15 +5,15 @@
 \ basename matches the word (not LAST-INCLUDED — a nested REQUIRE like
 \ big-int.fth must not rename PIMAIN.app):
 \   FROMLIB FLOAD Emitter/emitter.fth
-\   EMIT-APP MAIN                      \ → ./MAIN.app
-\   FROMLIB EMIT-APP MAIN              \ → <LIBRARY-PATH>/MAIN.app
+\   EMIT-APP MAIN                      \ → <dir of last included file>\MAIN
+\   FROMLIB EMIT-APP MAIN              \ "." still beside that file
 \   S" /tmp" EMIT-APP-TO MAIN          \ → /tmp/MAIN.app
 \
 \ Window wrapper (APP-NAME + WINDOW … WINDOW-OFF). Basename = parsed
 \ word; window title = stem of LAST-INCLUDED when set, else the word:
 \   FROMLIB FLOAD Emitter/emitter.fth
 \   S" …/tetra/tetra.fth" INCLUDED
-\   EMIT-WINDOW-APP GAME               \ → ./GAME.app, title TETRA
+\   EMIT-WINDOW-APP GAME               \ → …/tetra/GAME , title TETRA
 \   S" /tmp" EMIT-WINDOW-APP-TO GAME
 \ Pass a body that expects an open window (e.g. GAME), not MAIN.
 \
@@ -82,9 +82,28 @@ CREATE EMIT-TITLE      64 ALLOT         \ counted title for SLITERAL into wrappe
   THEN
   2DROP TRUE ;
 
+\ Parent directory of a path (no trailing slash). No slash → S" ."
+: (EMIT-PARENT-DIR)  ( c-addr u -- c-addr u' )
+  {: a u | i -- :}
+  u TO i
+  BEGIN  i  WHILE
+    i 1- TO i
+    a i + C@ DUP [CHAR] / = SWAP [CHAR] \ = OR IF
+      i 0= IF
+        a C@ [CHAR] \ = IF  S" \" EXIT  THEN
+        S" /" EXIT
+      THEN
+      a i EXIT
+    THEN
+  REPEAT
+  S" ."
+  ;
+
 \ Resolve outdir: relative + FROMLIB? → under LIBRARY-PATH (then FROMLIB-OFF).
-\ Absolute unchanged. "." is the directory of the file being loaded
-\ (FLOAD's current directory), so NAME\ sits beside that source file.
+\ Absolute unchanged. "." is the directory of the last included source
+\ file, so NAME\ sits beside that file. FLOAD restores the previous
+\ process directory before INCLUDED returns, so CWD@ is not that folder.
+\ With nothing included, "." is the process directory.
 \ Other relative paths stay cwd-relative.
 \ Result left counted in EMIT-TMP.
 : (EMIT-RESOLVE-OUT)  ( c-addr u -- )
@@ -93,11 +112,16 @@ CREATE EMIT-TITLE      64 ALLOT         \ counted title for SLITERAL into wrappe
     a u EMIT-TMP PLACE  EXIT
   THEN
   u 1 =  a C@ [CHAR] . =  AND IF
-    EMIT-TMP CHAR+ 500 CWD@ TO n
-    n 0= IF
-      a u EMIT-TMP PLACE
+    LAST-INCLUDED DUP IF
+      (EMIT-PARENT-DIR) EMIT-TMP PLACE
     ELSE
-      n EMIT-TMP C!
+      2DROP
+      EMIT-TMP CHAR+ 500 CWD@ TO n
+      n 0= IF
+        a u EMIT-TMP PLACE
+      ELSE
+        n EMIT-TMP C!
+      THEN
     THEN
     FROMLIB? IF  FROMLIB-OFF  THEN
     EXIT
@@ -111,7 +135,7 @@ CREATE EMIT-TITLE      64 ALLOT         \ counted title for SLITERAL into wrappe
   THEN
   EMIT-TMP (EMIT-S0)
   la lu EMIT-TMP (EMIT-S+)
-  \ "." under Library → Library root itself
+  \ "." already left above, beside the source file.
   u 1 =  a C@ [CHAR] . =  AND IF
     FROMLIB-OFF  EXIT
   THEN
@@ -548,23 +572,6 @@ VARIABLE EMIT-OPT
   THEN
   (EMIT-STEM-UPPER!)
   EMIT-NAMEBUF COUNT EMIT-TITLE PLACE
-  ;
-
-\ Parent directory of a path (no trailing slash). No slash → S" ."
-: (EMIT-PARENT-DIR)  ( c-addr u -- c-addr u' )
-  {: a u | i -- :}
-  u TO i
-  BEGIN  i  WHILE
-    i 1- TO i
-    a i + C@ DUP [CHAR] / = SWAP [CHAR] \ = OR IF
-      i 0= IF
-        a C@ [CHAR] \ = IF  S" \" EXIT  THEN
-        S" /" EXIT
-      THEN
-      a i EXIT
-    THEN
-  REPEAT
-  S" ."
   ;
 
 \ After NAMEBUF stem is set: EMIT-OUTDIR = <parent-of-file>/<STEM>

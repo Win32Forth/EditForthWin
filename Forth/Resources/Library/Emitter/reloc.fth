@@ -59,7 +59,7 @@ $D61F0200 CONSTANT ARM-BR-X16
 \ 17–20 image viewer: choose load size render.
 \ 21–25 file choose/save-as/path/slurp/spew.
 \ 26 (APP-SIZE?)/host_app_size — pending cols/rows after live resize.
-\ 27 TIME&DATE (blr x9 hook → localtime_r veneer; same SA-FIX-BI-HOOK path).
+\ 27 TIME&DATE (Windows: bl host_time_date. Mac: blr x9 hook).
 \ 28 CLIP!  29 CLIP@  30 CWD@  (bl _host_clip_* / _host_cwd_get).
 \ 31 SYSTEM (blr x9 system_hook → /bin/sh -c).
 \ 32 MS (bl _nanosleep).
@@ -633,12 +633,18 @@ S" KEY?"  (GFX-IO-XT) CONSTANT GFX-KEY?
   \ (APP-SIZE?) is a FORTH boot word (forth.s), not GRAPHICS — use ['] like MS@.
   \ Without a slot, SA chrome never adopts after live resize.
   ['] (APP-SIZE?) 26 HOST-APP-SET
-  \ Slot 27 TIME&DATE is SA-FIX-BI-HOOK (not HOST-APP-SET).
+  \ TIME&DATE / BI-* / SYSTEM on Windows are `bl host_*`, same as MS@.
+  \ Without a slot, stand-alone NOPs that BL, then SA-FIX-BI-HOOK aborts
+  \ because the Mac body (hook + BLR X9) is not in this kernel.
+  ['] BI-MUL    12 HOST-APP-SET
+  ['] BI-DIVMOD 13 HOST-APP-SET
+  ['] BI-ISQRT  14 HOST-APP-SET
+  ['] TIME&DATE 27 HOST-APP-SET
   \ CLIP!/CLIP@/CWD@ bl host symbols — SA would NOP those BLs.
   ['] CLIP! 28 HOST-APP-SET
   ['] CLIP@ 29 HOST-APP-SET
   ['] CWD@  30 HOST-APP-SET
-  \ Slot 31 SYSTEM is SA-FIX-BI-HOOK.
+  ['] SYSTEM 31 HOST-APP-SET
   \ MS bls _nanosleep — without a slot, SA NOP'd delays (GCLOCK relied on PUMP).
   ['] MS 32 HOST-APP-SET ;
 
@@ -710,6 +716,101 @@ VARIABLE SA-IP19 \ true when CATCH addresses that cell with X19
 
 : ADD64-IMM12!  ( imm insn -- insn' )
   $FFC003FF AND  SWAP $FFF AND 10 LSHIFT OR ;
+
+\ Stand-alone DEPTH / SP0 / CLEARSTACK. Host bodies ADRP data_stack.
+\ SA-DSP0-MAGIC / SA-DSP0-CELL / the WRITE-* DEFERS are in target.fth.
+: SA-DSP0-ENSURE  ( -- lit )
+  SA-DSP0-LIT @ ?DUP IF  EXIT  THEN
+  TGT-DATA @ 0= IF  ." sa-dsp0: no data seg" CR ABORT  THEN
+  TGT-DATA-DP @ 7 + -8 AND
+  DUP 8 + TGT-DATA-LIMIT @ U> IF
+    ." sa-dsp0: data overflow" CR ABORT
+  THEN
+  DUP SA-DSP0-CELL !
+  DUP 8 0 FILL
+  SA-DSP0-MAGIC OVER !
+  8 + TGT-DATA-DP !
+  8 TGT-DATA-BYTES +!
+  TGT-END-ALIGN8
+  TGT-END @ SA-DSP0-LIT !
+  SA-DSP0-CELL @ VEN-,
+  SA-DSP0-LIT @ 0 PTR-RELOC-ADD
+  SA-DSP0-LIT @ ;
+
+\ LDR Xt, dsp0 literal at TGT-HERE. The prim payload is 8-aligned.
+: SA-LDR-DSP0  ( rt -- )
+  {: rt | from lit -- :}
+  TGT-HERE TO from
+  SA-DSP0-ENSURE TO lit
+  from lit rt ENC-LDR64-LIT TGT-W, ;
+
+: SA-DSP-FIT  ( start xt -- )
+  {: start xt | n span -- :}
+  TGT-HERE start - TO n
+  xt PRIM-SPAN NIP TO span
+  n span U> IF
+    ." sa-dsp: " xt NAME>STRING TYPE
+    ."  body " n . ." exceeds span " span . CR
+    ABORT
+  THEN ;
+
+\ Host EXECUTE: if DSP is at data_stack+4096, TOS becomes 0 and the xt
+\ (already in X21) still runs. Stand-alone compares with the runner's
+\ empty DSP instead of that host symbol.
+: (WRITE-EXECUTE-SA)  ( -- )
+  {: | start -- :}
+  TGT-HERE TO start
+  $AA1403F5 TGT-W,                    \ MOV X21, X20
+  0 SA-LDR-DSP0                       \ LDR X0, dsp0
+  $F9400000 TGT-W,                    \ LDR X0, [X0]
+  $EB0002DF TGT-W,                    \ CMP X22, X0
+  $54000062 TGT-W,                    \ B.HS empty (3 insns forward)
+  $F84086D4 TGT-W,                    \ LDR X20, [X22], #8
+  $14000002 TGT-W,                    \ B go
+  $D2800014 TGT-W,                    \ empty: MOVZ X20, #0
+  $F94002A1 TGT-W,                    \ go: LDR X1, [X21]
+  $D61F0020 TGT-W,                    \ BR X1
+  start ['] EXECUTE SA-DSP-FIT
+  ." sa-dsp EXECUTE" CR ;
+
+: (WRITE-DEPTH-SA)  ( -- )
+  {: | start -- :}
+  TGT-HERE TO start
+  0 SA-LDR-DSP0                       \ LDR X0, dsp0
+  $F9400000 TGT-W,                    \ LDR X0, [X0]
+  $CB160000 TGT-W,                    \ SUB X0, X0, X22
+  $D343FC00 TGT-W,                    \ LSR X0, X0, #3
+  $F81F8ED4 TGT-W,                    \ STR X20, [X22, #-8]!
+  $AA0003F4 TGT-W,                    \ MOV X20, X0
+  ['] (NEXT) MAP-FIND 8 + B-ABS,
+  start ['] DEPTH SA-DSP-FIT
+  ." sa-dsp DEPTH" CR ;
+
+: (WRITE-SP0-SA)  ( -- )
+  {: | start -- :}
+  TGT-HERE TO start
+  0 SA-LDR-DSP0
+  $F9400000 TGT-W,                    \ LDR X0, [X0]
+  $F81F8ED4 TGT-W,                    \ STR X20, [X22, #-8]!
+  $AA0003F4 TGT-W,                    \ MOV X20, X0
+  ['] (NEXT) MAP-FIND 8 + B-ABS,
+  start ['] SP0 SA-DSP-FIT
+  ." sa-dsp SP0" CR ;
+
+: (WRITE-CLEARSTACK-SA)  ( -- )
+  {: | start -- :}
+  TGT-HERE TO start
+  1 SA-LDR-DSP0                       \ LDR X1, dsp0
+  $F9400036 TGT-W,                    \ LDR X22, [X1]
+  $D2800014 TGT-W,                    \ MOV X20, #0
+  ['] (NEXT) MAP-FIND 8 + B-ABS,
+  start ['] CLEARSTACK SA-DSP-FIT
+  ." sa-dsp CLEARSTACK" CR ;
+
+' (WRITE-DEPTH-SA) IS WRITE-DEPTH-SA
+' (WRITE-SP0-SA) IS WRITE-SP0-SA
+' (WRITE-CLEARSTACK-SA) IS WRITE-CLEARSTACK-SA
+' (WRITE-EXECUTE-SA) IS WRITE-EXECUTE-SA
 
 : PATCH-ADRP-FAR  ( npc tgt insn -- )
   {: npc tgt insn | rd add abs lit -- :}
@@ -902,7 +1003,15 @@ $D63F0120 CONSTANT ARM-BLR-X9
     4 SA-BI-OFF +!
   REPEAT
   SA-BI-NFIX @ 0= IF
-    ." sa-bi: no BLR X9 in " SA-BI-XT @ NAME>STRING TYPE CR ABORT
+    \ Direct `bl host_*` was bound in RELOC-PRIM via HOST-APP-SET.
+    \ A zero slot means this image still has the Mac hook and the BLR
+    \ was not found.
+    SA-BI-SLOT @ CELLS HOST-APP-VA + @ 0= IF
+      ." sa-bi: no BLR X9 in " SA-BI-XT @ NAME>STRING TYPE CR ABORT
+    THEN
+    ." sa-bi " SA-BI-XT @ NAME>STRING TYPE
+    ."  -> slot " SA-BI-SLOT @ . ." (bl host)" CR
+    EXIT
   THEN
   ." sa-bi " SA-BI-XT @ NAME>STRING TYPE ."  -> slot " SA-BI-SLOT @ . CR
   ;
@@ -914,15 +1023,14 @@ $D63F0120 CONSTANT ARM-BLR-X9
   ['] BI-ISQRT  14 SA-FIX-BI-HOOK
   ;
 
-\ TIME&DATE: ldr x9,[time_date_hook]; cbz x9,stub; mov x0,sp; blr x9
-\ SA zeroes the hook → CBZ always takes the 0 0 0 1 1 1970 stub.
-\ Same fix as BI-*: NOP CBZ; retarget BLR X9 to HOST-APP slot 27.
+\ TIME&DATE: Mac is ldr x9,[time_date_hook]; cbz; blr x9.
+\ Windows is bl host_time_date (x0 = int64 out[6]). Slot 27 either way.
 : SA-FIX-TIME-DATE  ( -- )
   ['] TIME&DATE 27 SA-FIX-BI-HOOK
   ;
 
-\ SYSTEM: ldr x9,[system_hook]; cbz → -1; else blr x9 with cmd,len.
-\ SA zeroes the hook → every SYSTEM returns -1. Slot 31 veneer runs system(3).
+\ SYSTEM: Mac is ldr x9,[system_hook]; cbz → -1; else blr x9.
+\ Windows is bl host_system (x0 = cmd, x1 = len). Slot 31 either way.
 : SA-FIX-SYSTEM  ( -- )
   ['] SYSTEM 31 SA-FIX-BI-HOOK
   ;
@@ -1039,6 +1147,22 @@ $D63F0120 CONSTANT ARM-BLR-X9
   REPEAT
   ;
 
+\ _udivmod128 sits immediately before UM/MOD and is not a boot word, so the
+\ span walk misses it and stand-alone SM/REM used to NOP the BL. */ then
+\ returns garbage: clock ticks miss the window, while a line from the
+\ center to that garbage point still looks like a hand.
+\ The helper is pure ALU (no ADRP). Copy tgt..UM/MOD when tgt is in that gap.
+: SA-UDIV-SPAN  ( tgt -- code u | 0 0 )
+  {: tgt | um u -- :}
+  S" UM/MOD" BOOT-SPAN-NAMED DROP TO um
+  um 0= IF  0 0 EXIT  THEN
+  tgt um U< 0= IF  0 0 EXIT  THEN
+  um tgt - TO u
+  u 8 U<  u 256 U>  OR IF  0 0 EXIT  THEN
+  um 4 - W@ $D65F03C0 <> IF  0 0 EXIT  THEN
+  tgt W@ $FF000000 AND $B4000000 <> IF  0 0 EXIT  THEN
+  tgt u ;
+
 \ Install once SA-HELP-RELOC-BSS exists (DEFER was NOP above).
 : (SA-PATCH-BL-HELPER)  ( npc tgt -- )
   {: npc tgt | code u new patch -- :}
@@ -1056,7 +1180,10 @@ $D63F0120 CONSTANT ARM-BLR-X9
     EXIT
   THEN
   tgt EMM-SPAN-OF TO u TO code
-  code 0= IF  ARM-NOP npc W!  EXIT  THEN
+  code 0= IF
+    tgt SA-UDIV-SPAN TO u TO code
+    code 0= IF  ARM-NOP npc W!  EXIT  THEN
+  THEN
   code u SPAN-SA-PURE? 0= IF  ARM-NOP npc W!  EXIT  THEN
   code SA-HELP-FIND ?DUP IF
     TO new
@@ -1093,9 +1220,13 @@ $D63F0120 CONSTANT ARM-BLR-X9
   xt DATA-WORD? IF  EXIT  THEN   \ host import — never patch host CFA/PFA
   \ 0BRANCH is always a custom guard-free body (no host data_stack ADRP).
   \ PAD/BASE etc. are DOVAR data under /EMIT-STANDALONE (see SA-GLOBAL-PRIM?).
+  \ DEPTH/SP0/CLEARSTACK are custom bodies that load the runner's empty DSP.
   xt 0BRANCH-ADDR = IF  EXIT  THEN
   ?EMIT-STANDALONE IF
     xt SA-GLOBAL-PRIM? IF  EXIT  THEN
+    X64-HOST? 0= IF
+      xt SA-DSP-PRIM? IF  EXIT  THEN
+    THEN
   THEN
   xt NAME>STRING TYPE SPACE ." RELOC" CR
   xt MAP-FIND DUP 0= IF  ." no map" CR DROP EXIT  THEN
@@ -1119,12 +1250,22 @@ $D63F0120 CONSTANT ARM-BLR-X9
           THEN
           npc W!
         ELSE
+          \ THROW's uncaught path is `b _quit_exit`. A host veneer would
+          \ branch into fortharm64.exe. NOP it; the following _throw_zero
+          \ drops and NEXTs. A real CATCH frame never takes this branch.
+          ?EMIT-STANDALONE
+          xt ['] THROW = AND
+          insn $FC000000 AND $14000000 = AND IF
+            ARM-NOP npc W!
+            ." sa-throw nop host branch" CR
+          ELSE
           ?EMIT-STANDALONE insn ADRP? AND IF
             npc code off SA-BSS-TRY-PATCH 0= IF
               npc insn tgt PATCH
             THEN
           ELSE
             npc insn tgt PATCH
+          THEN
           THEN
         THEN
       THEN
