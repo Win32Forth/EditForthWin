@@ -126,3 +126,17 @@ The assembly words still open are listed in `REMAINING.md`.
 ## Later
 
 `ALLOCATE-EXEC`, `FREE-EXEC`, `MPROTECT`, `ICACHE-INVAL`, `CALL-NATIVE`, `CALL-NATIVE-LEAF`, `NATIVE-SMOKE`, `JIT-WPROTECT`, `DOCON-ADDR`, and `(DOCON)` are in the kernel. On ARM64, `CALL-NATIVE` runs the buffer with the argument in x0 and the data stack in x19. On x64 the same word calls host machine code. The x64 console matches the ARM64 word set. `FILE-EXT`, `FLOATING`, and `BLOCK` report true. `FACILITY` and `FACILITY-EXT` report false. Emitter and Hyper stay commented out of autoload.
+
+## Debug Notes
+
+sa-block (SA-PRINT) 3376 bytes
+sa-block (SA-FILES) 640 bytes
+sa-block (SA-FLOAT) 7024 bytes
+sa-block (LOCAL-FRAME-EXIT) 202 bytes
+x64 locals sized
+sa-bss: BI-MUL has no host_tmp ADRP
+x64 catch leas n=5 cfa-ok 1506752658680 
+sa-help 202 bytes @ 1506726735616 
+x64: branch target 140702558877040 op 232 
+ throw -1
+ok(3)> 
