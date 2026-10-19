@@ -23,9 +23,23 @@ VARIABLE X64-0B
 VARIABLE X64-CODELEN
 VARIABLE X64-REGOFF
 VARIABLE X64-AT
+VARIABLE X64-THROW-AT
+VARIABLE X64-EX-AT
+VARIABLE X64-DEPTH-AT
+VARIABLE X64-SP0-AT
+VARIABLE X64-CS-AT
+VARIABLE X64-TH-CELL
+VARIABLE X64-ER-CELL
+VARIABLE X64-ST-CELL
+VARIABLE X64-H1
+VARIABLE X64-H2
+VARIABLE X64-H3
 
 : X64-RESET ( -- )
-  0 X64-FN !  0 X64-NS !  0 X64-REG0 !  0 X64-0B ! ;
+  0 X64-FN !  0 X64-NS !  0 X64-REG0 !  0 X64-0B !
+  0 X64-THROW-AT !  0 X64-EX-AT !  0 X64-DEPTH-AT !
+  0 X64-SP0-AT !  0 X64-CS-AT !
+  0 X64-TH-CELL !  0 X64-ER-CELL !  0 X64-ST-CELL ! ;
 
 : X64-LD32 ( addr -- u )
   >R
@@ -302,6 +316,25 @@ DEFER X64-RELOC-RANGE ( host new u -- )
   op $EB = op $70 $80 WITHIN OR IF  p EXIT  THEN
   p 1+ ;
 
+\ Distance from tgt up to UM/MOD when tgt is the _udivmod128 helper.
+\ 0 means this jump is not that helper (DOCOL's quit jump, for one).
+: X64-UDIV-GAP ( tgt -- u|0 )
+  {: tgt | um u -- :}
+  ['] UM/MOD CODE-BOUNDS DROP TO um
+  tgt um U< 0= IF  0 EXIT  THEN
+  um tgt - TO u
+  u 32 U< u 8192 U> OR IF  0 EXIT  THEN
+  u ;
+
+: X64-UDIV-NEW ( npc tgt -- )
+  {: npc tgt | u new -- :}
+  ['] UM/MOD CODE-BOUNDS DROP tgt - TO u
+  tgt u SA-HELP-COPY TO new
+  tgt new u X64-SPAN-ADD
+  tgt new u X64-RELOC-RANGE
+  ." x64 udiv " u . CR
+  npc X64-DISP-AT new X64-PATCH-CODE ;
+
 : X64-FIX-OUT {: npc tgt kind op | code u new -- :}
   kind 1 = IF
     tgt X64-REG-BASE DUP 248 + WITHIN IF
@@ -347,8 +380,13 @@ DEFER X64-RELOC-RANGE ( host new u -- )
     npc X64-DISP-AT new X64-PATCH-CODE EXIT
   THEN
   kind 2 = op $E9 = AND IF
-    \ Host jump with no image copy, usually DOCOL's empty-body exit.
-    \ Send it to the copied NEXT instead of falling into the next bytes.
+    \ jmp _udivmod128 sits just below UM/MOD. Copy that gap once.
+    \ DOCOL's empty-body exit is not in that window; it still goes to NEXT.
+    tgt X64-UDIV-GAP ?DUP IF
+      DROP
+      npc tgt X64-UDIV-NEW
+      EXIT
+    THEN
     npc X64-DISP-AT
     ['] (NEXT) MAP-FIND 8 +
     X64-PATCH-CODE
@@ -393,6 +431,8 @@ DEFER X64-RELOC-RANGE ( host new u -- )
   xt 0BRANCH-ADDR = IF  EXIT  THEN
   ?EMIT-STANDALONE IF
     xt SA-GLOBAL-PRIM? IF  EXIT  THEN
+    xt ['] THROW = IF  EXIT  THEN
+    xt SA-DSP-PRIM? IF  EXIT  THEN
   THEN
   xt MAP-FIND DUP 0= IF  DROP EXIT  THEN
   8 + TO new
@@ -595,12 +635,250 @@ VARIABLE X64-D
     ." x64: 0BRANCH body does not fit" CR ABORT
   THEN ;
 
+: (X64-NOTE-THROW) ( -- )  TGT-HERE X64-THROW-AT ! ;
+: (X64-NOTE-DSP) ( xt -- )
+  TGT-HERE SWAP
+  DUP ['] EXECUTE = IF  DROP X64-EX-AT !  EXIT  THEN
+  DUP ['] DEPTH = IF  DROP X64-DEPTH-AT !  EXIT  THEN
+  DUP ['] SP0 = IF  DROP X64-SP0-AT !  EXIT  THEN
+  DROP X64-CS-AT ! ;
+' (X64-NOTE-THROW) IS X64-NOTE-THROW
+' (X64-NOTE-DSP) IS X64-NOTE-DSP
+
+: X64-JCC ( opcode -- disp-addr )
+  $0F XB  XB
+  X64-AT @
+  DUP 0 SWAP X64-ST32
+  4 X64-AT +! ;
+: X64-JMP-HOLE ( -- disp-addr )
+  $E9 XB
+  X64-AT @
+  DUP 0 SWAP X64-ST32
+  4 X64-AT +! ;
+: X64-HOLE-TO ( disp-addr -- )
+  X64-AT @ OVER 4 + -
+  SWAP X64-ST32 ;
+: X64-FIT ( start xt -- )
+  {: start xt | n span -- :}
+  X64-AT @ start - TO n
+  xt PRIM-SPAN NIP TO span
+  n span U> IF
+    ." x64: " xt NAME>STRING TYPE
+    ."  body " n . ." exceeds span " span . CR
+    ABORT
+  THEN ;
+: X64-CELL-OFF ( data -- off )
+  TGT-DATA-ORG @ - X64-CODELEN @ + ;
+: X64-LD-CELL ( data -- )
+  $48 XB $8B XB $05 XB
+  X64-CELL-OFF X64-DTO ;
+\ Not X64-ST-CELL: that name is the state_var stand-in address.
+: X64-STA ( data -- )
+  $48 XB $89 XB $05 XB
+  X64-CELL-OFF X64-DTO ;
+: X64-MOV-R8  ( -- )  $49 XB $89 XB $C0 XB ;
+: X64-MOV-R9  ( -- )  $49 XB $89 XB $C1 XB ;
+: X64-MOV-R10 ( -- )  $49 XB $89 XB $C2 XB ;
+: X64-MOV-R11 ( -- )  $49 XB $89 XB $C3 XB ;
+: X64-MOV-RCX ( -- )  $48 XB $89 XB $C1 XB ;
+: X64-FROM-R8  ( -- )  $4C XB $89 XB $C0 XB ;
+: X64-FROM-R9  ( -- )  $4C XB $89 XB $C8 XB ;
+: X64-FROM-R10 ( -- )  $4C XB $89 XB $D0 XB ;
+: X64-FROM-R11 ( -- )  $4C XB $89 XB $D8 XB ;
+: X64-FROM-RCX ( -- )  $48 XB $89 XB $C8 XB ;
+: X64-TEST-RAX ( -- )  $48 XB $85 XB $C0 XB ;
+: X64-XOR-RAX  ( -- )  $48 XB $31 XB $C0 XB ;
+: X64-ADD-R9-8  ( -- )  $49 XB $83 XB $C1 XB $08 XB ;
+: X64-ADD-RAX-8 ( -- )  $48 XB $83 XB $C0 XB $08 XB ;
+: X64-SUB-RAX-8 ( -- )  $48 XB $83 XB $E8 XB $08 XB ;
+: X64-AT-R9 ( -- )  $49 XB $8B XB $01 XB ;
+: X64-AT-R10 ( -- )  $49 XB $8B XB $02 XB ;
+: X64-AT-R11-8 ( -- )  $49 XB $8B XB $43 XB $F8 XB ;
+: X64-TO-R10-RCX ( -- )  $49 XB $89 XB $0A XB ;
+: X64-TO-R10-RAX ( -- )  $49 XB $89 XB $02 XB ;
+: X64-CMP-R10-R11 ( -- )  $4D XB $39 XB $DA XB ;
+: X64-CMP-RAX-R11 ( -- )  $4C XB $39 XB $D8 XB ;
+: X64-SHR-3 ( -- )  $48 XB $C1 XB $E8 XB $03 XB ;
+: X64-JMP-RAX ( -- )  $FF XB $E0 XB ;
+
+\ First three RIP LEAs outside THROW's own bytes:
+\ throw_handler, eval_resume_sp, state_var. Code LEAs (the return
+\ stub) stay inside the open span and are skipped.
+\ Variables, not locals: this runs under the emitter's own frames.
+VARIABLE X64-TC
+VARIABLE X64-TE
+VARIABLE X64-TOFF
+VARIABLE X64-TN
+VARIABLE X64-TK
+VARIABLE X64-TOP
+VARIABLE X64-TT
+VARIABLE X64-TLEN
+: X64-THROW-CELLS ( -- )
+  ['] THROW CODE-BOUNDS DROP DUP X64-TC !
+  NEXT-CODE-AFTER DUP 0= IF
+    ." x64: THROW has no following boot code" CR ABORT
+  THEN
+  X64-TE !
+  0 X64-TOFF !  0 X64-TN !
+  0 X64-TH-CELL !  0 X64-ER-CELL !  0 X64-ST-CELL !
+  BEGIN
+    X64-TOFF @ X64-TE @ X64-TC @ - <
+    X64-TN @ 3 < AND
+  WHILE
+    X64-TC @ X64-TOFF @ +
+    DUP X64-LEN X64-TLEN !
+    X64-REL X64-TOP ! X64-TK ! X64-TT !
+    X64-TLEN @ 0= IF  ." x64: THROW insn" CR ABORT  THEN
+    X64-TK @ 1 = X64-TOP @ $8D = AND IF
+      X64-TT @ X64-TC @ X64-TE @ WITHIN 0= IF
+        X64-TN @ 0= IF  X64-TT @ X64-TH-CELL !  THEN
+        X64-TN @ 1 = IF  X64-TT @ X64-ER-CELL !  THEN
+        X64-TN @ 2 = IF  X64-TT @ X64-ST-CELL !  THEN
+        1 X64-TN +!
+      THEN
+    THEN
+    X64-TLEN @ X64-TOFF +!
+  REPEAT
+  X64-TN @ 3 < IF  ." x64: THROW lea n=" X64-TN @ . CR ABORT  THEN
+  X64-TH-CELL @ X64-ER-CELL @ =
+  X64-ER-CELL @ X64-ST-CELL @ = OR IF
+    ." x64: THROW leas collide" CR ABORT
+  THEN
+  X64-TH-CELL @ SA-BSS-ENSURE X64-TH-CELL !
+  X64-ER-CELL @ SA-BSS-ENSURE X64-ER-CELL !
+  X64-ST-CELL @ SA-BSS-ENSURE X64-ST-CELL ! ;
+
+\ The runner finds this magic in the data image and stores the empty DSP.
+\ Allocate it before the register file, which must stay the last 256 bytes.
+: X64-DSP0-DATA ( -- )
+  SA-DSP0-CELL @ IF  EXIT  THEN
+  TGT-DATA @ 0= IF  ." x64: no data seg" CR ABORT  THEN
+  TGT-DATA-DP @ 7 + -8 AND
+  DUP 8 + TGT-DATA-LIMIT @ U> IF  ." x64: dsp0 overflow" CR ABORT  THEN
+  DUP SA-DSP0-CELL !
+  DUP 8 ERASE
+  SA-DSP0-MAGIC OVER !
+  8 + TGT-DATA-DP !
+  8 TGT-DATA-BYTES +! ;
+
+\ CATCH frame, deepest first, handler pointing at the IP cell:
+\ eval_resume, previous handler, TOS snapshot, DSP snapshot, source_sp, IP.
+\ Zero drops TOS. No handler drops TOS and continues (the ARM image
+\ turns the host quit branch into a no-op). A handler restores that frame.
+: X64-WRITE-THROW ( -- )
+  X64-THROW-AT @ 0= IF  EXIT  THEN
+  X64-TH-CELL @ 0= IF  ." x64: throw cells missing" CR ABORT  THEN
+  X64-THROW-AT @ DUP ['] THROW PRIM-SPAN NIP ERASE
+  X64-AT !
+  20 X64-LDX
+  X64-TEST-RAX
+  $84 X64-JCC X64-H1 !                 \ jz zero
+  X64-MOV-R8                           \ throw code
+  X64-TH-CELL @ X64-LD-CELL
+  X64-TEST-RAX
+  $84 X64-JCC X64-H2 !                 \ jz uncaught
+  X64-MOV-R9                           \ frame
+  X64-AT-R9  19 X64-STX  X64-ADD-R9-8  \ IP
+  X64-ADD-R9-8                         \ drop source_sp
+  22 X64-LDX  X64-MOV-R10              \ live DSP
+  X64-AT-R9  X64-MOV-R11  22 X64-STX   \ saved DSP
+  X64-ADD-R9-8
+  X64-AT-R9  X64-MOV-RCX  X64-ADD-R9-8 \ snapshot
+  X64-CMP-R10-R11
+  $83 X64-JCC X64-H3 !                 \ jae snap
+  X64-AT-R11-8  X64-MOV-RCX
+  X64-H3 @ X64-HOLE-TO                 \ snap
+  X64-AT-R9  X64-TH-CELL @ X64-STA
+  X64-ADD-R9-8
+  X64-AT-R9  X64-ER-CELL @ X64-STA
+  X64-ADD-R9-8
+  X64-FROM-R9  23 X64-STX
+  X64-XOR-RAX  X64-ST-CELL @ X64-STA
+  22 X64-LDX  X64-SUB-RAX-8  22 X64-STX
+  X64-MOV-R10  X64-TO-R10-RCX
+  X64-FROM-R8  20 X64-STX
+  X64-JMP-NEXT
+  X64-H2 @ X64-HOLE-TO                 \ uncaught joins zero
+  X64-H1 @ X64-HOLE-TO
+  22 X64-LDX  X64-MOV-R10  X64-AT-R10
+  20 X64-STX
+  X64-FROM-R10  X64-ADD-RAX-8  22 X64-STX
+  X64-JMP-NEXT
+  X64-THROW-AT @ ['] THROW X64-FIT
+  ." x64-throw" CR ;
+
+: X64-WRITE-EXECUTE ( -- )
+  X64-EX-AT @ 0= IF  EXIT  THEN
+  X64-EX-AT @ DUP ['] EXECUTE PRIM-SPAN NIP ERASE
+  X64-AT !
+  20 X64-LDX  21 X64-STX
+  SA-DSP0-CELL @ X64-LD-CELL  X64-MOV-R11
+  22 X64-LDX  X64-CMP-RAX-R11
+  $83 X64-JCC X64-H1 !                 \ jae empty
+  X64-MOV-R10  X64-AT-R10  20 X64-STX
+  X64-FROM-R10  X64-ADD-RAX-8  22 X64-STX
+  X64-JMP-HOLE X64-H2 !
+  X64-H1 @ X64-HOLE-TO                 \ empty: TOS = 0
+  X64-XOR-RAX  20 X64-STX
+  X64-H2 @ X64-HOLE-TO                 \ go
+  21 X64-LDX  $48 XB $8B XB $00 XB  X64-JMP-RAX
+  X64-EX-AT @ ['] EXECUTE X64-FIT
+  ." x64-dsp EXECUTE" CR ;
+
+: X64-WRITE-DEPTH ( -- )
+  X64-DEPTH-AT @ 0= IF  EXIT  THEN
+  X64-DEPTH-AT @ DUP ['] DEPTH PRIM-SPAN NIP ERASE
+  X64-AT !
+  SA-DSP0-CELL @ X64-LD-CELL  X64-MOV-R11
+  22 X64-LDX  X64-MOV-R10
+  X64-FROM-R11
+  $4C XB $29 XB $D0 XB                 \ sub rax, r10
+  X64-SHR-3  X64-MOV-RCX               \ count, TOS not included
+  22 X64-LDX  X64-SUB-RAX-8  22 X64-STX
+  X64-MOV-R10  20 X64-LDX  X64-TO-R10-RAX
+  X64-FROM-RCX  20 X64-STX
+  X64-JMP-NEXT
+  X64-DEPTH-AT @ ['] DEPTH X64-FIT
+  ." x64-dsp DEPTH" CR ;
+
+: X64-WRITE-SP0 ( -- )
+  X64-SP0-AT @ 0= IF  EXIT  THEN
+  X64-SP0-AT @ DUP ['] SP0 PRIM-SPAN NIP ERASE
+  X64-AT !
+  SA-DSP0-CELL @ X64-LD-CELL  X64-MOV-R11
+  22 X64-LDX  X64-SUB-RAX-8  22 X64-STX
+  X64-MOV-R10  20 X64-LDX  X64-TO-R10-RAX
+  X64-FROM-R11  20 X64-STX
+  X64-JMP-NEXT
+  X64-SP0-AT @ ['] SP0 X64-FIT
+  ." x64-dsp SP0" CR ;
+
+: X64-WRITE-CS ( -- )
+  X64-CS-AT @ 0= IF  EXIT  THEN
+  X64-CS-AT @ DUP ['] CLEARSTACK PRIM-SPAN NIP ERASE
+  X64-AT !
+  SA-DSP0-CELL @ X64-LD-CELL  22 X64-STX
+  X64-XOR-RAX  20 X64-STX
+  X64-JMP-NEXT
+  X64-CS-AT @ ['] CLEARSTACK X64-FIT
+  ." x64-dsp CLEARSTACK" CR ;
+
 : (X64-FINISH) ( -- )
   X64-DOCOL-IP8
+  X64-THROW-AT @ IF  X64-THROW-CELLS  THEN
+  X64-EX-AT @ X64-DEPTH-AT @ OR
+  X64-SP0-AT @ OR X64-CS-AT @ OR IF
+    X64-DSP0-DATA
+  THEN
   X64-PAD-CODE
   X64-ALLOT-REGS
   X64-APPLY
   X64-WRITE-0B
+  X64-WRITE-THROW
+  X64-WRITE-EXECUTE
+  X64-WRITE-DEPTH
+  X64-WRITE-SP0
+  X64-WRITE-CS
   ." x64 reloc fixups " X64-FN @ . ." code " TGT-SIZE . CR ;
 
 ' (X64-FINISH) IS X64-FINISH

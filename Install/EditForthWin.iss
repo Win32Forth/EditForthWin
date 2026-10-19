@@ -22,7 +22,7 @@
   #define AppGuid "{{E4F7A1B2-6C30-4D85-9A17-3B8E2F01A641}"
 #endif
 
-#define AppVersion "1.2.4"
+#define AppVersion "1.2.5"
 
 [Setup]
 AppId={#AppGuid}
@@ -51,9 +51,13 @@ Source: "stage\{#ArchTag}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubd
 Source: "..\Forth\Resources\*"; DestDir: "{app}\Resources"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "install-docs.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
+[Tasks]
+Name: desktopicon; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
 [Icons]
 Name: "{autoprograms}\EditForthWin {#AppArch}"; Filename: "{app}\{#EditExe}"
 Name: "{autoprograms}\EditForthWin {#AppArch} Console"; Filename: "{app}\{#ForthExe}"
+Name: "{autodesktop}\EditForthWin {#AppArch}"; Filename: "{app}\{#EditExe}"; Tasks: desktopicon
 
 [Run]
 Filename: "powershell.exe"; \

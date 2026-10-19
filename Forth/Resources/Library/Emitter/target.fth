@@ -53,6 +53,16 @@ DEFER X64-BUILD-RESET ( -- )
 ' (X64-0BRANCH-NOP) IS X64-0BRANCH
 ' (X64-0BRANCH-NOP) IS X64-BUILD-RESET
 
+\ x64reloc.fth records the payload and writes the body at finish.
+DEFER X64-NOTE-THROW ( -- )
+DEFER X64-NOTE-DSP ( xt -- )
+: (X64-NOTE-THROW-NOP) ( -- )
+  ." x64: THROW writer missing" CR ABORT ;
+: (X64-NOTE-DSP-NOP) ( xt -- )
+  DROP ." x64: DSP writer missing" CR ABORT ;
+' (X64-NOTE-THROW-NOP) IS X64-NOTE-THROW
+' (X64-NOTE-DSP-NOP) IS X64-NOTE-DSP
+
 VARIABLE TGT-DATA         \ RW ALLOCATE base (stand-alone data segment)
 VARIABLE TGT-DATA-ORG
 VARIABLE TGT-DATA-DP
@@ -136,9 +146,27 @@ VARIABLE TGT-MAPN
   REPEAT
   2DROP best ;
 
+\ Defined here so THROW-OPEN-SPAN can see it. Setters are below.
+FALSE VALUE ?EMIT-STANDALONE
+
 VARIABLE SA-THROW-SEEN
-\ ( code -- code u )  ARM THROW only. x64 still has no span.
+\ ( code -- code u )
+\ ARM copies THROW through the next boot word (the quit branch is
+\ turned into a no-op later). The x64 translation of that body jumps
+\ through the host, so a stand-alone image only reserves a slot.
+\ x64reloc.fth writes a register-file THROW into it at finish.
 : THROW-OPEN-SPAN  ( code -- code u )
+  DUP C@ $48 = IF
+    ?EMIT-STANDALONE 0= IF
+      ." prim: x64 THROW has no end label" CR ABORT
+    THEN
+    512
+    SA-THROW-SEEN @ 0= IF
+      ." x64-throw span " DUP . CR
+      1 SA-THROW-SEEN !
+    THEN
+    EXIT
+  THEN
   DUP NEXT-CODE-AFTER
   DUP 0= IF
     DROP ." prim: THROW has no following boot code" CR ABORT
@@ -157,10 +185,10 @@ VARIABLE SA-THROW-SEEN
   DUP >R CODE-BOUNDS
   DUP 0= IF
     \ Live kernel: BOOT_WORD THROW, ..., XTHROW, 0. Mac has XTHROW_END.
-    \ First insn is CBZ (top byte $B4). x64 THROW is not that encoding.
+    \ ARM's first insn is CBZ (top byte $B4). x64 starts with REX.W ($48).
     \ X64-HOST? is defined later and itself calls PRIM-SPAN.
     R@ ['] THROW = IF
-      OVER 3 + C@ $B4 = IF
+      OVER DUP C@ $48 = SWAP 3 + C@ $B4 = OR IF
         DROP R> DROP THROW-OPEN-SPAN EXIT
       THEN
     THEN
@@ -176,7 +204,6 @@ VARIABLE SA-THROW-SEEN
 
 \ CREATE/VALUE/CONSTANT/DOES>: default identity map (in-process TGT-RUN).
 \ /EMIT-STANDALONE copies each data region into the target image (Phase 1).
-FALSE VALUE ?EMIT-STANDALONE
 : /EMIT-STANDALONE  ( -- )  TRUE  TO ?EMIT-STANDALONE ;
 : /EMIT-HOSTDATA    ( -- )  FALSE TO ?EMIT-STANDALONE ;
 
@@ -397,6 +424,12 @@ DEFER WRITE-EXECUTE-SA     ( -- )
     DROP
     X64-HOST? IF  X64-0BRANCH EXIT  THEN
     WRITE-0BRANCH-SA EXIT
+  THEN
+  \ Stand-alone x64: THROW has no end label, and the stack prims still
+  \ name the host data stack. The bodies are filled in at X64-FINISH.
+  ?EMIT-STANDALONE X64-HOST? AND IF
+    DUP ['] THROW = IF  DROP X64-NOTE-THROW EXIT  THEN
+    DUP SA-DSP-PRIM? IF  X64-NOTE-DSP EXIT  THEN
   THEN
   \ Stand-alone ARM: host DEPTH/SP0/CLEARSTACK ADRP data_stack.
   ?EMIT-STANDALONE X64-HOST? 0= AND IF

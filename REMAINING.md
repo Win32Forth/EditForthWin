@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Updated Oct 18, 2026 for version 1.2.4. ARM64 is `1.2.4`, built Oct 18, 2026 8:54 PM. x64 is `1.2.4-x64`, built Oct 18, 2026 8:55 PM. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
+Updated Oct 19, 2026 for version 1.2.5. ARM64 is `1.2.5`, built Oct 19, 2026 7:03 AM. x64 is `1.2.5-x64`, built Oct 19, 2026 7:04 AM. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
@@ -45,13 +45,15 @@ Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 
 
 1.2.4 does not add boot words. The emitter packs programs that use `THROW`, `*/`, `TIME&DATE`, and the graphics window. Windows `THROW` has no end label, so on ARM64 the slicer copies the body through the next boot word and turns the host quit branch into a no-op. `CATCH` still receives the code. `DEPTH`, `SP0`, `CLEARSTACK`, and `EXECUTE` read the runner's empty data stack, so `APP-NAME` gets the real string and the window title is the program name. `*/` copies the unsigned divide span. `TIME&DATE` is host slot 27. An outdir of `"."` is the folder of the last included source, so the bundle sits beside that file. The runner stretches the picture when the window is resized, paints light text on a dark cell, loads BMP, PNG, JPEG, GIF, and TIFF through WIC, and opens the image dialog. `GCLOCK`, `IMAGEVIEW64`, and `MIDNIGHT` were emitted on ARM64 and those windows ran. The x64 runner is built from the same C source. x64 `THROW` still has no span, so a program that reaches `THROW` does not emit on x64. Hayes and ANS-VALIDATE were not run for 1.2.4.
 
+1.2.5 does not add boot words. On x64, `THROW` is a fixed 512-byte body, `EXECUTE`, `DEPTH`, `SP0`, and `CLEARSTACK` read the runner's empty data stack, and `*/` copies the unsigned divide helper. `GCLOCK`, `IMAGEVIEW64`, and `MIDNIGHT` were emitted on x64 and those windows ran. The Windows packer moves `<NAME>.img` into the bundle folder beside `<NAME>.exe` and `app.img`. The runner opens the Open and Save dialogs, then reads or writes the chosen file. ARM64 `VED64` opened Save File and Open File, wrote the buffer, loaded a file back, and S on the quit prompt saved and quit. Hayes and ANS-VALIDATE were not run for 1.2.5.
+
 ## Hayes
 
 `FROMLIB FLOAD Testing/HayesTest/HayesTest.fth` was run on `fortharm64.exe` and `forthx64.exe` on Oct 16, 2026, before the 1.2.1 kernel changes. Both finished with no `HAYES FAIL` banner. Core through Block, the floating-point sections, and Paranoia reported 0. The suite's own summary line was `ALL COUNTS ZERO`. That run was not repeated for 1.2.1. Help > About reads the version from the Forth engine.
 
 ## Still no Windows boot word
 
-The five names that were open at 1.2.0 are in the kernel. The stand-alone spans for print, files, and float are in the ARM64 kernel and the x64 kernel. `EMIT-APP` on x64 writes a bundle with `emit-win-x64.exe`. What remains for a graphics application is `EMIT-WINDOW-APP`.
+The five names that were open at 1.2.0 are in the kernel. The stand-alone spans for print, files, and float are in the ARM64 kernel and the x64 kernel. `EMIT-APP` on x64 writes a bundle with `emit-win-x64.exe`. `EMIT-WINDOW-APP` is the graphics emit on both architectures.
 
 ## Names that are not missing features
 

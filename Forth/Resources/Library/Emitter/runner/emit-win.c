@@ -960,6 +960,110 @@ static long long ew_img_render(long long dest, long long dest_w, long long dest_
     return 0;
 }
 
+/* Staged path for (APP-FILE-*). UTF-8. Slots 21–25 were the -1 stub,
+ * so Open and Save returned immediately and the page just redrew. */
+static char g_staged[1024];
+
+static void ew_stage_wide(const wchar_t *path) {
+    int n = WideCharToMultiByte(CP_UTF8, 0, path, -1, g_staged,
+                                (int)sizeof g_staged, NULL, NULL);
+    if (n <= 0)
+        g_staged[0] = 0;
+}
+
+/* 0 = path staged, -1 = cancelled, -2 = failed. */
+static long long ew_file_dialog(int save) {
+    wchar_t file[1024];
+    OPENFILENAMEW ofn;
+    BOOL ok;
+
+    file[0] = 0;
+    if (save && g_staged[0] != 0)
+        MultiByteToWideChar(CP_UTF8, 0, g_staged, -1, file, 1024);
+    memset(&ofn, 0, sizeof ofn);
+    ofn.lStructSize = sizeof ofn;
+    ofn.hwndOwner = g_hwnd;
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = 1024;
+    ofn.lpstrFilter = L"All files\0*.*\0Forth files\0*.fth;*.fs;*.4th;*.f;*.txt\0";
+    ofn.lpstrTitle = save ? L"Save File" : L"Open File";
+    ofn.nFilterIndex = 1;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    if (save) {
+        ofn.Flags |= OFN_OVERWRITEPROMPT;
+        ok = GetSaveFileNameW(&ofn);
+    } else {
+        ofn.Flags |= OFN_FILEMUSTEXIST;
+        ok = GetOpenFileNameW(&ofn);
+    }
+    if (!ok)
+        return CommDlgExtendedError() ? -2 : -1;
+    ew_stage_wide(file);
+    return 0;
+}
+
+static long long ew_file_choose(void) {
+    return ew_file_dialog(0);
+}
+
+static long long ew_file_save_as(void) {
+    return ew_file_dialog(1);
+}
+
+static long long ew_file_path(void *dest, long long max) {
+    size_t n;
+    if (dest == NULL || max <= 0)
+        return 0;
+    n = strlen(g_staged);
+    if (n > (size_t)max)
+        n = (size_t)max;
+    if (n > 0)
+        memcpy(dest, g_staged, n);
+    return (long long)n;
+}
+
+static long long ew_file_slurp(void *dest, long long max, long long *out_u) {
+    FILE *fp;
+    long long n;
+    wchar_t wide[1024];
+
+    if (out_u != NULL)
+        *out_u = 0;
+    if (dest == NULL || max <= 0)
+        return -2;
+    if (g_staged[0] == 0)
+        return -1;
+    if (MultiByteToWideChar(CP_UTF8, 0, g_staged, -1, wide, 1024) <= 0)
+        return -2;
+    if (_wfopen_s(&fp, wide, L"rb") != 0 || fp == NULL)
+        return -2;
+    n = (long long)fread(dest, 1, (size_t)max, fp);
+    fclose(fp);
+    if (out_u != NULL)
+        *out_u = n;
+    return 0;
+}
+
+static long long ew_file_spew(const void *src, long long nbytes) {
+    FILE *fp;
+    wchar_t wide[1024];
+
+    if (src == NULL || nbytes < 0)
+        return -2;
+    if (g_staged[0] == 0)
+        return -1;
+    if (MultiByteToWideChar(CP_UTF8, 0, g_staged, -1, wide, 1024) <= 0)
+        return -2;
+    if (_wfopen_s(&fp, wide, L"wb") != 0 || fp == NULL)
+        return -2;
+    if (nbytes > 0 && fwrite(src, 1, (size_t)nbytes, fp) != (size_t)nbytes) {
+        fclose(fp);
+        return -2;
+    }
+    fclose(fp);
+    return 0;
+}
+
 static void *g_slot[EW_SLOTS];
 
 static void slots_init(void) {
@@ -987,6 +1091,11 @@ static void slots_init(void) {
     g_slot[18] = (void *)ew_img_load;
     g_slot[19] = (void *)ew_img_size;
     g_slot[20] = (void *)ew_img_render;
+    g_slot[21] = (void *)ew_file_choose;
+    g_slot[22] = (void *)ew_file_save_as;
+    g_slot[23] = (void *)ew_file_path;
+    g_slot[24] = (void *)ew_file_slurp;
+    g_slot[25] = (void *)ew_file_spew;
     g_slot[26] = (void *)ew_size;
     g_slot[27] = (void *)ew_time_date;
     g_slot[32] = (void *)ew_sleep;

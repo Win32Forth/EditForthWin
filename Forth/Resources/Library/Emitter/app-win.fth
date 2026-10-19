@@ -7,11 +7,13 @@
 \
 \ Both EMIT-APP and EMIT-WINDOW-APP use those hooks, so a window emit
 \ writes the same Windows bundle. The bundle is a folder:
-\   <outdir>/<NAME>.img     64EMIT02 image (SAVE-IMAGE)
-\   <outdir>/<NAME>/app.img a copy of that image
+\   <outdir>/<NAME>/<NAME>.img   64EMIT02 image
+\   <outdir>/<NAME>/app.img      the copy the exe loads
 \ emit-win.exe (runner\emit-win.c) is the window host. This packer copies
-\ it to <outdir>/<NAME>/<NAME>.exe next to app.img, plus host.fix so the
-\ runner can rebind sa_win_putchar and sa_win_file_op.
+\ it to <outdir>/<NAME>/<NAME>.exe next to those images, plus host.fix so
+\ the runner can rebind sa_win_putchar and sa_win_file_op. SAVE-IMAGE
+\ writes <outdir>/<NAME>.img first; this packer moves that file into the
+\ bundle so it does not sit beside the source.
 \ The image still runs in this process via LOAD-IMAGE TGT-RUN-LOADED.
 \ Absolute host pointers (sa_win_putchar, sa_win_file_op, key_fn) stay
 \ valid only in the process that built the image.
@@ -126,6 +128,17 @@ CREATE EMIT-COPYBUF   4096 ALLOT
 : (EMIT-PACK-WIN)  ( -- )
   EMIT-TMP COUNT  EMIT-NAMEBUF COUNT  0 0  EMIT-APPBUF  (EMIT-JOIN)
   EMIT-APPBUF COUNT (EMIT-MKDIR-WIN)
+  \ SAVE-IMAGE wrote <outdir>/<NAME>.img. The image belongs in the bundle.
+  EMIT-WIN-IMG (EMIT-S0)
+  EMIT-APPBUF COUNT EMIT-WIN-IMG (EMIT-S+)
+  S" /" EMIT-WIN-IMG (EMIT-S+)
+  EMIT-NAMEBUF COUNT EMIT-WIN-IMG (EMIT-S+)
+  S" .img" EMIT-WIN-IMG (EMIT-S+)
+  EMIT-IMGBUF COUNT  EMIT-WIN-IMG COUNT  (EMIT-COPY-FILE)
+  EMIT-IMGBUF COUNT DELETE-FILE IF
+    ." EMIT-APP: cannot remove " EMIT-IMGBUF COUNT TYPE CR ABORT
+  THEN
+  EMIT-WIN-IMG COUNT EMIT-IMGBUF PLACE
   EMIT-WIN-IMG (EMIT-S0)
   EMIT-APPBUF COUNT EMIT-WIN-IMG (EMIT-S+)
   S" /app.img" EMIT-WIN-IMG (EMIT-S+)
