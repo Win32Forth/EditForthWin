@@ -19,16 +19,21 @@
     \ ITC DEBUG (hub loads Debugger/*; leaves ALSO DEBUGGER on the order)
     REQUIRE Library/Debugger/debugger.fth
     [UNDEFINED] EDITOR [IF] VOCABULARY EDITOR [THEN]
-    \ Emitter loads at boot. Hyper stays commented until that index should
-    \ rebuild here. Hyper clears DBG-HL-XT, so the re-arm below belongs
-    \ with that restore.
     REQUIRE Library/Emitter/emitter.fth
-    \ REQUIRE Library/HYPER/HYPER.fth
-    \ ALSO HYPER-VOC MIN-HYPER-NOISE ON PREVIOUS
-    \ HYPER-REINDEX
-    \ ALSO DEBUGGER
-    \ (DBG-HUB-ARM-HL)
-    \ PREVIOUS
+    \ Load the hyper text code, and finally re-index so everything is up to date
+    REQUIRE Library/HYPER/HYPER.fth
+    \ Classic VOCABULARY replaces CONTEXT — ALSO keeps FORTH while setting
+    \ HYPER-VOC's MIN-HYPER-NOISE (quiet reindex). Bare HYPER-VOC … FORTH
+    \ after Hyper's FORTH-first order left only HYPER-VOC and undefined ON.
+    ALSO HYPER-VOC MIN-HYPER-NOISE ON PREVIOUS
+    HYPER-REINDEX
+    \ Hyper clears DBG-HL-XT (console-only SZ-EDITOR era). Re-arm map→span
+    \ for 64Edit so asm pause fallback still publishes off+len before paint.
+    \ Use the colon wrapper: interpret-time IF/THEN leaves TRUE (−1) on the stack
+    \ (same pitfall documented at (DBG-HUB-ARM-HL) in Debugger/debugger.fth).
+    ALSO DEBUGGER
+    (DBG-HUB-ARM-HL)
+    PREVIOUS
 
 \ Boot: ONLY FORTH ALSO DEFINITIONS (FORTH FORTH, CURRENT=FORTH).
 \ ALSO leaves a spare FORTH slot so ALSO DEBUGGER / ALSO FLOATING keep FORTH.

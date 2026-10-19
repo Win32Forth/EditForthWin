@@ -259,7 +259,11 @@ VARIABLE PTR-RELOC-N
 \ Covers CREATE…, and CREATE n ALLOT (FIGURE / NOTES): body runs until the
 \ next header. CFA+24 fallback = does_ip + one cell (lone VALUE/CONSTANT).
 \ Prefer a full wordlist scan so size does not depend on the next word being
-\ reachable. TRAVERSE-WORDLIST uses the return stack — no locals in visitor.
+\ reachable. FORTH-WORDLIST is latest_var and is not in WORDLISTS, so a
+\ WORDLISTS-only walk never sees FORTH words. CLOCK's CREATE strings then
+\ fell back to CFA+24 and the roman numerals were omitted.
+\ TRAVERSE-WORDLIST uses the return stack, so the wid index stays here
+\ on the data stack (?DO would share that stack and drop every HFA).
 VARIABLE DE-XT
 VARIABLE DE-BEST
 
@@ -277,9 +281,12 @@ VARIABLE DE-BEST
 
 : DATA-END  ( xt -- addr )
   DE-XT !  0 DE-BEST !
-  WORDLISTS 0 ?DO
-    DUP I CELLS + @ ['] DE-VISIT SWAP TRAVERSE-WORDLIST
-  LOOP DROP
+  FORTH-WORDLIST ['] DE-VISIT SWAP TRAVERSE-WORDLIST
+  WORDLISTS ( addr n )
+  BEGIN DUP WHILE
+    1-
+    2DUP CELLS + @ ['] DE-VISIT SWAP TRAVERSE-WORDLIST
+  REPEAT 2DROP
   DE-BEST @ DUP 0= IF  DROP DE-XT @ 24 +  THEN ;
 
 : DATA-SPAN  ( xt -- addr u )

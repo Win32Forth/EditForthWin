@@ -22,7 +22,7 @@
   #define AppGuid "{{E4F7A1B2-6C30-4D85-9A17-3B8E2F01A641}"
 #endif
 
-#define AppVersion "1.2.8"
+#define AppVersion "1.2.9"
 
 [Setup]
 AppId={#AppGuid}

@@ -26,13 +26,17 @@ only forth also graphics
 \ FILE-ECHO on
 
 : ," 	( " text" -- )
-		[CHAR] " PARSE HERE OVER 1+ ALLOT PLACE ;
+		[CHAR] " PARSE HERE OVER 1+ ALLOT PLACE ALIGN ;
 
-: FOR	( -- a1 )
-		HERE ; IMMEDIATE
+\ eForth FOR/NEXT: n through 0 inclusive (8 FOR runs 9 times).
+\ .= does 1- first so it emits n characters. A bare 1- UNTIL exits
+\ on the first nonzero count under ANS, and BAR-HEADER then spins.
+: FOR	( n -- ) ( C: -- a1 )
+		POSTPONE >R HERE ; IMMEDIATE
 
-: NEXT	( a1 -- )
-		?COMP	POSTPONE 1- POSTPONE UNTIL ; IMMEDIATE
+: NEXT	( C: a1 -- )
+		?COMP	POSTPONE R> POSTPONE 1- POSTPONE DUP POSTPONE >R
+		POSTPONE 0< POSTPONE UNTIL POSTPONE R> POSTPONE DROP ; IMMEDIATE
 
 : HMS 	( -- hour min sec )
 		TIME&DATE 					\ ( -- sec min hour day month year )

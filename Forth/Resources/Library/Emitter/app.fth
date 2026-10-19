@@ -366,6 +366,22 @@ S" CR"         (EMIT-GFX-XT) CONSTANT (EMIT-GFX-CR)
   S\" \r\n" (EMIT-GFX-TYPE) EXECUTE
   ;
 
+\ Host GRAPHICS session is copied into the image (VALUE / VARIABLE cells).
+\ CLOCK.fth ends with CR after ONLY FORTH ALSO GRAPHICS, so the load opens
+\ the host window: G-OPEN? = -1 and G-BUF = that process's ALLOCATE.
+\ Stand-alone WINDOW then returns immediately and EMIT writes the stale
+\ pointer (access violation). Close the host window and zero the cells
+\ before the snapshot. -1 is a kept immediate, so the pointer sanitizer
+\ does not clear G-OPEN?.
+: (EMIT-RESET-GFX)  ( -- )
+  (EMIT-GFX-WINDOW-OFF) EXECUTE
+  S" G-FREE-BUF" (EMIT-GFX-XT) EXECUTE
+  0 S" G-OPEN?"  (EMIT-GFX-XT) >BODY !
+  0 S" G-DIRTY?" (EMIT-GFX-XT) >BODY !
+  0 S" G-CX"     (EMIT-GFX-XT) >BODY !
+  0 S" G-CY"     (EMIT-GFX-XT) >BODY !
+;
+
 \ :NONAME  title APP-NAME WINDOW
 \   <xt> CATCH ?DUP IF win-handler THEN
 \   WINDOW-OFF ;
@@ -437,6 +453,7 @@ S" CR"         (EMIT-GFX-XT) CONSTANT (EMIT-GFX-CR)
 
 : EMIT-WINDOW-APP-XT-TO  ( xt c-addr u -- )
   {: xt a u -- :}
+  (EMIT-RESET-GFX)
   /EMIT-WINDOW                        \ remap FORTH EMIT/TYPE/… → GRAPHICS
   xt (EMIT-APP-NAME!)                 \ basename from entry xt
   xt (EMIT-TITLE!)                    \ EMIT-TITLE from stem; clobbers NAMEBUF

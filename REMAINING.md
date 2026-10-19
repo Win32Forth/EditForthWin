@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Updated Oct 19, 2026 10:29 AM for version 1.2.8. ARM64 is `1.2.8`, built Oct 19, 2026 10:29 AM. x64 is `1.2.8-x64`, built Oct 19, 2026 10:29 AM. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
+Updated Oct 19, 2026 1:21 PM for version 1.2.9. ARM64 is `1.2.9`, built Oct 19, 2026 1:21 PM. x64 is `1.2.9-x64`, built Oct 19, 2026 1:21 PM. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
@@ -29,7 +29,7 @@ These bodies are in the kernel and were checked on both `fortharm64.exe` and `fo
 - `USER-DICT` returns the base of the user dictionary.
 - `GROWMEMORYMB` grows that dictionary to the given number of megabytes once per session. It does not shrink, and the maximum is 256.
 
-The assembler and the emitter were not loaded for the checks above. An unknown word typed at the console stops on the first name, turns compiling off, and clears both stacks. `.` on an empty stack prints `0 stack underflow` and returns to `ok(0)>`. `VIEW` stamps come from Hyper after `HYPER-REINDEX`. `DUP` opens the running kernel's `prims.asm`. Cold colon words such as `VIEW-LINE` open `Library/Sources/kernel1.fth`. The shipped autoload still leaves Hyper commented out.
+The assembler and the emitter were not loaded for the checks above. An unknown word typed at the console stops on the first name, turns compiling off, and clears both stacks. `.` on an empty stack prints `0 stack underflow` and returns to `ok(0)>`. `VIEW` stamps come from Hyper after `HYPER-REINDEX`. `DUP` opens the running kernel's `prims.asm`. Cold colon words such as `VIEW-LINE` open `Library/Sources/kernel1.fth`. The shipped autoload loads the Emitter, then the Hyper text lines, then `HYPER-REINDEX`.
 
 ## Emitter on ARM64
 
@@ -52,6 +52,8 @@ Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 
 1.2.7 does not add boot words. The x64 kernel is the 1.2.6 engine rebuilt as `1.2.7-x64` so a real x64 PC can install this build. `VED64` emitted with that engine stayed open on the development VM, window title `64Forth VED64`. The close seen on a real x64 machine was not reproduced here. ARM64 was not rebuilt. Hayes and ANS-VALIDATE were not run for 1.2.7.
 
 1.2.8 does not add boot words. ARM64 and x64 were both rebuilt. On Windows, `FALIGNED` and `DFALIGNED` return the next 8-byte-aligned address, and `SFALIGNED` returns the next 4-byte-aligned address. The ANS-VALIDATE host checks compare those addresses. That host section is 40 passed, 0 failed on `fortharm64.exe` and on `forthx64.exe`. The rest of ANS-VALIDATE was not run again, and Hayes was not run for 1.2.8.
+
+1.2.9 does not add boot words. ARM64 and x64 were both rebuilt. `Sample/CLOCK.fth` aligns after `,"`, and `FOR`/`NEXT` counts from n down through 0, so the box, the hour scale, and the bars finish and the clock loop runs. `EMIT-WINDOW-APP` closes the host graphics window and clears `G-OPEN?`, `G-BUF`, `G-DIRTY?`, `G-CX`, and `G-CY` before the image is saved. `DATA-END` walks `FORTH-WORDLIST` as well as the registered wordlists, and keeps the wordlist index on the data stack, so a `CREATE` body such as the roman numerals is copied through to the next header. CLOCK was emitted on ARM64 and on x64. Each `CLOCK.exe` stayed open with window title `CLOCK`, and the image contains the roman digit table. Hayes and ANS-VALIDATE were not run for 1.2.9.
 
 ## Hayes
 
