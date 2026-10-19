@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Updated Oct 19, 2026 for version 1.2.7. ARM64 is `1.2.6`, built Oct 19, 2026 8:32 AM. x64 is `1.2.7-x64`, built Oct 19, 2026 9:36 AM. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
+Updated Oct 19, 2026 10:29 AM for version 1.2.8. ARM64 is `1.2.8`, built Oct 19, 2026 10:29 AM. x64 is `1.2.8-x64`, built Oct 19, 2026 10:29 AM. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
@@ -50,6 +50,8 @@ Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 
 1.2.6 does not add boot words. On x64, a CALL or JMP that lands in any bounded boot word is copied, not only a `FLAG_EMM` helper, and a CALL into the unsigned divide helper is copied the same way as a JMP. The byte `E8` inside `sub r64, imm8` in `(LOCAL-FRAME-EXIT)` is not treated as a CALL. That was the `op 232` abort while emitting `VED64`. `VED64` was emitted with the x64 engine and the build finished. Hayes and ANS-VALIDATE were not run for 1.2.6.
 
 1.2.7 does not add boot words. The x64 kernel is the 1.2.6 engine rebuilt as `1.2.7-x64` so a real x64 PC can install this build. `VED64` emitted with that engine stayed open on the development VM, window title `64Forth VED64`. The close seen on a real x64 machine was not reproduced here. ARM64 was not rebuilt. Hayes and ANS-VALIDATE were not run for 1.2.7.
+
+1.2.8 does not add boot words. ARM64 and x64 were both rebuilt. On Windows, `FALIGNED` and `DFALIGNED` return the next 8-byte-aligned address, and `SFALIGNED` returns the next 4-byte-aligned address. The ANS-VALIDATE host checks compare those addresses. That host section is 40 passed, 0 failed on `fortharm64.exe` and on `forthx64.exe`. The rest of ANS-VALIDATE was not run again, and Hayes was not run for 1.2.8.
 
 ## Hayes
 
