@@ -17,7 +17,6 @@
 #include <QFileInfo>
 #include <QFont>
 #include <QFormLayout>
-#include <QFrame>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -42,7 +41,6 @@
 #include <QSplitter>
 #include <QSignalBlocker>
 #include <QSpinBox>
-#include <QStyle>
 #include <QStringList>
 #include <QStandardPaths>
 #include <QTextCursor>
@@ -1309,6 +1307,24 @@ public:
     QSize minimumSizeHint() const override { return QSize(80, 36); }
 };
 
+QString helpBubble(const QString &plain) {
+    return QStringLiteral("<p style=\"white-space:pre-wrap; width:28em;\">%1</p>").arg(plain.toHtmlEscaped());
+}
+
+QLabel *helpMark(const QString &plain, QWidget *parent) {
+    auto *mark = new QLabel(QStringLiteral("?"), parent);
+    mark->setAlignment(Qt::AlignCenter);
+    const int side = qMax(16, mark->fontMetrics().height());
+    mark->setFixedSize(side, side);
+    mark->setCursor(Qt::WhatsThisCursor);
+    mark->setToolTip(helpBubble(plain));
+    mark->setStyleSheet(QStringLiteral(
+                            "QLabel { color: palette(window-text); border: 1px solid palette(mid);"
+                            " border-radius: %1px; background: transparent; }")
+                            .arg(side / 2));
+    return mark;
+}
+
 void AskForthPanel::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
     if (m_promptSplitReady || m_promptSplit == nullptr)
@@ -1329,34 +1345,23 @@ void AskForthPanel::showEvent(QShowEvent *event) {
 }
 
 void AskForthPanel::buildUi() {
-    // 2.15 text lines. Only the top document margin is added: a bottom margin
-    // would show more of the next line.
-    const auto helpBoxHeight = [](QPlainTextEdit *edit) {
-        edit->ensurePolished();
-        const int text = qRound(edit->fontMetrics().lineSpacing() * 2.15);
-        const int top = qRound(edit->document()->documentMargin());
-        int frame = edit->frameWidth();
-        if (frame < 1)
-            frame = edit->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, edit);
-        return text + top + frame * 2;
-    };
-    auto *help = new QPlainTextEdit(this);
-    help->setReadOnly(true);
-    help->setFrameShape(QFrame::StyledPanel);
-    help->setPlainText(QStringLiteral(
-        "Type a Prompt and click Ask. The reply streams into Documents/EditForthWin/AskForth/AskForth-N.fth. "
-        "Then click Agent Enhance Reply to append a second section. Library defaults to Library/Sample.\n\n"
-        "Local Ask needs Ollama (https://ollama.com) and a chat model: ollama pull qwen2.5-coder:7b. "
-        "SpaceXAI uses Models… and the XAI_API_KEY environment variable, or a key saved for that profile. "
-        "Hybrid and Semantic Library search uses nomic-embed-text on local Ollama. Until that index is ready, the status line says keyword (no embed index)."));
-    help->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    help->setFixedHeight(helpBoxHeight(help));
-
     auto *title = new QLabel(QStringLiteral("Ask Forth"), this);
     QFont titleFont = title->font();
     titleFont.setBold(true);
     titleFont.setPointSize(titleFont.pointSize() + 1);
     title->setFont(titleFont);
+    auto *askHelp = helpMark(
+        QStringLiteral(
+            "Type a Prompt and click Ask. The reply streams into Documents/EditForthWin/AskForth/AskForth-N.fth. "
+            "Then click Agent Enhance Reply to append a second section. Library defaults to Library/Sample.\n\n"
+            "Local Ask needs Ollama (https://ollama.com) and a chat model: ollama pull qwen2.5-coder:7b. "
+            "SpaceXAI uses Models… and the XAI_API_KEY environment variable, or a key saved for that profile. "
+            "Hybrid and Semantic Library search uses nomic-embed-text on local Ollama. Until that index is ready, "
+            "the status line says keyword (no embed index)."),
+        this);
+    m_place = new QPushButton(QStringLiteral("Undock"), this);
+    m_place->setToolTip(QStringLiteral("Float Ask Forth in its own window."));
+    connect(m_place, &QPushButton::clicked, this, &AskForthPanel::placeToggleRequested);
 
     m_banner = new QLabel(this);
     m_banner->setWordWrap(true);
@@ -1406,9 +1411,6 @@ void AskForthPanel::buildUi() {
     connect(m_libraryButton, &QPushButton::clicked, this, &AskForthPanel::editLibrary);
     m_libraryButton->setText(leafName(libraryOpts().folder) + QStringLiteral("…"));
 
-    m_capture = new QPushButton(QStringLiteral("Capture Selected to Prompt"), this);
-    m_capture->setToolTip(QStringLiteral("Copy the editor selection into the Prompt."));
-    connect(m_capture, &QPushButton::clicked, this, &AskForthPanel::captureSelection);
     auto *output = new QPushButton(QStringLiteral("Output"), this);
     output->setToolTip(QStringLiteral("Show the Ask Forth output folder."));
     connect(output, &QPushButton::clicked, this, &AskForthPanel::openOutputFolder);
@@ -1435,19 +1437,16 @@ void AskForthPanel::buildUi() {
     auto *askReturn = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Return), m_prompt);
     connect(askReturn, &QShortcut::activated, this, &AskForthPanel::ask);
 
-    auto *agentHelp = new QPlainTextEdit(this);
-    agentHelp->setReadOnly(true);
-    agentHelp->setFrameShape(QFrame::StyledPanel);
-    agentHelp->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    agentHelp->setFixedHeight(helpBoxHeight(agentHelp));
-    agentHelp->setPlainText(QStringLiteral(
-        "Agent Enhance Reply runs the latest reply in a headless EditForthWin --agent with Autoload, "
-        "then appends an Agent Enhanced Reply section to the same file. Use INCLUDE on the status strip "
-        "to load the edited file into the live console."));
     auto *agentTitle = new QLabel(QStringLiteral("EditForthWin Agent"), this);
     QFont agentFont = agentTitle->font();
     agentFont.setBold(true);
     agentTitle->setFont(agentFont);
+    auto *agentHelp = helpMark(
+        QStringLiteral(
+            "Agent Enhance Reply runs the latest reply in a headless EditForthWin --agent with Autoload, "
+            "then appends an Agent Enhanced Reply section to the same file. Use INCLUDE on the status strip "
+            "to load the edited file into the live console."),
+        this);
     m_enhance = new QPushButton(QStringLiteral("Agent Enhance Reply"), this);
     m_enhance->setEnabled(false);
     m_stopEnhance = new QPushButton(QStringLiteral("Stop"), this);
@@ -1473,8 +1472,10 @@ void AskForthPanel::buildUi() {
     auto *libRow = new QHBoxLayout;
     libRow->addWidget(m_library, 1);
     libRow->addWidget(m_libraryButton);
+    auto *promptLabel = new QLabel(QStringLiteral("Prompt"), this);
     auto *promptRow = new QHBoxLayout;
-    promptRow->addWidget(new QLabel(QStringLiteral("Prompt"), this));
+    promptRow->setContentsMargins(0, 0, 0, 0);
+    promptRow->addWidget(promptLabel, 0, Qt::AlignBottom);
     promptRow->addStretch(1);
     promptRow->addWidget(output);
     auto *statusRow = new QHBoxLayout;
@@ -1492,19 +1493,27 @@ void AskForthPanel::buildUi() {
     auto *topPane = new QWidget(this);
     auto *topLayout = new QVBoxLayout(topPane);
     topLayout->setContentsMargins(0, 0, 0, 0);
-    topLayout->addLayout(promptRow);
-    topLayout->addWidget(m_prompt, 1);
+    auto *promptStack = new QVBoxLayout;
+    promptStack->setContentsMargins(0, 0, 0, 0);
+    promptStack->setSpacing(2);
+    promptStack->addLayout(promptRow);
+    promptStack->addWidget(m_prompt, 1);
+    topLayout->addLayout(promptStack, 1);
     topLayout->addLayout(statusRow);
     topPane->setMinimumHeight(110);
 
     auto *bottomPane = new QWidget(this);
     auto *bottomLayout = new QVBoxLayout(bottomPane);
     bottomLayout->setContentsMargins(0, 0, 0, 0);
-    bottomLayout->addWidget(agentTitle);
-    bottomLayout->addWidget(agentHelp);
+    auto *agentRow = new QHBoxLayout;
+    agentRow->setContentsMargins(0, 0, 0, 0);
+    agentRow->addWidget(agentTitle);
+    agentRow->addWidget(agentHelp, 0, Qt::AlignVCenter);
+    agentRow->addStretch(1);
+    bottomLayout->addLayout(agentRow);
     bottomLayout->addLayout(enhanceRow);
     bottomLayout->addWidget(m_transcript, 1);
-    bottomPane->setMinimumHeight(120);
+    bottomPane->setMinimumHeight(72);
 
     m_promptSplit = new QSplitter(Qt::Vertical, this);
     m_promptSplit->setChildrenCollapsible(false);
@@ -1520,10 +1529,15 @@ void AskForthPanel::buildUi() {
             QSettings().setValue(QStringLiteral("aiAssistantPromptSplit"), m_promptSplit->saveState());
     });
 
+    auto *titleRow = new QHBoxLayout;
+    titleRow->setContentsMargins(0, 0, 0, 0);
+    titleRow->addWidget(title);
+    titleRow->addWidget(askHelp, 0, Qt::AlignVCenter);
+    titleRow->addStretch(1);
+    titleRow->addWidget(m_place);
     auto *box = new QVBoxLayout(this);
     box->setContentsMargins(8, 8, 8, 8);
-    box->addWidget(title);
-    box->addWidget(help);
+    box->addLayout(titleRow);
     box->addWidget(m_banner);
     box->addLayout(modelRow);
     box->addWidget(m_caption);
@@ -1531,7 +1545,6 @@ void AskForthPanel::buildUi() {
     box->addWidget(m_urls);
     box->addWidget(m_web);
     box->addWidget(m_tools);
-    box->addWidget(m_capture);
     box->addWidget(m_promptSplit, 1);
 
     m_esc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
@@ -1569,7 +1582,13 @@ void AskForthPanel::setForthExeFinder(const std::function<QString()> &finder) { 
 
 void AskForthPanel::setFileOpener(const std::function<CodeEdit *(const QString &)> &opener) { m_openFile = opener; }
 
-void AskForthPanel::setSelectionSource(const std::function<QString()> &source) { m_selection = source; }
+void AskForthPanel::setFloating(bool floating) {
+    if (m_place == nullptr)
+        return;
+    m_place->setText(floating ? QStringLiteral("Dock") : QStringLiteral("Undock"));
+    m_place->setToolTip(floating ? QStringLiteral("Put Ask Forth back beside the editor.")
+                                 : QStringLiteral("Float Ask Forth in its own window."));
+}
 
 QString AskForthPanel::activeId() const {
     return m_models == nullptr ? QString() : m_models->currentData().toString();
@@ -1622,7 +1641,6 @@ void AskForthPanel::setBusy(bool busy, const QString &askTitle) {
     m_ask->setEnabled(!busy && !m_prompt->toPlainText().trimmed().isEmpty());
     m_enhance->setEnabled(!busy && !m_reply.trimmed().isEmpty());
     m_enhance->setText(QStringLiteral("Agent Enhance Reply"));
-    m_capture->setEnabled(!busy);
     m_stopAsk->setVisible(busy && m_phase == QLatin1String("ask"));
     m_stopEnhance->setVisible(busy && m_phase != QLatin1String("ask"));
     m_models->setEnabled(!busy);
@@ -1734,16 +1752,6 @@ void AskForthPanel::refreshBanner() {
         else
             finishBanner(QString());
     });
-}
-
-void AskForthPanel::captureSelection() {
-    const QString text = m_selection ? m_selection().trimmed() : QString();
-    if (text.isEmpty()) {
-        setStatus(QStringLiteral("Select text in the editor first."));
-        return;
-    }
-    m_prompt->setPlainText(text);
-    setStatus(QStringLiteral("Using selection (%1 characters).").arg(text.size()));
 }
 
 void AskForthPanel::openOutputFolder() {

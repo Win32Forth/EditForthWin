@@ -63,8 +63,8 @@ To **fine-tune** a local model for 64Forth style (MLX → Ollama), see repo root
 
 ## Basic workflow
 
-1. Show the Ask Forth panel: trailing **sidebar** button on the tab bar, **View → Show Ask Forth**, or **⌥⌘A**. Hide the same way (or the sidebar button in the panel header) while you edit results in `AskForth-N.fth`.  
-2. Type a question in **Prompt**, or select editor text and click **Capture Selected to Prompt**.  
+1. Show the Ask Forth panel: trailing **sidebar** button on the tab bar, **View → Show Ask Forth**, or **⌥⌘A**. Hide the same way (or the sidebar button in the panel header) while you edit results in `AskForth-N.fth`. Hover the circled **?** beside **Ask Forth** or **EditForthWin Agent** for the help text. **Undock** on the Ask Forth title, or **View → Undock Ask Forth**, floats the panel. **Dock**, **View → Dock Ask Forth**, or closing that window puts it back beside the editor.  
+2. Type a question in **Prompt**. Paste editor text into the Prompt when the question should include it.  
 2a. While **Ask** or **Agent Enhance Reply** is running, click **Stop** (or press Escape) to cancel EditForth’s in-flight request. Status shows **Stopped.** If a local server keeps generating on its own, unload the model or stop that server separately.  
 3. Optionally leave **Include Library context** on (default folder **`~/Documents/EditForth/Library/Sample`**; **Library…** to change).  
 4. Optionally leave **Fetch URLs in Prompt** on. If the Prompt contains `http://` or `https://` links, EditForth fetches those pages (plain text / HTML stripped), caps the excerpts, and adds them to the model context before Ask / Agent Enhance Reply.  

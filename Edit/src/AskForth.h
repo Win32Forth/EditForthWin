@@ -39,7 +39,10 @@ public:
     void appendPageUrl(const QString &url);
     void setForthExeFinder(const std::function<QString()> &finder);
     void setFileOpener(const std::function<CodeEdit *(const QString &path)> &opener);
-    void setSelectionSource(const std::function<QString()> &source);
+    void setFloating(bool floating);
+
+signals:
+    void placeToggleRequested();
 
 protected:
     void showEvent(QShowEvent *event) override;
@@ -50,7 +53,6 @@ private:
     void selectProfile(int index);
     void editModels();
     void editLibrary();
-    void captureSelection();
     void openOutputFolder();
     void ask();
     void enhance();
@@ -90,7 +92,7 @@ private:
     QCheckBox *m_tools = nullptr;
     QCheckBox *m_showTranscript = nullptr;
     QPushButton *m_libraryButton = nullptr;
-    QPushButton *m_capture = nullptr;
+    QPushButton *m_place = nullptr;
     QPushButton *m_ask = nullptr;
     QPushButton *m_stopAsk = nullptr;
     QPushButton *m_enhance = nullptr;
@@ -103,7 +105,6 @@ private:
 
     std::function<QString()> m_exeFinder;
     std::function<CodeEdit *(const QString &)> m_openFile;
-    std::function<QString()> m_selection;
 
     QPointer<CodeEdit> m_edit;
     QString m_askPath;

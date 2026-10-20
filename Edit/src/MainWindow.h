@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QString>
 
+class AskFloat;
 class AskForthPanel;
 class CodeEdit;
 class DebugBar;
@@ -61,6 +62,11 @@ private:
     void compareWithDisk();
     void openWebPage();
     void showAskPanel(bool on);
+    void toggleAskPlace();
+    void dockAsk();
+    void undockAsk();
+    void ensureAskFloat();
+    void syncAskChrome();
     void floadDialog();
     void chdirDialog();
     void restoreShipped();
@@ -104,7 +110,10 @@ private:
     QSplitter *m_editors = nullptr;
     QWidget *m_right = nullptr;
     AskForthPanel *m_askPanel = nullptr;
+    AskFloat *m_askFloat = nullptr;
     QAction *m_askAction = nullptr;
+    QAction *m_askPlaceAction = nullptr;
+    bool m_askFloating = false;
     QPushButton *m_askToggle = nullptr;
     QComboBox *m_splitPick = nullptr;
     CodeEdit *m_splitEdit = nullptr;

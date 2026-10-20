@@ -187,6 +187,41 @@ protected:
     }
 };
 
+// Floating Ask Forth. Closing the window docks the panel again.
+class AskFloat : public QWidget {
+public:
+    std::function<void()> onDock;
+    bool quiet = false;
+    QVBoxLayout *body = nullptr;
+
+    AskFloat() : QWidget(nullptr, Qt::Window) {
+        setWindowTitle(QStringLiteral("Ask Forth"));
+        setMinimumSize(320, 420);
+        setAttribute(Qt::WA_QuitOnClose, false);
+        body = new QVBoxLayout(this);
+        body->setContentsMargins(0, 0, 0, 0);
+        body->setSpacing(0);
+    }
+
+    void closeQuietly() {
+        quiet = true;
+        hide();
+        quiet = false;
+    }
+
+protected:
+    void closeEvent(QCloseEvent *event) override {
+        if (quiet) {
+            event->accept();
+            return;
+        }
+        event->ignore();
+        hide();
+        if (onDock)
+            onDock();
+    }
+};
+
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle(QStringLiteral("EditForthWin"));
     setMinimumSize(640, 420);
@@ -346,23 +381,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         }
         return nullptr;
     });
-    m_askPanel->setSelectionSource([this] {
-        CodeEdit *edit = nullptr;
-        for (QWidget *widget = QApplication::focusWidget(); widget != nullptr;
-             widget = widget->parentWidget()) {
-            if (auto *found = qobject_cast<CodeEdit *>(widget)) {
-                edit = found;
-                break;
-            }
-        }
-        if (edit == nullptr)
-            edit = currentEdit();
-        if (edit == nullptr)
-            return QString();
-        QString text = edit->textCursor().selectedText();
-        text.replace(QChar(0x2029), QLatin1Char('\n'));
-        return text;
-    });
+    connect(m_askPanel, &AskForthPanel::placeToggleRequested, this, &MainWindow::toggleAskPlace);
     m_editors->addWidget(m_askPanel);
     m_editors->setStretchFactor(0, 1);
     m_editors->setStretchFactor(1, 1);
@@ -523,6 +542,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_askAction->setCheckable(true);
     m_askAction->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_A));
     connect(m_askAction, &QAction::toggled, this, &MainWindow::showAskPanel);
+    m_askPlaceAction = viewMenu->addAction(QStringLiteral("Undock Ask Forth"));
+    connect(m_askPlaceAction, &QAction::triggered, this, &MainWindow::toggleAskPlace);
+    m_askFloating = QSettings().value(QStringLiteral("askForthFloating"), false).toBool();
     m_askToggle = new QPushButton(QStringLiteral("Show"), menuBar());
     m_askToggle->setFlat(true);
     m_askToggle->setFocusPolicy(Qt::NoFocus);
@@ -773,6 +795,14 @@ void MainWindow::closeEvent(QCloseEvent *event) {
         m_float->closeQuietly();
         delete m_float;
         m_float = nullptr;
+    }
+    if (m_askFloat != nullptr) {
+        QSettings().setValue(QStringLiteral("askForthFloatGeometry"), m_askFloat->saveGeometry());
+        if (m_editors != nullptr && m_askPanel != nullptr)
+            m_editors->addWidget(m_askPanel);
+        m_askFloat->closeQuietly();
+        delete m_askFloat;
+        m_askFloat = nullptr;
     }
     if (m_pipe != nullptr)
         m_pipe->shutdown();
@@ -1470,13 +1500,62 @@ void MainWindow::showEvent(QShowEvent *event) {
 void MainWindow::showAskPanel(bool on) {
     if (m_askPanel == nullptr)
         return;
-    m_askPanel->setVisible(on);
     if (m_askToggle != nullptr)
         m_askToggle->setText(on ? QStringLiteral("Hide") : QStringLiteral("Show"));
     QSettings().setValue(QStringLiteral("showAIAssistant"), on);
-    if (!on)
+    if (!on) {
+        if (m_askFloating && m_askFloat != nullptr) {
+            QSettings().setValue(QStringLiteral("askForthFloatGeometry"), m_askFloat->saveGeometry());
+            m_askFloat->closeQuietly();
+        }
+        m_askPanel->hide();
+        syncAskChrome();
         return;
+    }
     m_askPanel->prepareEnvironment();
+    if (m_askFloating)
+        undockAsk();
+    else
+        dockAsk();
+}
+
+void MainWindow::toggleAskPlace() {
+    m_askFloating = !m_askFloating;
+    if (m_askAction != nullptr && !m_askAction->isChecked()) {
+        m_askAction->setChecked(true);
+        return;
+    }
+    if (m_askFloating)
+        undockAsk();
+    else
+        dockAsk();
+}
+
+void MainWindow::ensureAskFloat() {
+    if (m_askFloat != nullptr)
+        return;
+    m_askFloat = new AskFloat;
+    m_askFloat->onDock = [this] { dockAsk(); };
+    const QByteArray geo = QSettings().value(QStringLiteral("askForthFloatGeometry")).toByteArray();
+    if (!geo.isEmpty())
+        m_askFloat->restoreGeometry(geo);
+    else
+        m_askFloat->resize(420, 640);
+}
+
+void MainWindow::dockAsk() {
+    if (m_askFloat != nullptr) {
+        QSettings().setValue(QStringLiteral("askForthFloatGeometry"), m_askFloat->saveGeometry());
+        m_askFloat->closeQuietly();
+    }
+    if (m_editors->indexOf(m_askPanel) < 0)
+        m_editors->addWidget(m_askPanel);
+    m_editors->setStretchFactor(m_editors->indexOf(m_askPanel), 0);
+    m_askPanel->show();
+    m_askFloating = false;
+    QSettings().setValue(QStringLiteral("askForthFloating"), false);
+    m_askPanel->setFloating(false);
+    syncAskChrome();
     QList<int> sizes = m_editors->sizes();
     if (sizes.size() < 3)
         return;
@@ -1489,6 +1568,26 @@ void MainWindow::showAskPanel(bool on) {
     if (left < 240)
         return;
     m_editors->setSizes({left, mid, ask});
+}
+
+void MainWindow::undockAsk() {
+    ensureAskFloat();
+    if (m_askPanel->parentWidget() != m_askFloat)
+        m_askFloat->body->addWidget(m_askPanel, 1);
+    m_askPanel->show();
+    m_askFloating = true;
+    QSettings().setValue(QStringLiteral("askForthFloating"), true);
+    m_askPanel->setFloating(true);
+    m_askFloat->show();
+    m_askFloat->raise();
+    m_askFloat->activateWindow();
+    syncAskChrome();
+}
+
+void MainWindow::syncAskChrome() {
+    if (m_askPlaceAction != nullptr)
+        m_askPlaceAction->setText(m_askFloating ? QStringLiteral("Dock Ask Forth")
+                                                : QStringLiteral("Undock Ask Forth"));
 }
 
 void MainWindow::openWebPage() {
