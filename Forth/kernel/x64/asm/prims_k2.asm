@@ -128,6 +128,7 @@ EXTRN host_resolve:PROC
 EXTRN host_sleep:PROC
 EXTRN host_system:PROC
 EXTRN host_hyper_reindex:PROC
+EXTRN host_forget_drop_stale:PROC
 EXTRN host_time_date:PROC
 EXTRN host_was_included:PROC
 EXTRN include_name_len:BYTE
@@ -18908,9 +18909,9 @@ _forget_rloop:
     sets BYTE PTR arm_n
     setz BYTE PTR arm_z
     setnc BYTE PTR arm_c
-    ; b.hs    _forget_done
+    ; b.hs    _forget_drop
     cmp BYTE PTR arm_c, 0
-    jne _forget_done
+    jne _forget_drop
     ; ldr     x0, [x3, x4, lsl #3]
     mov r10, QWORD PTR arm_x3
     mov rax, QWORD PTR arm_x4
@@ -18967,6 +18968,16 @@ _forget_rnext:
     mov QWORD PTR arm_x4, rax
     ; b       _forget_rloop
     jmp _forget_rloop
+_forget_drop:
+    lea rax, forget_cut
+    mov rcx, QWORD PTR [rax]
+    push rbx
+    mov rbx, rsp
+    and rsp, -16
+    sub rsp, 32
+    call host_forget_drop_stale
+    mov rsp, rbx
+    pop rbx
 _forget_done:
     ; ldp     x29, x30, [sp, #32]
     lea r10, [rsp]

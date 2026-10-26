@@ -1355,6 +1355,37 @@ void MainWindow::includeCurrent() {
         m_debug->setError(QStringLiteral("INCLUDE needs a source tab."));
         return;
     }
+    const bool cleanUntitled =
+        edit->property(kPath).toString().isEmpty() && !edit->document()->isModified();
+    if (cleanUntitled) {
+        const QString picked = QFileDialog::getOpenFileName(
+            this, QStringLiteral("FLOAD"), m_forthDir, kSourceFilter);
+        if (picked.isEmpty())
+            return;
+        if (!pathAccepts(picked)) {
+            m_debug->setError(QStringLiteral("That path cannot be INCLUDEd."));
+            return;
+        }
+        int untitledIndex = -1;
+        for (int i = 0; i < m_tabs->count(); ++i) {
+            if (editAt(i) == edit) {
+                untitledIndex = i;
+                break;
+            }
+        }
+        openFile(picked);
+        CodeEdit *opened = currentEdit();
+        const QString openedPath = opened != nullptr ? opened->property(kPath).toString() : QString();
+        if (openedPath.isEmpty() || !pathAccepts(openedPath)) {
+            m_debug->setError(QStringLiteral("INCLUDE could not open that file."));
+            return;
+        }
+        if (untitledIndex >= 0 && editAt(untitledIndex) == edit && opened != edit)
+            closeTab(untitledIndex);
+        m_debug->setError(QString());
+        m_pipe->eval(QStringLiteral("ANEW %1 %2").arg(moduleMarker(openedPath), includedLine(openedPath)));
+        return;
+    }
     if (edit->document()->isModified() && !saveEdit(edit))
         return;
     const QString path = edit->property(kPath).toString();

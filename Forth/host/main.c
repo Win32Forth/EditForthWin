@@ -9,6 +9,64 @@
 
 extern unsigned char data_stack[];
 extern unsigned long long vm_dsp;
+extern unsigned long long latest_var;
+extern unsigned long long current_var;
+extern unsigned long long search_order[8];
+extern unsigned long long search_order_n;
+extern unsigned long long wordlist_reg[32];
+extern unsigned long long wordlist_reg_n;
+
+/* cut is a CFA. A VOCABULARY or WORDLIST created after that cut is gone
+   with the dictionary. Drop it from the registry, the search order, and
+   CURRENT. An empty order becomes FORTH. */
+void host_forget_drop_stale(unsigned long long cut)
+{
+    unsigned long long forth_wid;
+    unsigned long long n;
+    unsigned long long i;
+    unsigned long long j;
+    unsigned long long wid;
+
+    forth_wid = (unsigned long long)(uintptr_t)&latest_var;
+    n = wordlist_reg_n;
+    if (n > 32)
+        n = 32;
+    i = 0;
+    while (i < n) {
+        wid = wordlist_reg[i];
+        if (wid != 0 && wid >= cut) {
+            for (j = i + 1; j < n; j++)
+                wordlist_reg[j - 1] = wordlist_reg[j];
+            n--;
+            continue;
+        }
+        i++;
+    }
+    wordlist_reg_n = n;
+
+    n = search_order_n;
+    if (n > 8)
+        n = 8;
+    i = 0;
+    while (i < n) {
+        wid = search_order[i];
+        if (wid != 0 && wid >= cut) {
+            for (j = i + 1; j < n; j++)
+                search_order[j - 1] = search_order[j];
+            n--;
+            continue;
+        }
+        i++;
+    }
+    if (n == 0) {
+        search_order[0] = forth_wid;
+        n = 1;
+    }
+    search_order_n = n;
+
+    if (current_var != 0 && current_var >= cut)
+        current_var = forth_wid;
+}
 
 static void sink_discard(const void *p, size_t n)
 {
@@ -943,8 +1001,22 @@ static int host_join(char *dst, int cap, const char *dir, const char *rel)
     return 1;
 }
 
-/* Copy src onto dst. overwrite 0 leaves files the user already has. */
-static void host_copy_tree(const char *src, const char *dst, int overwrite, int depth)
+/* 1 when the shipped file is newer than the Documents copy. */
+static int host_src_newer(const char *src, const char *dst)
+{
+    WIN32_FILE_ATTRIBUTE_DATA a;
+    WIN32_FILE_ATTRIBUTE_DATA b;
+
+    if (!GetFileAttributesExA(src, GetFileExInfoStandard, &a))
+        return 0;
+    if (!GetFileAttributesExA(dst, GetFileExInfoStandard, &b))
+        return 1;
+    return CompareFileTime(&a.ftLastWriteTime, &b.ftLastWriteTime) > 0;
+}
+
+/* Copy src onto dst. overwrite 0 copies a file that is missing or older
+   than the shipped copy, and leaves a newer user file alone. */
+static int host_copy_tree(const char *src, const char *dst, int overwrite, int depth)
 {
     char wild[HOST_PATH];
     char from[HOST_PATH];
@@ -952,16 +1024,17 @@ static void host_copy_tree(const char *src, const char *dst, int overwrite, int 
     WIN32_FIND_DATAA fd;
     HANDLE h;
     int n;
+    int copied = 0;
 
     if (depth > 24 || src == NULL || dst == NULL)
-        return;
+        return 0;
     CreateDirectoryA(dst, NULL);
     n = snprintf(wild, sizeof wild, "%s\\*", src);
     if (n <= 0 || n >= (int)sizeof wild)
-        return;
+        return 0;
     h = FindFirstFileA(wild, &fd);
     if (h == INVALID_HANDLE_VALUE)
-        return;
+        return 0;
     do {
         if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
             continue;
@@ -970,16 +1043,20 @@ static void host_copy_tree(const char *src, const char *dst, int overwrite, int 
         if (snprintf(to, sizeof to, "%s\\%s", dst, fd.cFileName) >= (int)sizeof to)
             continue;
         if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
-            host_copy_tree(from, to, overwrite, depth + 1);
-        else if (overwrite || GetFileAttributesA(to) == INVALID_FILE_ATTRIBUTES)
-            CopyFileA(from, to, overwrite ? FALSE : TRUE);
+            copied += host_copy_tree(from, to, overwrite, depth + 1);
+        else if (overwrite || GetFileAttributesA(to) == INVALID_FILE_ATTRIBUTES ||
+                 host_src_newer(from, to)) {
+            if (CopyFileA(from, to, FALSE))
+                copied++;
+        }
     } while (FindNextFileA(h, &fd));
     FindClose(h);
+    return copied;
 }
 
-static void host_copy_missing(const char *src, const char *dst, int depth)
+static int host_copy_missing(const char *src, const char *dst, int depth)
 {
-    host_copy_tree(src, dst, 0, depth);
+    return host_copy_tree(src, dst, 0, depth);
 }
 
 static void host_remove_tree(const char *dir)
@@ -1084,6 +1161,7 @@ static void host_install_user_tree(void)
     size_t home_len = 0;
     int i;
     int slash;
+    int copied = 0;
 
     if (_dupenv_s(&home, &home_len, "USERPROFILE") != 0 || home == NULL || home[0] == '\0') {
         free(home);
@@ -1123,7 +1201,13 @@ static void host_install_user_tree(void)
             continue;
         if (!host_join(dst, (int)sizeof dst, user_root, names[i]))
             continue;
-        host_copy_missing(src, dst, 0);
+        copied += host_copy_missing(src, dst, 0);
+    }
+    if (copied > 0) {
+        char msg[96];
+        snprintf(msg, sizeof msg,
+                 "Updated %d shipped file(s) in Documents\\EditForthWin\n", copied);
+        host_outs(msg);
     }
     if (snprintf(dst, sizeof dst, "%s\\Config", user_root) < (int)sizeof dst)
         CreateDirectoryA(dst, NULL);
@@ -1132,7 +1216,7 @@ static void host_install_user_tree(void)
     SetCurrentDirectoryA(user_root);
 }
 
-/* mode 0: copy missing Library/AutoLoad/Docs.
+/* mode 0: copy Library/AutoLoad/Docs files that are missing or older.
    mode 1: replace those three folders from the ship tree. Config stays.
    mode 2: rename Documents\EditForthWin to EditForthWin.UserN, then copy fresh. */
 void host_user_tree(int mode)
@@ -1149,6 +1233,7 @@ void host_user_tree(int mode)
     int slash;
     int n;
     int overwrite;
+    int copied = 0;
 
     if (user_root[0] == '\0') {
         if (_dupenv_s(&home, &home_len, "USERPROFILE") != 0 || home == NULL || home[0] == '\0') {
@@ -1219,15 +1304,21 @@ void host_user_tree(int mode)
             continue;
         if (!host_join(dst, (int)sizeof dst, user_root, names[i]))
             continue;
-        host_copy_tree(src, dst, overwrite, 0);
+        copied += host_copy_tree(src, dst, overwrite, 0);
     }
     if (snprintf(dst, sizeof dst, "%s\\Config", user_root) < (int)sizeof dst)
         CreateDirectoryA(dst, NULL);
     if (snprintf(library_root, sizeof library_root, "%s\\Library", user_root) >= (int)sizeof library_root)
         library_root[0] = '\0';
-    if (mode == 0)
-        host_outs("Updated missing files in Documents\\EditForthWin\n");
-    else
+    if (mode == 0) {
+        char msg[96];
+        if (copied > 0)
+            snprintf(msg, sizeof msg,
+                     "Updated %d shipped file(s) in Documents\\EditForthWin\n", copied);
+        else
+            snprintf(msg, sizeof msg, "Documents\\EditForthWin is current\n");
+        host_outs(msg);
+    } else
         host_outs("Restored shipped files in Documents\\EditForthWin\n");
     if (mode == 2)
         SetCurrentDirectoryA(user_root);

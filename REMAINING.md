@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Updated Oct 26, 2026 10:45 AM for version 2.5.0.0. ARM64 is `2.5.0.0`. x64 is `2.5.0.0-x64`. The kernel stamp is Oct 26, 2026 10:45 AM. The executables are not rebuilt in this commit. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
+Updated Oct 26, 2026 11:15 AM for version 2.5.1.0. ARM64 is `2.5.1.0`. x64 is `2.5.1.0-x64`. The kernel stamp is Oct 26, 2026 11:15 AM. The executables are not rebuilt in this commit. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
@@ -62,6 +62,8 @@ Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 
 2.3.9.0 adds `(HX-BG-REINDEX) ( -- n )`. It starts a second Forth process that writes `Config\HYPER.NDX.building`. The host swaps that file over `Config\HYPER.NDX` after `HX-BUILD-OK` and a zero exit. Return 1 means the new file is already in place and Forth reloads it. Return 0 means up to date, already running, failed, or still running in the editor. The editor shows the result under Engine connected for 3 seconds. A standalone console waits. Unchanged sources skip the scan. The x64 word is the ARM64 word translated by hand into `Forth\kernel\x64\asm\prims_k2.asm`. `Forth\host\hyper_win.c` is the host. Hayes and ANS-VALIDATE were not run for 2.3.9.0.
 
 2.5.0.0 does not add boot words. EditForth 2.5.0 makes the Mac editor and the Forth engine one application. Windows already uses a separate editor executable and `fortharm64.exe` or `forthx64.exe`. Those stay separate. Hayes and ANS-VALIDATE were not run for 2.5.0.0.
+
+2.5.1.0 does not add boot words. `BYE` already closes the editor. `EMIT-APP` and `EMIT-WINDOW-APP` write under `<source-dir>\<STEM>\`. INCLUDE on a clean Untitled tab opens the file, then runs `ANEW` and INCLUDE. Launch and Update User Data copy a shipped Library, AutoLoad, or Docs file when it is missing or older. A newer Documents file stays. Config is not replaced. `FORGET` calls `host_forget_drop_stale` after the registry prune, and only on the success path. A reclaimed vocabulary leaves the wordlist registry, the search order, and CURRENT. An empty search order becomes FORTH. The Mac KEY relocator change does not apply. `VIEW '` was already indexed from the unquoted `BOOT_WORD` line. Hayes and ANS-VALIDATE were not run for 2.5.1.0.
 
 ## Hayes
 

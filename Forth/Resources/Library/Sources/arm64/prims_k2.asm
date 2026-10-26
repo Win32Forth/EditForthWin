@@ -91,6 +91,7 @@
         EXTERN host_edit_at
         EXTERN host_system
         EXTERN host_hyper_reindex
+        EXTERN host_forget_drop_stale
         EXTERN host_fromlib
         EXTERN host_fromlib_off
         EXTERN host_fromlib_query
@@ -3064,7 +3065,7 @@ _forget_regs
         mov     x4, #0
 _forget_rloop
         cmp     x4, x2
-        b.hs    _forget_done
+        b.hs    _forget_drop
         ldr     x0, [x3, x4, lsl #3]
         cbz     x0, _forget_rnext
         stp     x2, x3, [sp, #-16]!
@@ -3078,6 +3079,11 @@ _forget_rloop
 _forget_rnext
         add     x4, x4, #1
         b       _forget_rloop
+_forget_drop
+        adrp    x0, forget_cut
+        add     x0, x0, forget_cut
+        ldr     x0, [x0]
+        bl      host_forget_drop_stale
 _forget_done
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #80
