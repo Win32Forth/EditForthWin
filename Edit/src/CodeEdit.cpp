@@ -16,6 +16,7 @@
 #include <QScrollBar>
 #include <QShowEvent>
 #include <QSizePolicy>
+#include <QStringList>
 #include <QTimer>
 #include <QTextBlock>
 #include <QTextCursor>
@@ -215,6 +216,149 @@ void CodeEdit::gotoLine(int line, int column) {
     setTextCursor(cursor);
     centerCursor();
     setFocus();
+}
+
+namespace {
+
+// Paragraph that contains `index`, including its line break. A caret on the
+// break stays with the line that break ends.
+struct LineSpan {
+    int loc = 0;
+    int len = 0;
+};
+
+int breakLengthAt(const QString &text, int index) {
+    if (index < 0 || index >= text.size())
+        return 0;
+    const QChar ch = text.at(index);
+    if (ch == QLatin1Char('\r'))
+        return (index + 1 < text.size() && text.at(index + 1) == QLatin1Char('\n')) ? 2 : 1;
+    if (ch == QLatin1Char('\n'))
+        return 1;
+    return 0;
+}
+
+int lineStartAt(const QString &text, int index) {
+    int i = qBound(0, index, qMax(0, text.size() - 1));
+    while (i > 0) {
+        const QChar prev = text.at(i - 1);
+        if (prev == QLatin1Char('\n'))
+            return i;
+        if (prev == QLatin1Char('\r')) {
+            // The caret is on the LF of a CRLF. That break still belongs to this line.
+            if (text.at(i) == QLatin1Char('\n')) {
+                --i;
+                continue;
+            }
+            return i;
+        }
+        --i;
+    }
+    return 0;
+}
+
+LineSpan paragraphAt(const QString &text, int index) {
+    const int n = text.size();
+    if (n == 0)
+        return {};
+    const int i = qBound(0, index, n - 1);
+    const int start = lineStartAt(text, i);
+    int end = start;
+    while (end < n) {
+        const int br = breakLengthAt(text, end);
+        if (br != 0) {
+            end += br;
+            break;
+        }
+        ++end;
+    }
+    return {start, end - start};
+}
+
+} // namespace
+
+void CodeEdit::toggleLineComment() {
+    if (isReadOnly())
+        return;
+    const QString prefix = QStringLiteral("\\ ");
+    const QString text = toPlainText();
+    const int n = text.size();
+    const QTextCursor current = textCursor();
+    int loc = qBound(0, current.selectionStart(), n);
+    int len = qBound(0, current.selectionEnd() - loc, n - loc);
+
+    int blockLoc = 0;
+    int blockLen = 0;
+    if (n == 0) {
+        blockLoc = 0;
+        blockLen = 0;
+    } else if (len == 0) {
+        if (loc == n && loc > 0 && breakLengthAt(text, loc - 1) != 0) {
+            blockLoc = loc;
+            blockLen = 0;
+        } else {
+            const LineSpan span = paragraphAt(text, loc == n ? n - 1 : loc);
+            blockLoc = span.loc;
+            blockLen = span.len;
+        }
+    } else {
+        const LineSpan start = paragraphAt(text, qMin(loc, n - 1));
+        const LineSpan end = paragraphAt(text, loc + len - 1);
+        blockLoc = start.loc;
+        blockLen = end.loc + end.len - start.loc;
+    }
+
+    const QString chunk = text.mid(blockLoc, blockLen);
+    QString newline = QStringLiteral("\n");
+    if (chunk.contains(QStringLiteral("\r\n")))
+        newline = QStringLiteral("\r\n");
+    else if (chunk.contains(QLatin1Char('\r')))
+        newline = QStringLiteral("\r");
+    QStringList lines = chunk.isEmpty() ? QStringList{QString()} : chunk.split(newline);
+    bool trailing = false;
+    if (!chunk.isEmpty() && !lines.isEmpty() && lines.last().isEmpty()) {
+        lines.removeLast();
+        trailing = true;
+    }
+    if (lines.isEmpty())
+        lines << QString();
+
+    bool uncomment = false;
+    int nonempty = 0;
+    for (const QString &line : lines) {
+        if (line.isEmpty())
+            continue;
+        ++nonempty;
+        if (!line.startsWith(prefix)) {
+            uncomment = false;
+            nonempty = -1;
+            break;
+        }
+    }
+    if (nonempty > 0)
+        uncomment = true;
+
+    for (QString &line : lines) {
+        if (uncomment) {
+            if (line.startsWith(prefix))
+                line.remove(0, prefix.size());
+        } else {
+            line.prepend(prefix);
+        }
+    }
+    QString replacement = lines.join(newline);
+    if (trailing)
+        replacement += newline;
+
+    QTextCursor edit(document());
+    edit.beginEditBlock();
+    edit.setPosition(blockLoc);
+    edit.setPosition(blockLoc + blockLen, QTextCursor::KeepAnchor);
+    edit.insertText(replacement);
+    edit.endEditBlock();
+    edit.setPosition(blockLoc);
+    edit.setPosition(blockLoc + replacement.size(), QTextCursor::KeepAnchor);
+    setTextCursor(edit);
 }
 
 void CodeEdit::mousePressEvent(QMouseEvent *event) {

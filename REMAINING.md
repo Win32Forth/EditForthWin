@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Updated Oct 26, 2026 12:05 PM for version 2.5.3.0. ARM64 is `2.5.3.0`. x64 is `2.5.3.0-x64`. The kernel stamp is Oct 26, 2026 12:05 PM. The executables are not rebuilt in this commit. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
+Updated Oct 26, 2026 12:30 PM for version 2.5.4.0. ARM64 is `2.5.4.0`. x64 is `2.5.4.0-x64`. The kernel stamp is Oct 26, 2026 12:30 PM. The executables are not rebuilt in this commit. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
@@ -68,6 +68,8 @@ Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 
 2.5.2.0 does not add boot words. `VIEW` of `."`, `S"`, `C"`, `S\"`, and `\` was already indexed by the ARM64 suffix macros and by the x64 `DB` name bytes. `DISKVALUES.fth` was never shipped here. Hayes and ANS-VALIDATE were not run for 2.5.2.0.
 
 2.5.3.0 does not add boot words. Forth → Open EditForthWin Folder opens `Documents\EditForthWin` and replaces Show Library, Show AutoLoad, Show Docs, and Show Config. Hayes and ANS-VALIDATE were not run for 2.5.3.0.
+
+2.5.4.0 does not add boot words. Ask Forth keeps one session file until New session. Earlier drafts are line comments, and INCLUDE loads the live section. Agent Enhance Reply replaces that section. Edit → Toggle Line Comment (Ctrl+/) comments or uncomments the selected lines. Hayes and ANS-VALIDATE were not run for 2.5.4.0.
 
 ## Hayes
 

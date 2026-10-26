@@ -408,6 +408,33 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         }
         return nullptr;
     });
+    m_askPanel->setOpenTabs([this] {
+        QStringList paths;
+        for (int i = 0; i < m_tabs->count(); ++i) {
+            CodeEdit *edit = editAt(i);
+            if (edit == nullptr)
+                continue;
+            const QString path = edit->property(kPath).toString();
+            if (!path.isEmpty())
+                paths << QFileInfo(path).absoluteFilePath();
+        }
+        return paths;
+    });
+    m_askPanel->setTabReader([this](const QString &path, QString *text) {
+        if (text == nullptr)
+            return false;
+        const QString canonical = QFileInfo(path).absoluteFilePath();
+        for (int i = 0; i < m_tabs->count(); ++i) {
+            CodeEdit *edit = editAt(i);
+            if (edit == nullptr)
+                continue;
+            if (edit->property(kPath).toString().compare(canonical, Qt::CaseInsensitive) == 0) {
+                *text = edit->toPlainText();
+                return true;
+            }
+        }
+        return false;
+    });
     connect(m_askPanel, &AskForthPanel::placeToggleRequested, this, &MainWindow::toggleAskPlace);
     m_editors->addWidget(m_askPanel);
     m_editors->setStretchFactor(0, 1);
@@ -521,6 +548,22 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         showFind(true);
         m_find->replaceAll();
     });
+    editMenu->addSeparator();
+    editMenu->addAction(QStringLiteral("Toggle Line &Comment"),
+                        QKeySequence(Qt::CTRL | Qt::Key_Slash), this, [this] {
+                            CodeEdit *edit = nullptr;
+                            for (QWidget *widget = QApplication::focusWidget(); widget != nullptr;
+                                 widget = widget->parentWidget()) {
+                                if (auto *found = qobject_cast<CodeEdit *>(widget)) {
+                                    edit = found;
+                                    break;
+                                }
+                            }
+                            if (edit == nullptr)
+                                edit = currentEdit();
+                            if (edit != nullptr)
+                                edit->toggleLineComment();
+                        });
     editMenu->addSeparator();
     editMenu->addAction(QStringLiteral("Search in &Folders..."),
                         QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F), this,
@@ -993,13 +1036,18 @@ bool MainWindow::saveEdit(CodeEdit *edit) {
 }
 
 bool MainWindow::saveEditAs(CodeEdit *edit) {
+    const QString before = edit->property(kPath).toString();
     QString path = QFileDialog::getSaveFileName(
         this, QStringLiteral("Save As"), edit->property(kPath).toString(),
         QStringLiteral("Forth files (*.fth);;All files (*.*)"));
     if (path.isEmpty())
         return false;
     edit->setProperty(kPath, QFileInfo(path).absoluteFilePath());
-    return saveEdit(edit);
+    if (!saveEdit(edit))
+        return false;
+    if (m_askPanel != nullptr)
+        m_askPanel->noteFileMoved(edit, before);
+    return true;
 }
 
 bool MainWindow::maybeSave(CodeEdit *edit) {

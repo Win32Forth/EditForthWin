@@ -4,6 +4,7 @@
 
 #include <QPointer>
 #include <QString>
+#include <QStringList>
 #include <QVariantMap>
 #include <QWidget>
 
@@ -39,6 +40,9 @@ public:
     void appendPageUrl(const QString &url);
     void setForthExeFinder(const std::function<QString()> &finder);
     void setFileOpener(const std::function<CodeEdit *(const QString &path)> &opener);
+    void setOpenTabs(const std::function<QStringList()> &tabs);
+    void setTabReader(const std::function<bool(const QString &path, QString *text)> &reader);
+    void noteFileMoved(CodeEdit *edit, const QString &previousPath);
     void setFloating(bool floating);
 
 signals:
@@ -46,6 +50,7 @@ signals:
 
 protected:
     void showEvent(QShowEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     void buildUi();
@@ -69,7 +74,20 @@ private:
     void startEnhance(const QString &transcript);
     bool beginStreamFile(const QString &header);
     void setBusy(bool busy, const QString &askTitle);
-    void applyStreamBody(const QString &full);
+    void applyStreamBody(const QString &full, bool closeParens);
+    void refreshReference();
+    QString effectiveReference() const;
+    QString referenceBlock(const QString &path) const;
+    QStringList sessionSettingLines() const;
+    bool sessionPresent() const;
+    void rememberSession(const QString &path);
+    void startNewSession(const QString &message);
+    bool detachIfDisplaced(QString *reason);
+    bool prepareNewSession(const QString &prompt, const QString &reference);
+    bool prepareContinuation(const QString &newPrompt, bool hasPrompt, const QString &reference,
+                             const QString &enhanceNote);
+    void restoreSnapshot();
+    QString sessionContext(const QString &reference) const;
     void insertAudit(const QString &comments);
     void saveAskFile();
     QString activeId() const;
@@ -86,6 +104,7 @@ private:
     QLabel *m_status = nullptr;
     QLabel *m_file = nullptr;
     QComboBox *m_models = nullptr;
+    QComboBox *m_reference = nullptr;
     QCheckBox *m_library = nullptr;
     QCheckBox *m_urls = nullptr;
     QCheckBox *m_web = nullptr;
@@ -94,6 +113,7 @@ private:
     QPushButton *m_libraryButton = nullptr;
     QPushButton *m_place = nullptr;
     QPushButton *m_ask = nullptr;
+    QPushButton *m_newSession = nullptr;
     QPushButton *m_stopAsk = nullptr;
     QPushButton *m_enhance = nullptr;
     QPushButton *m_stopEnhance = nullptr;
@@ -105,10 +125,16 @@ private:
 
     std::function<QString()> m_exeFinder;
     std::function<CodeEdit *(const QString &)> m_openFile;
+    std::function<QStringList()> m_openTabs;
+    std::function<bool(const QString &path, QString *text)> m_tabReader;
 
     QPointer<CodeEdit> m_edit;
     QString m_askPath;
     QString m_reply;
+    QString m_snapshot;
+    QString m_preface;
+    bool m_hasSnapshot = false;
+    bool m_continued = false;
     int m_bodyStart = 0;
     bool m_busy = false;
     bool m_stopped = false;

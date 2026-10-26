@@ -19,6 +19,7 @@ qt_add_executable(editforthwin WIN32
     src/ForthPipe.cpp
     src/WebTab.cpp
     src/AskForth.cpp
+    src/AskForthSession.cpp
     src/AskForthEmbed.cpp
 )
 

@@ -1,6 +1,10 @@
 #include "AskForth.h"
 
+#include "AskForthSession.h"
 #include "CodeEdit.h"
+
+#include <QEvent>
+#include <QMouseEvent>
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -17,6 +21,7 @@
 #include <QFileInfo>
 #include <QFont>
 #include <QFormLayout>
+#include <QHash>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -356,16 +361,25 @@ QStringList extractUrls(const QString &text) {
     return urls;
 }
 
-QString systemPrompt(const QString &fileName, bool enhance) {
+QString systemPrompt(const QString &fileName, bool enhance, bool continuing) {
     QStringList lines = {
         QStringLiteral("You are a Forth programming assistant for EditForthWin (ANS-style ITC Forth on Windows, the sibling of EditForth / 64Forth)."),
         QStringLiteral("Prefer idiomatic Forth: clear stack comments ( a b -- c ), short words, and explanations that match classic Forth style."),
         QStringLiteral("When asked for code, return Forth source the user can paste inside a ```forth fenced block when possible."),
         QStringLiteral("Never invent ANS or EditForthWin word names, stack effects, or APIs. If you are unsure, say so and suggest looking in Library/Reference or forth-standard.org."),
         QStringLiteral("Stack comments must match real argument order (e.g. c-addr u for strings, not a single invented string cell)."),
+        QStringLiteral("Line comments use one backslash and run to the end of the line. Never start a word with \\\\, \\S, or \\\\S. Those swallow or stop the rest of an INCLUDE. Close every ( comment with ). Do not wrap Forth to a fixed column width."),
         QStringLiteral("Be concise.")};
+    if (continuing)
+        lines << QStringLiteral(
+            "This is a continuation of an Ask Forth session. The host owns the file header and comments out "
+            "earlier drafts. Reply with only the new live Forth for the latest request. Do not repeat the header, "
+            "the prompt log, or earlier drafts.");
     if (!fileName.isEmpty())
-        lines << QStringLiteral("The user is editing: %1.").arg(fileName);
+        lines << QStringLiteral(
+                     "The user has a read-only reference file open: %1. Do not write that file. Put suggestions "
+                     "only in your reply.")
+                    .arg(fileName);
     if (enhance) {
         lines << QStringLiteral("You are correcting Forth that failed or needs improvement after a real kernel eval.");
         lines << QStringLiteral("Prefer Library/Reference stack effects and Sample idioms when they match.");
@@ -1069,6 +1083,10 @@ void AskForthPanel::Worker::start(const QVariant &payload) {
     if (!audit.isEmpty())
         emit auditReady(audit);
 
+    const QString session = job.value(QStringLiteral("session")).toString();
+    if (!session.isEmpty())
+        context.prepend(session);
+
     QString system = job.value(QStringLiteral("system")).toString();
     if (searched && hits) {
         system += QStringLiteral(
@@ -1198,7 +1216,7 @@ AskForthPanel::AskForthPanel(QWidget *parent) : QWidget(parent) {
     m_paint->setInterval(40);
     connect(m_paint, &QTimer::timeout, this, [this] {
         if (m_bodyDirty && !m_stopped)
-            applyStreamBody(m_pendingBody);
+            applyStreamBody(m_pendingBody, false);
         m_bodyDirty = false;
     });
     m_thread = new QThread(this);
@@ -1238,12 +1256,14 @@ AskForthPanel::AskForthPanel(QWidget *parent) : QWidget(parent) {
             return;
         m_reply = full;
         m_paint->stop();
-        applyStreamBody(full);
+        applyStreamBody(full, true);
         saveAskFile();
+        m_hasSnapshot = false;
+        m_snapshot.clear();
         const QString name = QFileInfo(m_askPath).fileName();
-        const QString done = m_phase == QLatin1String("enhance")
-                                 ? QStringLiteral("Agent Enhanced Reply appended.")
-                                 : QStringLiteral("Done.");
+        const QString done = m_phase == QLatin1String("enhance") ? QStringLiteral("Agent Enhanced Reply written.")
+                             : m_continued                     ? QStringLiteral("Continued session.")
+                                                               : QStringLiteral("Done.");
         setBusy(false, QStringLiteral("Ask"));
         setStatus(done + QStringLiteral(" · %1").arg(name) + note);
     });
@@ -1251,9 +1271,20 @@ AskForthPanel::AskForthPanel(QWidget *parent) : QWidget(parent) {
         if (m_stopped || message == QLatin1String("cancelled"))
             return;
         m_paint->stop();
-        if (!m_reply.isEmpty())
-            applyStreamBody(m_reply);
-        saveAskFile();
+        if (message == QLatin1String("The model returned an empty reply.") && m_hasSnapshot) {
+            restoreSnapshot();
+            setBusy(false, QStringLiteral("Ask"));
+            setStatus(QStringLiteral("The model returned nothing. The session file was left unchanged."));
+            return;
+        }
+        if (!m_reply.isEmpty()) {
+            applyStreamBody(m_reply, true);
+            saveAskFile();
+            m_hasSnapshot = false;
+            m_snapshot.clear();
+        } else if (m_hasSnapshot) {
+            restoreSnapshot();
+        }
         setBusy(false, QStringLiteral("Ask"));
         setStatus(message);
     });
@@ -1278,6 +1309,11 @@ AskForthPanel::AskForthPanel(QWidget *parent) : QWidget(parent) {
     });
     m_indexThread->start();
     reloadProfiles();
+    m_askPath = QSettings().value(QStringLiteral("askForthSessionFile")).toString();
+    if (!sessionPresent())
+        m_askPath.clear();
+    else if (m_file != nullptr)
+        m_file->setText(QStringLiteral("Output: %1").arg(QFileInfo(m_askPath).fileName()));
 }
 
 AskForthPanel::~AskForthPanel() {
@@ -1327,6 +1363,7 @@ QLabel *helpMark(const QString &plain, QWidget *parent) {
 
 void AskForthPanel::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
+    refreshReference();
     if (m_promptSplitReady || m_promptSplit == nullptr)
         return;
     QTimer::singleShot(0, this, [this] {
@@ -1353,7 +1390,10 @@ void AskForthPanel::buildUi() {
     auto *askHelp = helpMark(
         QStringLiteral(
             "Type a Prompt and click Ask. The reply streams into Documents/EditForthWin/AskForth/AskForth-N.fth. "
-            "Then click Agent Enhance Reply to append a second section. Library defaults to Library/Sample.\n\n"
+            "Later Asks keep that same file: earlier drafts stay as line comments, and only the newest section "
+            "is live Forth. New session keeps the old file and starts a new one on the next Ask. Renaming, moving, "
+            "or Save As of that file also starts a new session. Reference is an open tab, read only. "
+            "Library defaults to Library/Sample.\n\n"
             "Local Ask needs Ollama (https://ollama.com) and a chat model: ollama pull qwen2.5-coder:7b. "
             "SpaceXAI uses Models… and the XAI_API_KEY environment variable, or a key saved for that profile. "
             "Hybrid and Semantic Library search uses nomic-embed-text on local Ollama. Until that index is ready, "
@@ -1408,6 +1448,15 @@ void AskForthPanel::buildUi() {
         QSettings().setValue(QStringLiteral("aiAssistantToolAgent"), on);
         m_web->setEnabled(!on);
     });
+    m_reference = new QComboBox(this);
+    m_reference->setToolTip(QStringLiteral(
+        "Open editor tab sent with the question as read-only context. The session file is not listed. "
+        "Ask Forth does not write this file."));
+    m_reference->installEventFilter(this);
+    connect(m_reference, qOverload<int>(&QComboBox::activated), this, [this](int index) {
+        QSettings().setValue(QStringLiteral("askForthReferenceFile"), m_reference->itemData(index).toString());
+    });
+    refreshReference();
     connect(m_libraryButton, &QPushButton::clicked, this, &AskForthPanel::editLibrary);
     m_libraryButton->setText(leafName(libraryOpts().folder) + QStringLiteral("…"));
 
@@ -1430,9 +1479,17 @@ void AskForthPanel::buildUi() {
     m_status->setWordWrap(true);
     m_ask = new QPushButton(QStringLiteral("Ask"), this);
     m_ask->setEnabled(false);
+    m_newSession = new QPushButton(QStringLiteral("New session"), this);
+    m_newSession->setToolTip(QStringLiteral("Keep this AskForth file. The next Ask starts a new file."));
     m_stopAsk = new QPushButton(QStringLiteral("Stop"), this);
     m_stopAsk->hide();
     connect(m_ask, &QPushButton::clicked, this, &AskForthPanel::ask);
+    connect(m_newSession, &QPushButton::clicked, this, [this] {
+        if (m_busy)
+            return;
+        startNewSession(QStringLiteral(
+            "New session. The next Ask starts a new file. The previous file was kept."));
+    });
     connect(m_stopAsk, &QPushButton::clicked, this, &AskForthPanel::stop);
     auto *askReturn = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Return), m_prompt);
     connect(askReturn, &QShortcut::activated, this, &AskForthPanel::ask);
@@ -1443,9 +1500,9 @@ void AskForthPanel::buildUi() {
     agentTitle->setFont(agentFont);
     auto *agentHelp = helpMark(
         QStringLiteral(
-            "Agent Enhance Reply runs the latest reply in a headless EditForthWin --agent with Autoload, "
-            "then appends an Agent Enhanced Reply section to the same file. Use INCLUDE on the status strip "
-            "to load the edited file into the live console."),
+            "Agent Enhance Reply runs the latest live section in a headless EditForthWin --agent with Autoload, "
+            "then replaces that live section. The header records the agent status and stack depth. "
+            "Earlier drafts stay as line comments. Use INCLUDE on the status strip to load the file into the live console."),
         this);
     m_enhance = new QPushButton(QStringLiteral("Agent Enhance Reply"), this);
     m_enhance->setEnabled(false);
@@ -1483,6 +1540,7 @@ void AskForthPanel::buildUi() {
     statusCol->addWidget(m_file);
     statusCol->addWidget(m_status);
     statusRow->addLayout(statusCol, 1);
+    statusRow->addWidget(m_newSession);
     statusRow->addWidget(m_stopAsk);
     statusRow->addWidget(m_ask);
     auto *enhanceRow = new QHBoxLayout;
@@ -1545,6 +1603,10 @@ void AskForthPanel::buildUi() {
     box->addWidget(m_urls);
     box->addWidget(m_web);
     box->addWidget(m_tools);
+    auto *referenceRow = new QHBoxLayout;
+    referenceRow->addWidget(new QLabel(QStringLiteral("Reference"), this));
+    referenceRow->addWidget(m_reference, 1);
+    box->addLayout(referenceRow);
     box->addWidget(m_promptSplit, 1);
 
     m_esc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
@@ -1581,6 +1643,32 @@ void AskForthPanel::appendPageUrl(const QString &url) {
 void AskForthPanel::setForthExeFinder(const std::function<QString()> &finder) { m_exeFinder = finder; }
 
 void AskForthPanel::setFileOpener(const std::function<CodeEdit *(const QString &)> &opener) { m_openFile = opener; }
+
+void AskForthPanel::setOpenTabs(const std::function<QStringList()> &tabs) { m_openTabs = tabs; }
+
+void AskForthPanel::setTabReader(const std::function<bool(const QString &path, QString *text)> &reader) {
+    m_tabReader = reader;
+}
+
+bool AskForthPanel::eventFilter(QObject *watched, QEvent *event) {
+    if (watched == m_reference && event->type() == QEvent::MouseButtonPress)
+        refreshReference();
+    return QWidget::eventFilter(watched, event);
+}
+
+void AskForthPanel::noteFileMoved(CodeEdit *edit, const QString &previousPath) {
+    if (m_busy || edit == nullptr || m_askPath.isEmpty())
+        return;
+    const QString stored = QFileInfo(m_askPath).absoluteFilePath();
+    if (QFileInfo(previousPath).absoluteFilePath().compare(stored, Qt::CaseInsensitive) != 0)
+        return;
+    const QString now = QFileInfo(edit->property(QStringLiteral("path")).toString()).absoluteFilePath();
+    if (now.compare(stored, Qt::CaseInsensitive) == 0)
+        return;
+    startNewSession(QStringLiteral(
+        "The Ask Forth file was renamed or saved elsewhere. Started a new session. "
+        "The next Ask creates a new file in the AskForth folder."));
+}
 
 void AskForthPanel::setFloating(bool floating) {
     if (m_place == nullptr)
@@ -1639,6 +1727,10 @@ void AskForthPanel::setBusy(bool busy, const QString &askTitle) {
         m_phase.clear();
     m_ask->setText(askTitle);
     m_ask->setEnabled(!busy && !m_prompt->toPlainText().trimmed().isEmpty());
+    if (m_newSession != nullptr)
+        m_newSession->setEnabled(!busy);
+    if (m_reference != nullptr)
+        m_reference->setEnabled(!busy);
     m_enhance->setEnabled(!busy && !m_reply.trimmed().isEmpty());
     m_enhance->setText(QStringLiteral("Agent Enhance Reply"));
     m_stopAsk->setVisible(busy && m_phase == QLatin1String("ask"));
@@ -2030,7 +2122,267 @@ Profile AskForthPanel::profileById(const QString &id) const {
     return list.isEmpty() ? Profile() : list.first();
 }
 
-void AskForthPanel::applyStreamBody(const QString &full) {
+void AskForthPanel::refreshReference() {
+    if (m_reference == nullptr)
+        return;
+    const QString stored = QSettings().value(QStringLiteral("askForthReferenceFile")).toString();
+    const QString session = m_askPath.isEmpty() ? QString() : QFileInfo(m_askPath).absoluteFilePath();
+    QStringList paths = m_openTabs ? m_openTabs() : QStringList();
+    QStringList unique;
+    QHash<QString, int> counts;
+    for (const QString &raw : paths) {
+        const QString path = QFileInfo(raw).absoluteFilePath();
+        if (path.isEmpty() || unique.contains(path, Qt::CaseInsensitive))
+            continue;
+        if (!session.isEmpty() && path.compare(session, Qt::CaseInsensitive) == 0)
+            continue;
+        unique << path;
+        const QString leaf = QFileInfo(path).fileName();
+        counts.insert(leaf.toLower(), counts.value(leaf.toLower()) + 1);
+    }
+    const QSignalBlocker block(m_reference);
+    m_reference->clear();
+    m_reference->addItem(QStringLiteral("(none)"), QString());
+    int select = 0;
+    for (const QString &path : unique) {
+        const QString leaf = QFileInfo(path).fileName();
+        QString label = leaf;
+        if (counts.value(leaf.toLower()) > 1) {
+            const QString parent = QFileInfo(path).dir().dirName();
+            label = parent.isEmpty() ? path : parent + QLatin1Char('/') + leaf;
+        }
+        m_reference->addItem(label, path);
+        if (!stored.isEmpty() && QFileInfo(stored).absoluteFilePath().compare(path, Qt::CaseInsensitive) == 0)
+            select = m_reference->count() - 1;
+    }
+    m_reference->setCurrentIndex(select);
+}
+
+QString AskForthPanel::effectiveReference() const {
+    const QString stored = QSettings().value(QStringLiteral("askForthReferenceFile")).toString().trimmed();
+    if (stored.isEmpty())
+        return QString();
+    const QString path = QFileInfo(stored).absoluteFilePath();
+    if (!m_askPath.isEmpty() && path.compare(QFileInfo(m_askPath).absoluteFilePath(), Qt::CaseInsensitive) == 0)
+        return QString();
+    const QStringList open = m_openTabs ? m_openTabs() : QStringList();
+    for (const QString &raw : open) {
+        if (QFileInfo(raw).absoluteFilePath().compare(path, Qt::CaseInsensitive) == 0)
+            return path;
+    }
+    return QString();
+}
+
+QString AskForthPanel::referenceBlock(const QString &path) const {
+    if (path.isEmpty())
+        return QString();
+    QString text;
+    bool readable = false;
+    if (m_tabReader)
+        readable = m_tabReader(path, &text);
+    if (!readable) {
+        QFile file(path);
+        if (file.open(QIODevice::ReadOnly)) {
+            text = QString::fromUtf8(file.readAll());
+            readable = true;
+        }
+    }
+    return AskForthSession::referenceContextBlock(path, text, readable);
+}
+
+QStringList AskForthPanel::sessionSettingLines() const {
+    QStringList lines;
+    const LibraryOpts opts = libraryOpts();
+    if (m_library != nullptr && m_library->isChecked()) {
+        lines << QStringLiteral("Include Library context: on");
+        lines << QStringLiteral("Library: %1").arg(opts.folder);
+        lines << QStringLiteral("Retrieve mode: %1").arg(modeDisplay(opts.mode));
+        lines << QStringLiteral("Max snippets: %1").arg(opts.snippets);
+        lines << QStringLiteral("Context lines: %1").arg(opts.lines);
+        lines << QStringLiteral("Max characters: %1").arg(opts.chars);
+    }
+    if (m_urls != nullptr && m_urls->isChecked())
+        lines << QStringLiteral("Fetch URLs in Prompt: on");
+    if (m_web != nullptr && m_web->isChecked())
+        lines << QStringLiteral("Include web search: on");
+    if (m_tools != nullptr && m_tools->isChecked())
+        lines << QStringLiteral("Tool agent: on");
+    return lines;
+}
+
+bool AskForthPanel::sessionPresent() const {
+    if (m_askPath.isEmpty() || !QFileInfo::exists(m_askPath))
+        return false;
+    const QString folder = QFileInfo(askDirectory()).absoluteFilePath();
+    return QFileInfo(m_askPath).dir().absolutePath().compare(folder, Qt::CaseInsensitive) == 0;
+}
+
+void AskForthPanel::rememberSession(const QString &path) {
+    m_askPath = QFileInfo(path).absoluteFilePath();
+    QSettings().setValue(QStringLiteral("askForthSessionFile"), m_askPath);
+    if (m_file != nullptr)
+        m_file->setText(QStringLiteral("Output: %1").arg(QFileInfo(m_askPath).fileName()));
+}
+
+void AskForthPanel::startNewSession(const QString &message) {
+    if (m_busy)
+        return;
+    QSettings().remove(QStringLiteral("askForthSessionFile"));
+    m_askPath.clear();
+    m_edit.clear();
+    m_bodyStart = 0;
+    m_snapshot.clear();
+    m_hasSnapshot = false;
+    m_preface.clear();
+    m_reply.clear();
+    m_continued = false;
+    if (m_transcript != nullptr)
+        m_transcript->clear();
+    if (m_file != nullptr)
+        m_file->setText(QStringLiteral("Output:"));
+    if (m_enhance != nullptr)
+        m_enhance->setEnabled(false);
+    setStatus(message);
+}
+
+bool AskForthPanel::detachIfDisplaced(QString *reason) {
+    if (m_busy || m_askPath.isEmpty())
+        return false;
+    if (!sessionPresent()) {
+        startNewSession(QStringLiteral(
+            "The Ask Forth session file is not in the AskForth folder. Started a new session. "
+            "The next Ask creates a new file there."));
+        if (reason != nullptr)
+            *reason = QStringLiteral("Started a new session in the AskForth folder. ");
+        return true;
+    }
+    if (!m_edit.isNull()) {
+        const QString tab = QFileInfo(m_edit->property(QStringLiteral("path")).toString()).absoluteFilePath();
+        const QString stored = QFileInfo(m_askPath).absoluteFilePath();
+        if (!tab.isEmpty() && tab.compare(stored, Qt::CaseInsensitive) != 0) {
+            startNewSession(QStringLiteral(
+                "The Ask Forth file was renamed or saved elsewhere. Started a new session. "
+                "The next Ask creates a new file in the AskForth folder."));
+            if (reason != nullptr)
+                *reason = QStringLiteral("Started a new session in the AskForth folder. ");
+            return true;
+        }
+    }
+    return false;
+}
+
+bool AskForthPanel::prepareNewSession(const QString &prompt, const QString &reference) {
+    AskForthSession::Entry entry;
+    entry.text = prompt;
+    entry.reference = reference;
+    const Profile profile = profileById(activeId());
+    const QString header = AskForthSession::renderHeader(
+        profile.model, QString::number(profile.temperature, 'f', 2), sessionSettingLines(), reference,
+        QVector<AskForthSession::Entry>{entry});
+    const QString prefix = AskForthSession::renderPrefix(header, QString());
+    const QString path = nextAskPath();
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        setStatus(QStringLiteral("Could not create AskForth file."));
+        return false;
+    }
+    file.write(prefix.toUtf8());
+    if (!file.commit()) {
+        setStatus(QStringLiteral("Could not create AskForth file."));
+        return false;
+    }
+    if (!m_openFile) {
+        setStatus(QStringLiteral("Could not open AskForth file."));
+        return false;
+    }
+    CodeEdit *edit = m_openFile(path);
+    if (edit == nullptr) {
+        setStatus(QStringLiteral("Could not open AskForth file."));
+        return false;
+    }
+    if (edit->toPlainText() != prefix)
+        edit->setPlainText(prefix);
+    edit->document()->setModified(false);
+    m_edit = edit;
+    rememberSession(path);
+    m_bodyStart = edit->toPlainText().size();
+    m_reply.clear();
+    m_preface.clear();
+    m_snapshot.clear();
+    m_hasSnapshot = false;
+    return true;
+}
+
+bool AskForthPanel::prepareContinuation(const QString &newPrompt, bool hasPrompt, const QString &reference,
+                                        const QString &enhanceNote) {
+    if (m_edit.isNull() && m_openFile)
+        m_edit = m_openFile(m_askPath);
+    if (m_edit.isNull()) {
+        setStatus(QStringLiteral("No Ask Forth session file — Ask first."));
+        return false;
+    }
+    const QString previous = m_edit->toPlainText();
+    const AskForthSession::Document parsed = AskForthSession::parse(previous);
+    QVector<AskForthSession::Entry> entries = parsed.entries;
+    if (hasPrompt) {
+        m_preface = AskForthSession::modelPreface(parsed.entries, parsed.live);
+        AskForthSession::Entry entry;
+        entry.text = newPrompt;
+        entry.reference = reference;
+        entries.append(entry);
+    } else {
+        m_preface.clear();
+    }
+    if (!enhanceNote.isEmpty()) {
+        AskForthSession::Entry note;
+        note.note = true;
+        note.text = enhanceNote;
+        entries.append(note);
+    }
+    const QString sessionRef = hasPrompt ? reference
+                                         : (reference.isEmpty() ? AskForthSession::lastReference(parsed.entries)
+                                                                : reference);
+    const Profile profile = profileById(activeId());
+    const QString header = AskForthSession::renderHeader(
+        profile.model, QString::number(profile.temperature, 'f', 2), sessionSettingLines(), sessionRef, entries);
+    const QString archive =
+        AskForthSession::combineArchive(parsed.archive, AskForthSession::archiveLive(parsed.live));
+    const QString prefix = AskForthSession::renderPrefix(header, archive);
+    m_snapshot = previous;
+    m_hasSnapshot = true;
+    m_edit->setPlainText(prefix);
+    m_edit->document()->setModified(true);
+    m_bodyStart = prefix.size();
+    rememberSession(m_askPath);
+    saveAskFile();
+    return true;
+}
+
+void AskForthPanel::restoreSnapshot() {
+    if (!m_hasSnapshot)
+        return;
+    if (!m_edit.isNull()) {
+        m_edit->setPlainText(m_snapshot);
+        m_edit->document()->setModified(true);
+        saveAskFile();
+    }
+    m_reply = AskForthSession::parse(m_snapshot).live.trimmed();
+    m_snapshot.clear();
+    m_hasSnapshot = false;
+    m_bodyStart = 0;
+}
+
+QString AskForthPanel::sessionContext(const QString &reference) const {
+    QString out;
+    if (!m_preface.isEmpty())
+        out += m_preface + QStringLiteral("\n\n");
+    const QString block = referenceBlock(reference);
+    if (!block.isEmpty())
+        out += block + QStringLiteral("\n\n");
+    return out;
+}
+
+void AskForthPanel::applyStreamBody(const QString &full, bool closeParens) {
     if (m_edit.isNull())
         return;
     const QString current = m_edit->toPlainText();
@@ -2038,7 +2390,8 @@ void AskForthPanel::applyStreamBody(const QString &full) {
     const QString prefix = current.left(start);
     const int cursor = m_edit->textCursor().position();
     const bool follow = cursor >= current.size() - 1;
-    m_edit->setPlainText(prefix + wrapToWidth(full, kWrap));
+    const QString safe = AskForthSession::sanitizeLive(full, closeParens);
+    m_edit->setPlainText(prefix + safe);
     m_edit->document()->setModified(true);
     QTextCursor caret = m_edit->textCursor();
     caret.setPosition(follow ? m_edit->toPlainText().size() : qMin(cursor, start));
@@ -2144,26 +2497,46 @@ void AskForthPanel::ask() {
         setStatus(QStringLiteral("No API key — open Models…, paste a key, and click Save (or export XAI_API_KEY)."));
         return;
     }
-    const LibraryOpts opts = libraryOpts();
-    const QString header = askHeader(profile, prompt, m_library->isChecked(), opts.folder, modeDisplay(opts.mode),
-                                    opts.snippets, opts.lines, opts.chars, m_urls->isChecked(),
-                                    m_web->isChecked(), m_tools->isChecked());
-    if (!beginStreamFile(header))
-        return;
+    QString displaced;
+    detachIfDisplaced(&displaced);
     m_transcript->clear();
+    refreshReference();
+    const QString reference = effectiveReference();
+    m_continued = sessionPresent();
+    const QString fileHint = reference.isEmpty() ? QString() : QFileInfo(reference).fileName();
+    if (m_continued) {
+        if (!prepareContinuation(prompt, true, reference, QString()))
+            return;
+    } else if (!prepareNewSession(prompt, reference)) {
+        return;
+    }
     m_stopped = false;
     m_phase = QStringLiteral("ask");
     setBusy(true, QStringLiteral("Asking…"));
-    setStatus(QStringLiteral("Asking %1 (%2)…")
-                  .arg(profile.provider == QLatin1String("ollama") ? QStringLiteral("Ollama")
-                                                                  : QStringLiteral("OpenAI-compat"),
-                       profile.model));
-    launch(jobFor(profile, systemPrompt(QString(), false), prompt, prompt, false));
+    const QString asking = QStringLiteral("Asking %1 (%2)…")
+                               .arg(profile.provider == QLatin1String("ollama") ? QStringLiteral("Ollama")
+                                                                               : QStringLiteral("OpenAI-compat"),
+                                    profile.model);
+    setStatus(displaced + asking);
+    QVariantMap job = jobFor(profile, systemPrompt(fileHint, false, m_continued), prompt, prompt, false);
+    job.insert(QStringLiteral("session"), sessionContext(reference));
+    launch(job);
 }
 
 void AskForthPanel::enhance() {
     if (m_busy)
         return;
+    if (detachIfDisplaced(nullptr) || !sessionPresent()) {
+        setStatus(QStringLiteral("No Ask Forth session file — Ask first."));
+        return;
+    }
+    if (m_edit.isNull() && m_openFile)
+        m_edit = m_openFile(m_askPath);
+    if (!m_edit.isNull()) {
+        const QString live = AskForthSession::parse(m_edit->toPlainText()).live.trimmed();
+        if (!live.isEmpty())
+            m_reply = live;
+    }
     const QString source = extractForth(m_reply);
     if (source.isEmpty()) {
         setStatus(QStringLiteral("No Forth source in reply to evaluate."));
@@ -2185,24 +2558,34 @@ void AskForthPanel::enhance() {
 }
 
 void AskForthPanel::startEnhance(const QString &transcript) {
-    if (m_edit.isNull()) {
+    if (m_edit.isNull() && m_openFile)
+        m_edit = m_openFile(m_askPath);
+    if (m_edit.isNull() || !sessionPresent()) {
         setBusy(false, QStringLiteral("Ask"));
-        setStatus(QStringLiteral("No AskForth file to append — Ask first."));
+        setStatus(QStringLiteral("No Ask Forth session file — Ask first."));
         return;
     }
-    const QString marker = QStringLiteral("\n\nAgent Enhanced Reply\n\n");
-    m_edit->setPlainText(m_edit->toPlainText() + marker);
-    m_edit->document()->setModified(true);
-    m_bodyStart = m_edit->toPlainText().size();
     const QString prior = m_reply;
+    const QString reference = effectiveReference();
+    const QString note = AskForthSession::agentEnhanceNote(transcript);
+    if (!prepareContinuation(QString(), false, reference, note)) {
+        setBusy(false, QStringLiteral("Ask"));
+        return;
+    }
     m_reply.clear();
+    m_continued = true;
     m_phase = QStringLiteral("enhance");
     m_enhance->setText(QStringLiteral("Enhancing…"));
     const Profile profile = profileById(activeId());
-    const QString fileName = QFileInfo(m_askPath).fileName();
+    const QString fileHint = reference.isEmpty() ? QString() : QFileInfo(reference).fileName();
     QStringList parts;
     parts << QStringLiteral("The previous Forth answer was evaluated with a headless EditForthWin --agent process.");
-    parts << QStringLiteral("Fix the Forth so it works on EditForthWin (ANS-style ITC). Prefer a single ```forth fenced block with the corrected source. Briefly note what you changed.");
+    parts << QStringLiteral(
+        "Fix the Forth so it works on EditForthWin (ANS-style ITC). Prefer a single ```forth fenced block with "
+        "the corrected source. Briefly note what you changed.");
+    parts << QStringLiteral(
+        "Return only the corrected live Forth. The host comments out the previous live section. Do not repeat "
+        "the session header or earlier drafts.");
     const QString prompt = m_prompt->toPlainText().trimmed();
     if (!prompt.isEmpty())
         parts << QStringLiteral("Original request / context:\n") + prompt;
@@ -2210,8 +2593,10 @@ void AskForthPanel::startEnhance(const QString &transcript) {
         parts << QStringLiteral("Previous answer:\n") + prior;
     parts << QStringLiteral("Agent transcript:\n") + transcript;
     const QString user = parts.join(QStringLiteral("\n\n"));
-    launch(jobFor(profile, systemPrompt(fileName, true), user,
-                  QStringList{prompt, prior, transcript}.join(QLatin1Char('\n')), true));
+    QVariantMap job = jobFor(profile, systemPrompt(fileHint, true, true), user,
+                             QStringList{prompt, prior, transcript}.join(QLatin1Char('\n')), true);
+    job.insert(QStringLiteral("session"), sessionContext(reference));
+    launch(job);
 }
 
 void AskForthPanel::stop() {
@@ -2220,9 +2605,14 @@ void AskForthPanel::stop() {
     m_stopped = true;
     QMetaObject::invokeMethod(m_worker, "cancel", Qt::QueuedConnection);
     m_paint->stop();
-    if (!m_reply.isEmpty())
-        applyStreamBody(m_reply);
-    saveAskFile();
+    if (!m_reply.isEmpty()) {
+        applyStreamBody(m_reply, true);
+        saveAskFile();
+        m_hasSnapshot = false;
+        m_snapshot.clear();
+    } else if (m_hasSnapshot) {
+        restoreSnapshot();
+    }
     setBusy(false, QStringLiteral("Ask"));
     setStatus(QStringLiteral("Stopped."));
 }

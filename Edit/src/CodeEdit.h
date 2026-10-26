@@ -25,6 +25,7 @@ public:
     void setDebugFocusLock(bool lock);
     void setWrap(const QString &mode, int column);
     void gotoLine(int line, int column = 1);
+    void toggleLineComment();
     QString wordAtCursor() const;
     int utf8OffsetOfWord() const;
     void relayoutChrome();
