@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Updated Oct 26, 2026 10:20 AM for version 2.3.9.0. ARM64 is `2.3.9.0`. x64 is `2.3.9.0-x64`. The kernel stamp is Oct 26, 2026 10:20 AM. The executables are not rebuilt in this commit. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
+Updated Oct 26, 2026 10:45 AM for version 2.5.0.0. ARM64 is `2.5.0.0`. x64 is `2.5.0.0-x64`. The kernel stamp is Oct 26, 2026 10:45 AM. The executables are not rebuilt in this commit. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
@@ -60,6 +60,8 @@ Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 
 1.3.1 does not add boot words. ARM64 and x64 were both rebuilt. Ask Forth floats in its own window. Undock on the title row, or View → Undock Ask Forth, moves the panel. Dock, View → Dock Ask Forth, or closing that window puts it back beside the editor. View → Ask Forth still hides the panel. The window size is remembered. A circled ? beside Ask Forth and beside EditForthWin Agent shows the help that used to sit in the panel. Capture Selected to Prompt is removed. The Prompt label sits just above the edit box. `scripts\release.ps1 validate` runs ANS-VALIDATE and Hayes on both executables. ANS-VALIDATE is 394 passed, 0 failed on `fortharm64.exe` and on `forthx64.exe`. Hayes finished with `ALL COUNTS ZERO — PASS` on both.
 
 2.3.9.0 adds `(HX-BG-REINDEX) ( -- n )`. It starts a second Forth process that writes `Config\HYPER.NDX.building`. The host swaps that file over `Config\HYPER.NDX` after `HX-BUILD-OK` and a zero exit. Return 1 means the new file is already in place and Forth reloads it. Return 0 means up to date, already running, failed, or still running in the editor. The editor shows the result under Engine connected for 3 seconds. A standalone console waits. Unchanged sources skip the scan. The x64 word is the ARM64 word translated by hand into `Forth\kernel\x64\asm\prims_k2.asm`. `Forth\host\hyper_win.c` is the host. Hayes and ANS-VALIDATE were not run for 2.3.9.0.
+
+2.5.0.0 does not add boot words. EditForth 2.5.0 makes the Mac editor and the Forth engine one application. Windows already uses a separate editor executable and `fortharm64.exe` or `forthx64.exe`. Those stay separate. Hayes and ANS-VALIDATE were not run for 2.5.0.0.
 
 ## Hayes
 
