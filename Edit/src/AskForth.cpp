@@ -30,7 +30,6 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
-#include <QMessageBox>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -47,6 +46,7 @@
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStringList>
+#include <QStyle>
 #include <QStandardPaths>
 #include <QTextCursor>
 #include <QThread>
@@ -1383,11 +1383,27 @@ QWidget *helpMark(const QString &title, const QString &plain, QWidget *parent,
                             "QPushButton:hover { background: palette(midlight); }")
                             .arg(side / 2));
     QObject::connect(mark, &QPushButton::clicked, parent, [parent, title, plain] {
-        QMessageBox box(QMessageBox::Information, title, title, QMessageBox::Ok, parent);
-        box.setInformativeText(plain);
-        box.setTextInteractionFlags(Qt::TextSelectableByMouse);
-        box.setStyleSheet(QStringLiteral("QLabel { min-width: 420px; }"));
-        box.exec();
+        QDialog dialog(parent);
+        dialog.setWindowTitle(title);
+        dialog.setWindowFlag(Qt::WindowContextHelpButtonHint, false);
+        auto *icon = new QLabel(&dialog);
+        icon->setPixmap(dialog.style()->standardIcon(QStyle::SP_MessageBoxInformation).pixmap(QSize(32, 32)));
+        icon->setAlignment(Qt::AlignTop);
+        auto *text = new QLabel(plain, &dialog);
+        text->setWordWrap(true);
+        text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        text->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        text->setFixedWidth(440);
+        auto *row = new QHBoxLayout;
+        row->setContentsMargins(0, 0, 0, 0);
+        row->addWidget(icon, 0, Qt::AlignTop);
+        row->addWidget(text, 0, Qt::AlignTop);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok, &dialog);
+        QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        auto *layout = new QVBoxLayout(&dialog);
+        layout->addLayout(row);
+        layout->addWidget(buttons);
+        dialog.exec();
     });
     return mark;
 }

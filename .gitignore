@@ -8,5 +8,5 @@ Edit/build/
 *.ilk
 Install/stage/
 dist/*
-!dist/EditForthWin-2.5.5.1-arm64.exe
-!dist/EditForthWin-2.5.5.1-x64.exe
+!dist/EditForthWin-2.5.6.1-arm64.exe
+!dist/EditForthWin-2.5.6.1-x64.exe
