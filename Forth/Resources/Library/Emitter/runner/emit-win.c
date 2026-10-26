@@ -56,6 +56,7 @@ static unsigned char *g_idx;
 static int g_idx_n;
 static int g_depth;
 static HWND g_hwnd;
+static int g_closed;
 static HFONT g_font;
 static int g_keys[EW_KEYS];
 static int g_key_n;
@@ -395,6 +396,13 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         else if (wp == VK_ESCAPE) push_key(27);
         else if (wp == VK_BACK) push_key(8);
         return 0;
+    case WM_CLOSE:
+        /* Same quit key as Escape. KEY? is polling, so destroying the
+           window alone leaves the image running with no key to see. */
+        g_closed = 1;
+        push_key(27);
+        DestroyWindow(hwnd);
+        return 0;
     case WM_DESTROY:
         g_hwnd = NULL;
         return 0;
@@ -622,7 +630,9 @@ static long long ew_pblit(long long addr, long long nbytes) {
 
 static long long ew_keyq(void) {
     pump();
-    return g_key_n > 0 ? -1 : 0;
+    if (g_closed || g_key_n > 0)
+        return -1;
+    return 0;
 }
 
 static long long ew_key(void) {
@@ -634,7 +644,7 @@ static long long ew_key(void) {
         c = take_key();
         if (c >= 0)
             return c;
-        if (!g_hwnd)
+        if (g_closed || !g_hwnd)
             return 27;
         Sleep(10);
     }

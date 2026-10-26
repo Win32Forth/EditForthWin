@@ -6,14 +6,16 @@
 \ exists, EMIT-OS-MKDIR and EMIT-OS-PACK are retargeted here.
 \
 \ Both EMIT-APP and EMIT-WINDOW-APP use those hooks, so a window emit
-\ writes the same Windows bundle. The bundle is a folder:
-\   <outdir>/<NAME>/<NAME>.img   64EMIT02 image
-\   <outdir>/<NAME>/app.img      the copy the exe loads
+\ writes the same Windows bundle. EMIT-TMP is already <source-dir>/<STEM>
+\ (or the explicit outdir). The files sit in that folder:
+\   <outdir>/<NAME>.img   64EMIT02 image (written by SAVE-IMAGE)
+\   <outdir>/app.img      the copy the exe loads
+\   <outdir>/<NAME>.exe
+\   <outdir>/host.fix
 \ emit-win.exe (runner\emit-win.c) is the window host. This packer copies
-\ it to <outdir>/<NAME>/<NAME>.exe next to those images, plus host.fix so
+\ it to <outdir>/<NAME>.exe next to those images, plus host.fix so
 \ the runner can rebind sa_win_putchar and sa_win_file_op. SAVE-IMAGE
-\ writes <outdir>/<NAME>.img first; this packer moves that file into the
-\ bundle so it does not sit beside the source.
+\ writes <outdir>/<NAME>.img. That file stays there.
 \ The image still runs in this process via LOAD-IMAGE TGT-RUN-LOADED.
 \ Absolute host pointers (sa_win_putchar, sa_win_file_op, key_fn) stay
 \ valid only in the process that built the image.
@@ -122,23 +124,12 @@ CREATE EMIT-COPYBUF   4096 ALLOT
   THEN
   fid CLOSE-FILE DROP ;
 
-\ Outdir is already in EMIT-TMP. SAVE-IMAGE already wrote EMIT-IMGBUF.
-\ Replace the Mac .app path in EMIT-APPBUF with the bundle folder.
-\ Copy emit-win.exe in beside app.img.
+\ Outdir is already in EMIT-TMP. SAVE-IMAGE already wrote EMIT-IMGBUF
+\ as <outdir>/<NAME>.img. The exe, app.img, and host.fix go in that same
+\ folder. Do not add another <NAME> directory.
 : (EMIT-PACK-WIN)  ( -- )
-  EMIT-TMP COUNT  EMIT-NAMEBUF COUNT  0 0  EMIT-APPBUF  (EMIT-JOIN)
+  EMIT-TMP COUNT EMIT-APPBUF PLACE
   EMIT-APPBUF COUNT (EMIT-MKDIR-WIN)
-  \ SAVE-IMAGE wrote <outdir>/<NAME>.img. The image belongs in the bundle.
-  EMIT-WIN-IMG (EMIT-S0)
-  EMIT-APPBUF COUNT EMIT-WIN-IMG (EMIT-S+)
-  S" /" EMIT-WIN-IMG (EMIT-S+)
-  EMIT-NAMEBUF COUNT EMIT-WIN-IMG (EMIT-S+)
-  S" .img" EMIT-WIN-IMG (EMIT-S+)
-  EMIT-IMGBUF COUNT  EMIT-WIN-IMG COUNT  (EMIT-COPY-FILE)
-  EMIT-IMGBUF COUNT DELETE-FILE IF
-    ." EMIT-APP: cannot remove " EMIT-IMGBUF COUNT TYPE CR ABORT
-  THEN
-  EMIT-WIN-IMG COUNT EMIT-IMGBUF PLACE
   EMIT-WIN-IMG (EMIT-S0)
   EMIT-APPBUF COUNT EMIT-WIN-IMG (EMIT-S+)
   S" /app.img" EMIT-WIN-IMG (EMIT-S+)

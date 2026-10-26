@@ -107,11 +107,13 @@ EXTRN host_edit:PROC
 EXTRN host_edit_at:PROC
 EXTRN host_end_load:PROC
 EXTRN host_facility_xy:PROC
+EXTRN host_forget_drop_stale:PROC
 EXTRN host_free:PROC
 EXTRN host_free_exec:PROC
 EXTRN host_fromlib:PROC
 EXTRN host_fromlib_off:PROC
 EXTRN host_fromlib_query:PROC
+EXTRN host_hyper_reindex:PROC
 EXTRN host_icache_inval:PROC
 EXTRN host_include_dialog:PROC
 EXTRN host_last_included:PROC
@@ -127,8 +129,6 @@ EXTRN host_resize:PROC
 EXTRN host_resolve:PROC
 EXTRN host_sleep:PROC
 EXTRN host_system:PROC
-EXTRN host_hyper_reindex:PROC
-EXTRN host_forget_drop_stale:PROC
 EXTRN host_time_date:PROC
 EXTRN host_was_included:PROC
 EXTRN include_name_len:BYTE
@@ -18969,13 +18969,34 @@ _forget_rnext:
     ; b       _forget_rloop
     jmp _forget_rloop
 _forget_drop:
+    ; lea x0, forget_cut
     lea rax, forget_cut
-    mov rcx, QWORD PTR [rax]
+    mov QWORD PTR arm_x0, rax
+    ; ldr     x0, [x0]
+    mov r10, QWORD PTR arm_x0
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x0, rax
+    ; bl      host_forget_drop_stale
     push rbx
     mov rbx, rsp
     and rsp, -16
-    sub rsp, 32
+    sub rsp, 80
+    mov rcx, QWORD PTR arm_x0
+    mov rdx, QWORD PTR arm_x1
+    mov r8, QWORD PTR arm_x2
+    mov r9, QWORD PTR arm_x3
+    mov rax, QWORD PTR arm_x4
+    mov QWORD PTR [rsp+32], rax
+    mov rax, QWORD PTR arm_x5
+    mov QWORD PTR [rsp+40], rax
+    mov rax, QWORD PTR arm_x6
+    mov QWORD PTR [rsp+48], rax
+    mov rax, QWORD PTR arm_x7
+    mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
     call host_forget_drop_stale
+    mov QWORD PTR arm_x0, rax
     mov rsp, rbx
     pop rbx
 _forget_done:

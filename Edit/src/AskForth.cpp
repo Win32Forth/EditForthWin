@@ -690,8 +690,9 @@ AskForthPanel::Worker::Chat AskForthPanel::Worker::chat(const QVariantMap &job, 
         QJsonObject options;
         options.insert(QStringLiteral("num_predict"), kMaxTokens);
         options.insert(QStringLiteral("temperature"), temperature);
+        const QVariant rawContext = job.value(QStringLiteral("contextTokens"));
         options.insert(QStringLiteral("num_ctx"),
-                       clampContext(job.value(QStringLiteral("contextTokens")).toInt(kDefaultContext)));
+                       clampContext(rawContext.isValid() ? rawContext.toInt() : kDefaultContext));
         body.insert(QStringLiteral("options"), options);
         req.setUrl(QUrl(joinUrl(base, QStringLiteral("/api/chat"))));
     } else {
@@ -1687,7 +1688,7 @@ void AskForthPanel::noteFileMoved(CodeEdit *edit, const QString &previousPath) {
     const QString stored = QFileInfo(m_askPath).absoluteFilePath();
     if (QFileInfo(previousPath).absoluteFilePath().compare(stored, Qt::CaseInsensitive) != 0)
         return;
-    const QString now = QFileInfo(edit->property(QStringLiteral("path")).toString()).absoluteFilePath();
+    const QString now = QFileInfo(edit->property("path").toString()).absoluteFilePath();
     if (now.compare(stored, Qt::CaseInsensitive) == 0)
         return;
     startNewSession(QStringLiteral(
@@ -2296,7 +2297,7 @@ bool AskForthPanel::detachIfDisplaced(QString *reason) {
         return true;
     }
     if (!m_edit.isNull()) {
-        const QString tab = QFileInfo(m_edit->property(QStringLiteral("path")).toString()).absoluteFilePath();
+        const QString tab = QFileInfo(m_edit->property("path").toString()).absoluteFilePath();
         const QString stored = QFileInfo(m_askPath).absoluteFilePath();
         if (!tab.isEmpty() && tab.compare(stored, Qt::CaseInsensitive) != 0) {
             startNewSession(QStringLiteral(
