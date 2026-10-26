@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Updated Oct 26, 2026 9:07 AM for version 2.5.5.1. ARM64 is `2.5.5.1`. x64 is `2.5.5.1-x64`. The kernel stamp is Oct 26, 2026 9:07 AM. The executables are not rebuilt in this commit. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
+Updated Oct 26, 2026 3:26 PM for version 2.5.6.0. ARM64 is `2.5.6.0`. x64 is `2.5.6.0-x64`. The kernel stamp is Oct 26, 2026 3:26 PM. The executables are not rebuilt in this commit. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
@@ -74,6 +74,8 @@ Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 
 2.5.5.0 does not add boot words. Each Ask Forth profile stores an Ollama context window, `options.num_ctx`, default 32768. Choices are 2048, 4096, 8192, 16384, 32768, and 65536. A profile with no saved window loads as 32768. OpenAI-compatible calls do not send `num_ctx`. The session header records `Context window: N`. Hayes and ANS-VALIDATE were not run for 2.5.5.0.
 
 2.5.5.1 does not add boot words. Ask Forth compiles on this Qt. A missing context window uses 32768, and that default is not passed to `QVariant::toInt`. The session path is read with `property("path")`. `EMIT-APP` writes `NAME.exe`, `NAME.img`, `app.img`, and `host.fix` in the outdir. It does not add a second folder named `NAME`, so `GCLOCK.fth` emits `Sample\GCLOCK\GCLOCK.exe`. The red close button on an emitted window posts Escape, and `KEY?` stays true until the image exits, so GCLOCK shuts down. The x64 translation of `FORGET` passes the cut address through the virtual register file into `host_forget_drop_stale`. ANS-VALIDATE is 394 passed, 0 failed on `fortharm64.exe` and on `forthx64.exe`. Hayes finished with `ALL COUNTS ZERO — PASS` on both.
+
+2.5.6.0 does not add boot words. The circled help marks in Ask Forth are buttons. A click opens a dialog with the section title and the help text. Reference uses an i. Ask Forth and EditForthWin Agent use ?. Hayes and ANS-VALIDATE were not run for 2.5.6.0.
 
 ## Hayes
 

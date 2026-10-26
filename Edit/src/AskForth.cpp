@@ -1368,21 +1368,27 @@ public:
     QSize minimumSizeHint() const override { return QSize(80, 36); }
 };
 
-QString helpBubble(const QString &plain) {
-    return QStringLiteral("<p style=\"white-space:pre-wrap; width:28em;\">%1</p>").arg(plain.toHtmlEscaped());
-}
-
-QLabel *helpMark(const QString &plain, QWidget *parent) {
-    auto *mark = new QLabel(QStringLiteral("?"), parent);
-    mark->setAlignment(Qt::AlignCenter);
+QWidget *helpMark(const QString &title, const QString &plain, QWidget *parent,
+                  const QString &glyph = QStringLiteral("?")) {
+    auto *mark = new QPushButton(glyph, parent);
+    mark->setAutoDefault(false);
+    mark->setDefault(false);
+    mark->setCursor(Qt::PointingHandCursor);
+    mark->setAccessibleName(QStringLiteral("Help"));
     const int side = qMax(16, mark->fontMetrics().height());
     mark->setFixedSize(side, side);
-    mark->setCursor(Qt::WhatsThisCursor);
-    mark->setToolTip(helpBubble(plain));
     mark->setStyleSheet(QStringLiteral(
-                            "QLabel { color: palette(window-text); border: 1px solid palette(mid);"
-                            " border-radius: %1px; background: transparent; }")
+                            "QPushButton { color: palette(window-text); border: 1px solid palette(mid);"
+                            " border-radius: %1px; background: transparent; padding: 0; }"
+                            "QPushButton:hover { background: palette(midlight); }")
                             .arg(side / 2));
+    QObject::connect(mark, &QPushButton::clicked, parent, [parent, title, plain] {
+        QMessageBox box(QMessageBox::Information, title, title, QMessageBox::Ok, parent);
+        box.setInformativeText(plain);
+        box.setTextInteractionFlags(Qt::TextSelectableByMouse);
+        box.setStyleSheet(QStringLiteral("QLabel { min-width: 420px; }"));
+        box.exec();
+    });
     return mark;
 }
 
@@ -1413,6 +1419,7 @@ void AskForthPanel::buildUi() {
     titleFont.setPointSize(titleFont.pointSize() + 1);
     title->setFont(titleFont);
     auto *askHelp = helpMark(
+        QStringLiteral("Ask Forth"),
         QStringLiteral(
             "Type a Prompt and click Ask. The reply streams into Documents/EditForthWin/AskForth/AskForth-N.fth. "
             "Later Asks keep that same file: earlier drafts stay as line comments, and only the newest section "
@@ -1525,6 +1532,7 @@ void AskForthPanel::buildUi() {
     agentFont.setBold(true);
     agentTitle->setFont(agentFont);
     auto *agentHelp = helpMark(
+        QStringLiteral("EditForthWin Agent"),
         QStringLiteral(
             "Agent Enhance Reply runs the latest live section in a headless EditForthWin --agent with Autoload, "
             "then replaces that live section. The header records the agent status and stack depth. "
@@ -1631,6 +1639,14 @@ void AskForthPanel::buildUi() {
     box->addWidget(m_tools);
     auto *referenceRow = new QHBoxLayout;
     referenceRow->addWidget(new QLabel(QStringLiteral("Reference"), this));
+    referenceRow->addWidget(
+        helpMark(QStringLiteral("Reference"),
+                 QStringLiteral(
+                     "Open a source file in the editor then select the file in the dropdown to the right to make "
+                     "it the reference file for this Ask Forth chat session. The Reference file remains active "
+                     "until deselected. Click \"New session\" to make Ask Forth start a new question/Answer session."),
+                 this, QStringLiteral("i")),
+        0, Qt::AlignVCenter);
     referenceRow->addWidget(m_reference, 1);
     box->addLayout(referenceRow);
     box->addWidget(m_promptSplit, 1);

@@ -8,9 +8,9 @@
         EXPORT kernel_built
         EXPORT kernel_console
 
-kernel_version  DCB     "2.5.5.1", 0
+kernel_version  DCB     "2.5.6.0", 0
         ALIGN   8
-kernel_built    DCB     "Oct 26, 2026 9:07 AM", 0
+kernel_built    DCB     "Oct 26, 2026 3:26 PM", 0
         ALIGN   8
 kernel_console  DCB     "EditForthWin Arm64", 0
         ALIGN   8
