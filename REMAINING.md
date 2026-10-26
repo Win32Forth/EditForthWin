@@ -1,6 +1,6 @@
 # Remaining assembly words
 
-Updated Oct 26, 2026 11:40 AM for version 2.5.2.0. ARM64 is `2.5.2.0`. x64 is `2.5.2.0-x64`. The kernel stamp is Oct 26, 2026 11:40 AM. The executables are not rebuilt in this commit. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
+Updated Oct 26, 2026 12:05 PM for version 2.5.3.0. ARM64 is `2.5.3.0`. x64 is `2.5.3.0-x64`. The kernel stamp is Oct 26, 2026 12:05 PM. The executables are not rebuilt in this commit. The Mac kernel (`EditForth/Forth/Kernel/forth.s`) has 401 boot words. The Windows ARM64 kernel had 372 at 1.2.0. 1.2.1 adds five: `EDIT-AT`, `SYSTEM`, `XEMIT`, `USER-DICT`, and `GROWMEMORYMB`. The x64 kernel is a translation of this ARM64 set, so it has the same words. `Forth/boot-fix.fth` is a cold-start suffix after `xref.fth`. It redefines `SYNONYM`, `REPLACES`, and `SUBSTITUTE`. A copy is shipped at `Forth/Resources/Library/Sources/boot-fix.fth` so `VIEW` can open it. The seven Mac cold-load files are unchanged.
 
 Punctuation names (`;` `,` `\` `\S` `S"` `(S")` `."` `S\"` `C"` `(C")` `C,` `TIME&DATE`) are present on both sides.
 
@@ -66,6 +66,8 @@ Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 
 2.5.1.0 does not add boot words. `BYE` already closes the editor. `EMIT-APP` and `EMIT-WINDOW-APP` write under `<source-dir>\<STEM>\`. INCLUDE on a clean Untitled tab opens the file, then runs `ANEW` and INCLUDE. Launch and Update User Data copy a shipped Library, AutoLoad, or Docs file when it is missing or older. A newer Documents file stays. Config is not replaced. `FORGET` calls `host_forget_drop_stale` after the registry prune, and only on the success path. A reclaimed vocabulary leaves the wordlist registry, the search order, and CURRENT. An empty search order becomes FORTH. The Mac KEY relocator change does not apply. `VIEW '` was already indexed from the unquoted `BOOT_WORD` line. Hayes and ANS-VALIDATE were not run for 2.5.1.0.
 
 2.5.2.0 does not add boot words. `VIEW` of `."`, `S"`, `C"`, `S\"`, and `\` was already indexed by the ARM64 suffix macros and by the x64 `DB` name bytes. `DISKVALUES.fth` was never shipped here. Hayes and ANS-VALIDATE were not run for 2.5.2.0.
+
+2.5.3.0 does not add boot words. Forth → Open EditForthWin Folder opens `Documents\EditForthWin` and replaces Show Library, Show AutoLoad, Show Docs, and Show Config. Hayes and ANS-VALIDATE were not run for 2.5.3.0.
 
 ## Hayes
 

@@ -680,10 +680,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     });
     forthMenu->addAction(QStringLiteral("&Restore Shipped Files..."), this, &MainWindow::restoreShipped);
     forthMenu->addSeparator();
-    forthMenu->addAction(QStringLiteral("Show &Library"), this, [this] { showUserFolder(QStringLiteral("Library")); });
-    forthMenu->addAction(QStringLiteral("Show &AutoLoad"), this, [this] { showUserFolder(QStringLiteral("AutoLoad")); });
-    forthMenu->addAction(QStringLiteral("Show &Docs"), this, [this] { showUserFolder(QStringLiteral("Docs")); });
-    forthMenu->addAction(QStringLiteral("Show &Config"), this, [this] { showUserFolder(QStringLiteral("Config")); });
+    forthMenu->addAction(QStringLiteral("Open EditForthWin &Folder"), this, [this] { showUserFolder(); });
 
     auto *helpMenu = menuBar()->addMenu(QStringLiteral("&Help"));
     helpMenu->addAction(QStringLiteral("EditForthWin Startup &Messages"), this,
@@ -1728,8 +1725,13 @@ void MainWindow::restoreShipped() {
         m_pipe->requestTree(QStringLiteral("replace"));
 }
 
-void MainWindow::showUserFolder(const QString &child) {
-    const QString path = QDir(userFolder()).filePath(child);
+void MainWindow::showUserFolder() {
+    QString path = userFolder();
+    if (!QFileInfo::exists(path)) {
+        const QString parent = QFileInfo(path).absolutePath();
+        if (QFileInfo::exists(parent))
+            path = parent;
+    }
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 

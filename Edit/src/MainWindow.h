@@ -70,7 +70,7 @@ private:
     void floadDialog();
     void chdirDialog();
     void restoreShipped();
-    void showUserFolder(const QString &child);
+    void showUserFolder();
     void toggleBrowse(bool on);
     void noteBrowse(CodeEdit *edit, bool on);
     void refreshViewBanners();
