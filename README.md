@@ -2,7 +2,7 @@
 
 Windows sibling of [EditForth](https://github.com/Win32Forth/EditForth). This tree holds the Forth console and the Qt editor.
 
-**Version 2.5.5.1** on ARM64 and **2.5.5.1-x64** on x64. The kernel stamp is Oct 26, 2026 9:07 AM. The executables are not rebuilt in this commit, and Hayes and ANS-VALIDATE were not run.
+**Version 2.5.5.1** on ARM64 and **2.5.5.1-x64** on x64. The kernel stamp is Oct 26, 2026 9:07 AM. ANS-VALIDATE is 394 passed, 0 failed on `fortharm64.exe` and on `forthx64.exe`. Hayes finished with `ALL COUNTS ZERO — PASS` on both.
 
 Starting `fortharm64.exe` or `forthx64.exe` opens a window. The cold-load lines appear, then the banner, then a prompt. The editor keeps those same lines under Help → EditForthWin Startup Messages and starts the Forth pane at the banner:
 
@@ -47,7 +47,7 @@ The banner matches the Mac EditForth console. The version, the date and time, an
 
 2.5.5.0 does not add boot words. Each Ask Forth profile stores an Ollama context window, `options.num_ctx`. The default is 32768. Models… offers 2K, 4K, 8K, 16K, 32K, and 64K. A saved profile with no window loads as 32K. The panel caption shows that size, for example `32K`. The session header records `Context window: N`. OpenAI-compatible calls do not send `num_ctx`. `num_predict` and `max_tokens` stay 8192. The Mac models sheet grew from 560 to 600 for this row. The Windows models dialog is 640 by 460. The executables are not rebuilt in this commit, and Hayes and ANS-VALIDATE were not run. Confirm `=== EditForthWin 2.5.5.0 === Oct 26, 2026 12:55 PM ===` on ARM64, or `=== EditForthWin 2.5.5.0-x64 === Oct 26, 2026 12:55 PM ===` on x64.
 
-2.5.5.1 does not add boot words. Ask Forth compiles on this Qt. A missing context window uses 32768, and that default is not passed to `QVariant::toInt`. The session path is read with `property("path")`. `EMIT-APP` writes `NAME.exe`, `NAME.img`, `app.img`, and `host.fix` in the outdir. It does not add a second folder named `NAME`, so `GCLOCK.fth` emits `Sample\GCLOCK\GCLOCK.exe`. The red close button on an emitted window posts Escape, and `KEY?` stays true until the image exits, so GCLOCK shuts down. The x64 translation of `FORGET` passes the cut address through the virtual register file into `host_forget_drop_stale`. The executables are not rebuilt in this commit, and Hayes and ANS-VALIDATE were not run. Confirm `=== EditForthWin 2.5.5.1 === Oct 26, 2026 9:07 AM ===` on ARM64, or `=== EditForthWin 2.5.5.1-x64 === Oct 26, 2026 9:07 AM ===` on x64.
+2.5.5.1 does not add boot words. Ask Forth compiles on this Qt. A missing context window uses 32768, and that default is not passed to `QVariant::toInt`. The session path is read with `property("path")`. `EMIT-APP` writes `NAME.exe`, `NAME.img`, `app.img`, and `host.fix` in the outdir. It does not add a second folder named `NAME`, so `GCLOCK.fth` emits `Sample\GCLOCK\GCLOCK.exe`. The red close button on an emitted window posts Escape, and `KEY?` stays true until the image exits, so GCLOCK shuts down. The x64 translation of `FORGET` passes the cut address through the virtual register file into `host_forget_drop_stale`. ANS-VALIDATE is 394 passed, 0 failed on `fortharm64.exe` and on `forthx64.exe`. Hayes finished with `ALL COUNTS ZERO — PASS` on both. Confirm `=== EditForthWin 2.5.5.1 === Oct 26, 2026 9:07 AM ===` on ARM64, or `=== EditForthWin 2.5.5.1-x64 === Oct 26, 2026 9:07 AM ===` on x64.
 
 `--agent` runs the same kernel with no window and writes the transcript to the console that launched it:
 
