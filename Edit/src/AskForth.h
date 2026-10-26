@@ -31,6 +31,8 @@ public:
         QString model;
         QString base;
         double temperature = 0.3;
+        // Ollama options.num_ctx. OpenAI-compatible calls do not send it.
+        int contextTokens = 32768;
     };
 
     explicit AskForthPanel(QWidget *parent = nullptr);

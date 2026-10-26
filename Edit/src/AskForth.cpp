@@ -130,6 +130,26 @@ QString wrapToWidth(const QString &text, int width) {
 
 double clampTemp(double v) { return qBound(0.0, v, 2.0); }
 
+constexpr int kDefaultContext = 32768;
+
+int clampContext(int value) {
+    const int choices[] = {2048, 4096, 8192, 16384, 32768, 65536};
+    int best = kDefaultContext;
+    int bestDist = 2147483647;
+    for (int choice : choices) {
+        int dist = value - choice;
+        if (dist < 0)
+            dist = -dist;
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = choice;
+        }
+    }
+    return best;
+}
+
+QString contextLabel(int tokens) { return QStringLiteral("%1K").arg(tokens / 1024); }
+
 QString trimSlash(QString s) {
     while (s.endsWith(QLatin1Char('/')))
         s.chop(1);
@@ -156,6 +176,7 @@ QJsonObject profileJson(const Profile &p) {
     o.insert(QStringLiteral("model"), p.model);
     o.insert(QStringLiteral("base"), p.base);
     o.insert(QStringLiteral("temperature"), p.temperature);
+    o.insert(QStringLiteral("contextTokens"), p.contextTokens);
     return o;
 }
 
@@ -169,6 +190,7 @@ Profile profileFrom(const QJsonObject &o) {
     p.model = o.value(QStringLiteral("model")).toString();
     p.base = o.value(QStringLiteral("base")).toString();
     p.temperature = clampTemp(o.value(QStringLiteral("temperature")).toDouble(0.3));
+    p.contextTokens = clampContext(o.value(QStringLiteral("contextTokens")).toInt(kDefaultContext));
     return p;
 }
 
@@ -668,6 +690,8 @@ AskForthPanel::Worker::Chat AskForthPanel::Worker::chat(const QVariantMap &job, 
         QJsonObject options;
         options.insert(QStringLiteral("num_predict"), kMaxTokens);
         options.insert(QStringLiteral("temperature"), temperature);
+        options.insert(QStringLiteral("num_ctx"),
+                       clampContext(job.value(QStringLiteral("contextTokens")).toInt(kDefaultContext)));
         body.insert(QStringLiteral("options"), options);
         req.setUrl(QUrl(joinUrl(base, QStringLiteral("/api/chat"))));
     } else {
@@ -1396,6 +1420,7 @@ void AskForthPanel::buildUi() {
             "Library defaults to Library/Sample.\n\n"
             "Local Ask needs Ollama (https://ollama.com) and a chat model: ollama pull qwen2.5-coder:7b. "
             "SpaceXAI uses Models… and the XAI_API_KEY environment variable, or a key saved for that profile. "
+            "Models… sets an Ollama context window. The default is 32K. OpenAI-compatible calls do not send it. "
             "Hybrid and Semantic Library search uses nomic-embed-text on local Ollama. Until that index is ready, "
             "the status line says keyword (no embed index)."),
         this);
@@ -1710,6 +1735,7 @@ void AskForthPanel::selectProfile(int index) {
     if (profile.provider != QLatin1String("ollama"))
         caption += QStringLiteral(" · %1").arg(profile.base);
     caption += QStringLiteral(" · temperature %1").arg(QString::number(profile.temperature, 'f', 2));
+    caption += QStringLiteral(" · %1").arg(contextLabel(profile.contextTokens));
     m_caption->setText(caption);
     refreshBanner();
 }
@@ -1937,7 +1963,7 @@ void AskForthPanel::editModels() {
     QVector<Profile> list = loadProfiles();
     QDialog dialog(this);
     dialog.setWindowTitle(QStringLiteral("Ask Forth models"));
-    dialog.resize(640, 420);
+    dialog.resize(640, 460);
     auto *names = new QListWidget(&dialog);
     auto *name = new QLineEdit(&dialog);
     auto *provider = new QComboBox(&dialog);
@@ -1949,6 +1975,14 @@ void AskForthPanel::editModels() {
     temperature->setRange(0, 2);
     temperature->setDecimals(2);
     temperature->setSingleStep(0.1);
+    auto *context = new QComboBox(&dialog);
+    const int contextChoices[] = {2048, 4096, 8192, 16384, 32768, 65536};
+    for (int choice : contextChoices)
+        context->addItem(contextLabel(choice), choice);
+    context->setToolTip(QStringLiteral(
+        "Ollama options.num_ctx. This is the token budget for the prompt and the reply together. "
+        "32K matches qwen2.5-coder:7b and :14b. Use 8K for a model whose card says 256K, or Ollama "
+        "reserves that whole window. OpenAI-compatible calls do not send this value."));
     auto *key = new QLineEdit(&dialog);
     key->setEchoMode(QLineEdit::Password);
     auto *keyStatus = new QLabel(&dialog);
@@ -1998,6 +2032,8 @@ void AskForthPanel::editModels() {
         model->setText(profile->model);
         base->setText(profile->base);
         temperature->setValue(profile->temperature);
+        const int contextIndex = context->findData(profile->contextTokens);
+        context->setCurrentIndex(contextIndex < 0 ? context->findData(kDefaultContext) : contextIndex);
         key->clear();
         const bool openai = profile->provider == QLatin1String("openai");
         base->setEnabled(openai);
@@ -2015,6 +2051,7 @@ void AskForthPanel::editModels() {
         profile->model = model->text().trimmed();
         profile->base = base->text().trimmed();
         profile->temperature = temperature->value();
+        profile->contextTokens = clampContext(context->currentData().toInt());
         if (names->currentItem() != nullptr)
             names->currentItem()->setText(profile->name);
     };
@@ -2086,6 +2123,7 @@ void AskForthPanel::editModels() {
     form->addRow(QStringLiteral("Model"), model);
     form->addRow(QStringLiteral("Base URL"), base);
     form->addRow(QStringLiteral("Temperature"), temperature);
+    form->addRow(QStringLiteral("Context window"), context);
     form->addRow(QStringLiteral("API key"), key);
     auto *keyRow = new QHBoxLayout;
     keyRow->addWidget(saveKeyButton);
@@ -2192,6 +2230,7 @@ QString AskForthPanel::referenceBlock(const QString &path) const {
 
 QStringList AskForthPanel::sessionSettingLines() const {
     QStringList lines;
+    lines << QStringLiteral("Context window: %1").arg(profileById(activeId()).contextTokens);
     const LibraryOpts opts = libraryOpts();
     if (m_library != nullptr && m_library->isChecked()) {
         lines << QStringLiteral("Include Library context: on");
@@ -2461,6 +2500,7 @@ QVariantMap AskForthPanel::jobFor(const Profile &profile, const QString &system,
     job.insert(QStringLiteral("model"), profile.model);
     job.insert(QStringLiteral("base"), profile.base);
     job.insert(QStringLiteral("temperature"), profile.temperature);
+    job.insert(QStringLiteral("contextTokens"), profile.contextTokens);
     job.insert(QStringLiteral("key"), resolveKey(profile.id));
     job.insert(QStringLiteral("system"), system);
     job.insert(QStringLiteral("user"), user);
