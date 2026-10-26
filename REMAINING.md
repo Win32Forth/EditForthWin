@@ -77,7 +77,7 @@ Checked on ARM64: `sa-files-smoke.fth` printed 42, `sa-float-smoke.fth` printed 
 
 2.5.6.0 does not add boot words. The circled help marks in Ask Forth are buttons. A click opens a dialog with the section title and the help text. Reference uses an i. Ask Forth and EditForthWin Agent use ?. Hayes and ANS-VALIDATE were not run for 2.5.6.0.
 
-2.5.6.1 does not add boot words. The Ask Forth help dialogs are a normal width. The information icon sits at the top left of the text. The help text wraps in a block 440 pixels wide. The earlier message box stretched the icon across the left half and put the text on the right. Hayes and ANS-VALIDATE were not run for 2.5.6.1.
+2.5.6.1 does not add boot words. The Ask Forth help dialogs are a normal width. The information icon sits at the top left of the text. The help text wraps in a block 440 pixels wide. The earlier message box stretched the icon across the left half and put the text on the right. ANS-VALIDATE is 394 passed, 0 failed on `fortharm64.exe` and on `forthx64.exe`. Hayes finished with `ALL COUNTS ZERO — PASS` on both.
 
 ## Hayes
 

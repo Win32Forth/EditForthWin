@@ -2,7 +2,7 @@
 
 Windows sibling of [EditForth](https://github.com/Win32Forth/EditForth). This tree holds the Forth console and the Qt editor.
 
-**Version 2.5.6.1** on ARM64 and **2.5.6.1-x64** on x64. The kernel stamp is Oct 26, 2026 1:54 PM. Hayes and ANS-VALIDATE were not run for 2.5.6.1.
+**Version 2.5.6.1** on ARM64 and **2.5.6.1-x64** on x64. The kernel stamp is Oct 26, 2026 1:54 PM. ANS-VALIDATE is 394 passed, 0 failed on `fortharm64.exe` and on `forthx64.exe`. Hayes finished with `ALL COUNTS ZERO — PASS` on both.
 
 Starting `fortharm64.exe` or `forthx64.exe` opens a window. The cold-load lines appear, then the banner, then a prompt. The editor keeps those same lines under Help → EditForthWin Startup Messages and starts the Forth pane at the banner:
 
@@ -51,7 +51,7 @@ The banner matches the Mac EditForth console. The version, the date and time, an
 
 2.5.6.0 does not add boot words. The circled help marks in Ask Forth are buttons. A click opens a dialog with the section title, the help text, and OK. The marks sit beside Ask Forth, beside EditForthWin Agent, and beside Reference. Reference uses an i. The others use ?. The Reference dialog says to open a source file, select it in the dropdown, and that it stays until deselected. New session starts a new question/Answer session. Hover tips on those marks are gone. The executables are not rebuilt in this commit, and Hayes and ANS-VALIDATE were not run. Confirm `=== EditForthWin 2.5.6.0 === Oct 26, 2026 3:26 PM ===` on ARM64, or `=== EditForthWin 2.5.6.0-x64 === Oct 26, 2026 3:26 PM ===` on x64.
 
-2.5.6.1 does not add boot words. The Ask Forth help dialogs are a normal width. The information icon sits at the top left of the text. The help text wraps in a block 440 pixels wide. The earlier message box stretched the icon across the left half and put the text on the right. Hayes and ANS-VALIDATE were not run for 2.5.6.1. Confirm `=== EditForthWin 2.5.6.1 === Oct 26, 2026 1:54 PM ===` on ARM64, or `=== EditForthWin 2.5.6.1-x64 === Oct 26, 2026 1:54 PM ===` on x64.
+2.5.6.1 does not add boot words. The Ask Forth help dialogs are a normal width. The information icon sits at the top left of the text. The help text wraps in a block 440 pixels wide. The earlier message box stretched the icon across the left half and put the text on the right. ANS-VALIDATE is 394 passed, 0 failed on `fortharm64.exe` and on `forthx64.exe`. Hayes finished with `ALL COUNTS ZERO — PASS` on both. Confirm `=== EditForthWin 2.5.6.1 === Oct 26, 2026 1:54 PM ===` on ARM64, or `=== EditForthWin 2.5.6.1-x64 === Oct 26, 2026 1:54 PM ===` on x64.
 
 `--agent` runs the same kernel with no window and writes the transcript to the console that launched it:
 
