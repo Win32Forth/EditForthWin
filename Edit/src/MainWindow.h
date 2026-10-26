@@ -167,4 +167,5 @@ private:
     bool m_captureStartup = true;
     QString m_startupPartial;
     QString m_startupLog;
+    int m_statusGen = 0;
 };

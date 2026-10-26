@@ -4,6 +4,7 @@
 #include <QVector>
 #include <QWidget>
 
+class QLabel;
 class QListWidget;
 
 struct SearchHit {
@@ -37,7 +38,13 @@ class SearchResults : public QWidget {
     Q_OBJECT
 public:
     SearchResults(const QString &summary, const QVector<SearchHit> &hits, QWidget *parent = nullptr);
+    void showHits(const QString &summary, const QVector<SearchHit> &hits);
 
 signals:
     void openHit(const QString &path, int line, int column);
+    void modifyRequested();
+
+private:
+    QLabel *m_summary = nullptr;
+    QListWidget *m_list = nullptr;
 };

@@ -90,6 +90,7 @@
         EXTERN host_edit
         EXTERN host_edit_at
         EXTERN host_system
+        EXTERN host_hyper_reindex
         EXTERN host_fromlib
         EXTERN host_fromlib_off
         EXTERN host_fromlib_query
@@ -2229,6 +2230,22 @@ XSYSTEM
         add     sp, sp, #64
         NEXT
 XSYSTEM_END
+
+; (HX-BG-REINDEX) ( -- n ). 1 = the side index is already in place.
+; A companion build returns 0 and the host reloads later.
+        BOOT_WORD (HX-BG-REINDEX), (HX-BG-REINDEX) ( -- n ) background HYPER-REINDEX. 1 means reload the index now, 0, XHX_BG_REINDEX, XHX_BG_REINDEX_END
+XHX_BG_REINDEX
+        sub     sp, sp, #64
+        stp     x29, x30, [sp, #32]
+        bl      host_hyper_reindex
+        str     x0, [sp, #48]
+        ldp     x29, x30, [sp, #32]
+        ldr     x0, [sp, #48]
+        add     sp, sp, #64
+        str     x20, [x22, #-8]!
+        mov     x20, x0
+        NEXT
+XHX_BG_REINDEX_END
 
 ; VIEW-PATH, DBG-ON, and DBG-OFF live with the stepper in prims_dbg.asm.
 

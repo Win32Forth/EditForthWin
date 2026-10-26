@@ -162,6 +162,8 @@ void DebugBar::setNote(const QString &text) {
     m_note->setVisible(!text.isEmpty());
 }
 
+QString DebugBar::noteText() const { return m_note->text(); }
+
 void DebugBar::setConsolePlace(ConsolePlace place) {
     if (place == ConsolePlace::Floating)
         m_dock->setText(QStringLiteral("Dock"));

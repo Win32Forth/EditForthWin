@@ -16,6 +16,7 @@ public:
     void setDebug(bool armed, bool paused, const QString &name);
     void setError(const QString &text);
     void setNote(const QString &text);
+    QString noteText() const;
     void setBreaks(const QString &text);
     enum class ConsolePlace { Docked, Floating, Hidden };
     void setConsolePlace(ConsolePlace place);

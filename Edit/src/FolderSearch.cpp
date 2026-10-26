@@ -12,7 +12,6 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
-#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QVBoxLayout>
@@ -164,9 +163,21 @@ bool runFolderSearchDialog(QWidget *parent, const QString &startDir, SearchReque
     dialog.setWindowTitle(QStringLiteral("Search in Folders"));
     dialog.resize(560, 360);
     auto *query = new QLineEdit(settings.value(QStringLiteral("searchQuery")).toString(), &dialog);
-    auto *folders = new QPlainTextEdit(&dialog);
-    folders->setPlainText(settings.value(QStringLiteral("searchFolders"), startDir).toString());
-    folders->setPlaceholderText(QStringLiteral("One folder path per line"));
+    QStringList savedFolders;
+    if (settings.contains(QStringLiteral("searchFolder0"))) {
+        for (int i = 0; i < 3; ++i)
+            savedFolders << settings.value(QStringLiteral("searchFolder%1").arg(i)).toString();
+    } else {
+        savedFolders = settings.value(QStringLiteral("searchFolders"), startDir)
+                           .toString()
+                           .split(QLatin1Char('\n'));
+    }
+    while (savedFolders.size() < 3)
+        savedFolders << QString();
+    if (savedFolders.at(0).trimmed().isEmpty() && savedFolders.at(1).trimmed().isEmpty() &&
+        savedFolders.at(2).trimmed().isEmpty())
+        savedFolders[0] = startDir;
+    QLineEdit *folderEdits[3];
     auto *extensions = new QLineEdit(
         settings.value(QStringLiteral("searchExtensions"), QStringLiteral("fth, fs, 4th, f, txt"))
             .toString(),
@@ -177,17 +188,6 @@ bool runFolderSearchDialog(QWidget *parent, const QString &startDir, SearchReque
     matchCase->setChecked(settings.value(QStringLiteral("searchCase"), false).toBool());
     auto *whole = new QCheckBox(QStringLiteral("Whole word"), &dialog);
     whole->setChecked(settings.value(QStringLiteral("searchWord"), false).toBool());
-    auto *add = new QPushButton(QStringLiteral("Add Folder..."), &dialog);
-    QObject::connect(add, &QPushButton::clicked, &dialog, [&] {
-        const QString dir = QFileDialog::getExistingDirectory(&dialog, QStringLiteral("Search Folder"),
-                                                              startDir);
-        if (dir.isEmpty())
-            return;
-        QString text = folders->toPlainText();
-        if (!text.isEmpty() && !text.endsWith(QLatin1Char('\n')))
-            text += QLatin1Char('\n');
-        folders->setPlainText(text + dir);
-    });
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -195,9 +195,26 @@ bool runFolderSearchDialog(QWidget *parent, const QString &startDir, SearchReque
     auto *box = new QVBoxLayout(&dialog);
     box->addWidget(new QLabel(QStringLiteral("Find"), &dialog));
     box->addWidget(query);
-    box->addWidget(new QLabel(QStringLiteral("Folders"), &dialog));
-    box->addWidget(folders, 1);
-    box->addWidget(add);
+    for (int i = 0; i < 3; ++i) {
+        auto *row = new QHBoxLayout;
+        auto *edit = new QLineEdit(savedFolders.at(i), &dialog);
+        folderEdits[i] = edit;
+        auto *choose = new QPushButton(QStringLiteral("Choose..."), &dialog);
+        auto *clear = new QPushButton(QStringLiteral("Clear"), &dialog);
+        QObject::connect(choose, &QPushButton::clicked, &dialog, [edit, &dialog, startDir] {
+            const QString dir = QFileDialog::getExistingDirectory(
+                &dialog, QStringLiteral("Search Folder"),
+                edit->text().trimmed().isEmpty() ? startDir : edit->text());
+            if (!dir.isEmpty())
+                edit->setText(dir);
+        });
+        QObject::connect(clear, &QPushButton::clicked, &dialog, [edit] { edit->clear(); });
+        row->addWidget(new QLabel(QStringLiteral("Folder %1").arg(i + 1), &dialog));
+        row->addWidget(edit, 1);
+        row->addWidget(choose);
+        row->addWidget(clear);
+        box->addLayout(row);
+    }
     box->addWidget(new QLabel(QStringLiteral("Extensions"), &dialog));
     box->addWidget(extensions);
     auto *checks = new QHBoxLayout;
@@ -211,18 +228,18 @@ bool runFolderSearchDialog(QWidget *parent, const QString &startDir, SearchReque
         return false;
     request->query = query->text();
     request->roots.clear();
-    const QStringList lines = folders->toPlainText().split(QLatin1Char('\n'));
-    for (QString line : lines) {
-        line = line.trimmed();
+    for (int i = 0; i < 3; ++i) {
+        const QString line = folderEdits[i]->text().trimmed();
         if (!line.isEmpty())
             request->roots.append(line);
+        settings.setValue(QStringLiteral("searchFolder%1").arg(i), line);
     }
     request->extensions = extensions->text().split(QLatin1Char(','));
     request->recursive = nested->isChecked();
     request->caseSensitive = matchCase->isChecked();
     request->wholeWord = whole->isChecked();
     settings.setValue(QStringLiteral("searchQuery"), request->query);
-    settings.setValue(QStringLiteral("searchFolders"), folders->toPlainText());
+    settings.setValue(QStringLiteral("searchFolders"), request->roots.join(QLatin1Char('\n')));
     settings.setValue(QStringLiteral("searchExtensions"), extensions->text());
     settings.setValue(QStringLiteral("searchNested"), request->recursive);
     settings.setValue(QStringLiteral("searchCase"), request->caseSensitive);
@@ -232,22 +249,33 @@ bool runFolderSearchDialog(QWidget *parent, const QString &startDir, SearchReque
 
 SearchResults::SearchResults(const QString &summary, const QVector<SearchHit> &hits, QWidget *parent)
     : QWidget(parent) {
-    auto *title = new QLabel(summary, this);
-    title->setWordWrap(true);
-    auto *list = new QListWidget(this);
+    m_summary = new QLabel(this);
+    m_summary->setWordWrap(true);
+    m_list = new QListWidget(this);
+    auto *modify = new QPushButton(QStringLiteral("Modify Search"), this);
+    auto *row = new QHBoxLayout;
+    row->addWidget(m_summary, 1);
+    row->addWidget(modify);
+    auto *box = new QVBoxLayout(this);
+    box->setContentsMargins(8, 8, 8, 8);
+    box->addLayout(row);
+    box->addWidget(m_list, 1);
+    connect(modify, &QPushButton::clicked, this, &SearchResults::modifyRequested);
+    connect(m_list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
+        emit openHit(item->data(Qt::UserRole).toString(), item->data(Qt::UserRole + 1).toInt(),
+                     item->data(Qt::UserRole + 2).toInt());
+    });
+    showHits(summary, hits);
+}
+
+void SearchResults::showHits(const QString &summary, const QVector<SearchHit> &hits) {
+    m_summary->setText(summary);
+    m_list->clear();
     for (const SearchHit &hit : hits) {
         auto *item = new QListWidgetItem(
-            QStringLiteral("%1:%2: %3").arg(hit.path).arg(hit.line).arg(hit.snippet), list);
+            QStringLiteral("%1:%2: %3").arg(hit.path).arg(hit.line).arg(hit.snippet), m_list);
         item->setData(Qt::UserRole, hit.path);
         item->setData(Qt::UserRole + 1, hit.line);
         item->setData(Qt::UserRole + 2, hit.column);
     }
-    auto *box = new QVBoxLayout(this);
-    box->setContentsMargins(8, 8, 8, 8);
-    box->addWidget(title);
-    box->addWidget(list, 1);
-    connect(list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
-        emit openHit(item->data(Qt::UserRole).toString(), item->data(Qt::UserRole + 1).toInt(),
-                     item->data(Qt::UserRole + 2).toInt());
-    });
 }

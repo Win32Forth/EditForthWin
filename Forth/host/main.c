@@ -345,6 +345,11 @@ static int host_user_dir(char *dst, size_t cap)
     return got > 0 && got < cap;
 }
 
+int host_documents_dir(char *dst, size_t cap)
+{
+    return host_user_dir(dst, cap);
+}
+
 static int host_under_root(const char *full, const char *root, const char **rest)
 {
     size_t n;
@@ -705,6 +710,11 @@ static char *host_hyper_specs_text(long long *out_len)
     *out_len = (long long)used;
     host_list_free(&seen);
     return text;
+}
+
+char *host_hyper_source_list(long long *out_len)
+{
+    return host_hyper_specs_text(out_len);
 }
 
 static int host_is_hyper_specs(const char *path)

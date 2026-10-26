@@ -127,6 +127,7 @@ EXTRN host_resize:PROC
 EXTRN host_resolve:PROC
 EXTRN host_sleep:PROC
 EXTRN host_system:PROC
+EXTRN host_hyper_reindex:PROC
 EXTRN host_time_date:PROC
 EXTRN host_was_included:PROC
 EXTRN include_name_len:BYTE
@@ -13164,6 +13165,128 @@ XSYSTEM:
     mov rax, QWORD PTR arm_x1
     jmp rax
 XSYSTEM_END:
+BWSTR SEGMENT ALIGN(1) READ
+nm_XHX_BG_REINDEX:
+    ; DCB "(HX-BG-REINDEX)", 0
+    DB "(HX-BG-REINDEX)", 0
+hl_XHX_BG_REINDEX:
+    ; DCB "(HX-BG-REINDEX) ( -- n ) background HYPER-REINDEX. 1 means reload the index now", 0
+    DB "(HX-BG-REINDEX) ( -- n ) background HYPER-REINDEX. 1 means reload the index now", 0
+BWSTR ENDS
+BOOTWORD SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+row_XHX_BG_REINDEX:
+    ; DCQ     nm_XHX_BG_REINDEX, hl_XHX_BG_REINDEX
+    DQ OFFSET nm_XHX_BG_REINDEX, OFFSET hl_XHX_BG_REINDEX
+    ; DCQ     0
+    DQ 0
+    ; DCQ     XHX_BG_REINDEX, XHX_BG_REINDEX_END
+    DQ OFFSET XHX_BG_REINDEX, OFFSET XHX_BG_REINDEX_END
+BOOTWORD ENDS
+BOOTPTR SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+    ; DCQ     row_XHX_BG_REINDEX
+    DQ OFFSET row_XHX_BG_REINDEX
+BOOTPTR ENDS
+.CODE
+XHX_BG_REINDEX:
+    ; sub     sp, sp, #64
+    mov rax, rsp
+    sub rax, 40h
+    mov rsp, rax
+    ; stp     x29, x30, [sp, #32]
+    lea r10, [rsp]
+    add r10, 20h
+    mov rax, QWORD PTR arm_x29
+    mov QWORD PTR [r10+0], rax
+    mov rax, QWORD PTR arm_x30
+    mov QWORD PTR [r10+8], rax
+    ; bl      host_hyper_reindex
+    push rbx
+    mov rbx, rsp
+    and rsp, -16
+    sub rsp, 80
+    mov rcx, QWORD PTR arm_x0
+    mov rdx, QWORD PTR arm_x1
+    mov r8, QWORD PTR arm_x2
+    mov r9, QWORD PTR arm_x3
+    mov rax, QWORD PTR arm_x4
+    mov QWORD PTR [rsp+32], rax
+    mov rax, QWORD PTR arm_x5
+    mov QWORD PTR [rsp+40], rax
+    mov rax, QWORD PTR arm_x6
+    mov QWORD PTR [rsp+48], rax
+    mov rax, QWORD PTR arm_x7
+    mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
+    call host_hyper_reindex
+    mov QWORD PTR arm_x0, rax
+    mov rsp, rbx
+    pop rbx
+    ; str     x0, [sp, #48]
+    lea r10, [rsp]
+    add r10, 30h
+    mov rax, QWORD PTR arm_x0
+    mov QWORD PTR [r10], rax
+    ; ldp     x29, x30, [sp, #32]
+    lea r10, [rsp]
+    add r10, 20h
+    mov rax, QWORD PTR [r10]
+    mov rcx, QWORD PTR [r10+8]
+    mov QWORD PTR arm_x29, rax
+    mov QWORD PTR arm_x30, rcx
+    ; ldr     x0, [sp, #48]
+    lea r10, [rsp]
+    add r10, 30h
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x0, rax
+    ; add     sp, sp, #64
+    mov rax, rsp
+    add rax, 40h
+    mov rsp, rax
+    ; str     x20, [x22, #-8]!
+    mov rax, QWORD PTR arm_x22
+    add rax, -8
+    mov QWORD PTR arm_x22, rax
+    mov r10, QWORD PTR arm_x22
+    mov rax, QWORD PTR arm_x20
+    mov QWORD PTR [r10], rax
+    ; mov     x20, x0
+    mov rax, QWORD PTR arm_x0
+    mov QWORD PTR arm_x20, rax
+    ; cbnz    x28, next_debug_gate
+    mov rax, QWORD PTR arm_x28
+    cmp rax, 0
+    jne next_debug_gate
+    ; lea x1, debug_break_asap
+    lea rax, debug_break_asap
+    mov QWORD PTR arm_x1, rax
+    ; ldr     x1, [x1]
+    mov r10, QWORD PTR arm_x1
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; cbnz    x1, next_debug_gate
+    mov rax, QWORD PTR arm_x1
+    cmp rax, 0
+    jne next_debug_gate
+    ; ldr     x21, [x19], #8
+    mov r10, QWORD PTR arm_x19
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x21, rax
+    mov rax, QWORD PTR arm_x19
+    add rax, 8
+    mov QWORD PTR arm_x19, rax
+    ; ldr     x1, [x21]
+    mov r10, QWORD PTR arm_x21
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; br      x1
+    mov rax, QWORD PTR arm_x1
+    jmp rax
+XHX_BG_REINDEX_END:
 BWSTR SEGMENT ALIGN(1) READ
 nm_XRO:
     ; DCB "R/O", 0

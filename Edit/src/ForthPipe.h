@@ -50,6 +50,7 @@ public slots:
     void noteEdit(const QString &path, int line);
     void noteLast(const QString &name);
     void noteVersion(const QString &text);
+    void noteStatus(const QString &text);
 
 signals:
     void outputReceived(const QString &text);
@@ -63,6 +64,7 @@ signals:
     void editReceived(const QString &path, int line);
     void lastReceived(const QString &name);
     void versionReceived(const QString &text);
+    void statusReceived(const QString &text);
 
 private:
     void post(const QByteArray &json);

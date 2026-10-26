@@ -181,6 +181,9 @@ public:
                 } else if (op == QLatin1String("version")) {
                     QMetaObject::invokeMethod(owner, "noteVersion", Qt::QueuedConnection,
                                               Q_ARG(QString, obj.value(QStringLiteral("text")).toString()));
+                } else if (op == QLatin1String("status")) {
+                    QMetaObject::invokeMethod(owner, "noteStatus", Qt::QueuedConnection,
+                                              Q_ARG(QString, obj.value(QStringLiteral("text")).toString()));
                 }
                 dst = reinterpret_cast<char *>(hdr);
                 need = 4;
@@ -254,6 +257,8 @@ QList<QByteArray> ForthPipe::takeOutgoing() {
 void ForthPipe::noteVersion(const QString &text) {
     emit versionReceived(text);
 }
+
+void ForthPipe::noteStatus(const QString &text) { emit statusReceived(text); }
 
 void ForthPipe::post(const QByteArray &json) {
     QByteArray frame(4 + json.size(), '\0');

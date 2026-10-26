@@ -9,9 +9,9 @@ PUBLIC kernel_version
 PUBLIC kernel_built
 PUBLIC kernel_console
 
-kernel_version DB "1.3.1-x64", 0
+kernel_version DB "2.3.9.0-x64", 0
 ALIGN 8
-kernel_built DB "Oct 19, 2026 7:56 PM", 0
+kernel_built DB "Oct 26, 2026 10:20 AM", 0
 ALIGN 8
 kernel_console DB "EditForthWin x64", 0
 ALIGN 8

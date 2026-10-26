@@ -38,6 +38,7 @@
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QTabWidget>
+#include <QTimer>
 #include <QTextBlock>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -55,6 +56,17 @@ const QString kSourceFilter =
 
 bool isBye(const QString &line) {
     return line.trimmed().compare(QLatin1String("BYE"), Qt::CaseInsensitive) == 0;
+}
+
+QString searchSummary(const SearchOutcome &outcome) {
+    QString summary = QStringLiteral("%1 hit%2 in %3 file%4")
+                          .arg(outcome.hits.size())
+                          .arg(outcome.hits.size() == 1 ? QString() : QStringLiteral("s"))
+                          .arg(outcome.filesScanned)
+                          .arg(outcome.filesScanned == 1 ? QString() : QStringLiteral("s"));
+    if (outcome.truncated)
+        summary += QStringLiteral(" (stopped at 5000)");
+    return summary;
 }
 
 // Whole line is one of these words. A name after the word is a normal eval.
@@ -322,6 +334,21 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             if (m_float != nullptr)
                 m_float->setWindowTitle(consoleName);
         }
+    });
+    connect(m_pipe, &ForthPipe::statusReceived, this, [this](const QString &text) {
+        QString trimmed = text;
+        trimmed.replace(QLatin1Char('\n'), QLatin1Char(' '));
+        trimmed.replace(QLatin1Char('\r'), QLatin1Char(' '));
+        trimmed = trimmed.simplified();
+        if (trimmed.isEmpty())
+            return;
+        const int gen = ++m_statusGen;
+        m_debug->setNote(trimmed);
+        QTimer::singleShot(3000, this, [this, gen, trimmed] {
+            if (m_statusGen != gen || m_debug->noteText() != trimmed)
+                return;
+            m_debug->setNote(QString());
+        });
     });
     connect(m_debug, &DebugBar::includeRequested, this, &MainWindow::includeCurrent);
     connect(m_debug, &DebugBar::runRequested, this, [this] { prepareRun(RunKind::Execute); });
@@ -1456,16 +1483,27 @@ void MainWindow::searchInFolders() {
     QApplication::setOverrideCursor(Qt::WaitCursor);
     const SearchOutcome outcome = searchFolders(request);
     QApplication::restoreOverrideCursor();
-    QString summary = QStringLiteral("%1 hit%2 in %3 file%4")
-                          .arg(outcome.hits.size())
-                          .arg(outcome.hits.size() == 1 ? QString() : QStringLiteral("s"))
-                          .arg(outcome.filesScanned)
-                          .arg(outcome.filesScanned == 1 ? QString() : QStringLiteral("s"));
-    if (outcome.truncated)
-        summary += QStringLiteral(" (stopped at 5000)");
-    auto *results = new SearchResults(summary, outcome.hits);
+    auto *results = new SearchResults(searchSummary(outcome), outcome.hits);
     connect(results, &SearchResults::openHit, this, [this](const QString &path, int line, int column) {
         revealLine(path, line, column);
+    });
+    connect(results, &SearchResults::modifyRequested, this, [this, results] {
+        SearchRequest again;
+        QString againStart = m_forthDir;
+        if (CodeEdit *edit = currentEdit()) {
+            const QString path = edit->property(kPath).toString();
+            if (!path.isEmpty())
+                againStart = QFileInfo(path).absolutePath();
+        }
+        if (!runFolderSearchDialog(this, againStart, &again))
+            return;
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        const SearchOutcome next = searchFolders(again);
+        QApplication::restoreOverrideCursor();
+        results->showHits(searchSummary(next), next.hits);
+        const int tab = m_tabs->indexOf(results);
+        if (tab >= 0)
+            m_tabs->setCurrentIndex(tab);
     });
     const int index = m_tabs->addTab(results, QStringLiteral("Search"));
     m_tabs->setCurrentIndex(index);

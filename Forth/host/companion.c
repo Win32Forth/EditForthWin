@@ -49,6 +49,10 @@ int forth_boot(void);
 #define COMPANION_OUT 65536
 #define COMPANION_MSG (4 * 1024 * 1024)
 
+static CRITICAL_SECTION g_pipe_cs;
+static volatile LONG g_pipe_cs_ready;
+static void pipe_lock_init(void);
+
 static HANDLE g_pipe = INVALID_HANDLE_VALUE;
 static char g_out[COMPANION_OUT];
 static int g_out_n;
@@ -108,7 +112,13 @@ static int pipe_send(const char *json)
     hdr[1] = (unsigned char)(n >> 8);
     hdr[2] = (unsigned char)(n >> 16);
     hdr[3] = (unsigned char)(n >> 24);
-    return pipe_write(hdr, 4) && pipe_write(json, n);
+    pipe_lock_init();
+    EnterCriticalSection(&g_pipe_cs);
+    {
+        int ok = pipe_write(hdr, 4) && pipe_write(json, n);
+        LeaveCriticalSection(&g_pipe_cs);
+        return ok;
+    }
 }
 
 static int pipe_send_text(const char *op, const char *text, int n)
@@ -428,6 +438,55 @@ static void trim_line(char *s)
 
 static volatile LONG g_evaluating;
 static volatile LONG g_quit_req;
+static volatile LONG g_companion_active;
+static volatile LONG g_companion_ready;
+static CRITICAL_SECTION g_eval_cs;
+static volatile LONG g_eval_cs_ready;
+
+static void pipe_lock_init(void)
+{
+    if (InterlockedCompareExchange(&g_pipe_cs_ready, 1, 0) == 0)
+        InitializeCriticalSection(&g_pipe_cs);
+}
+
+static void eval_lock_init(void)
+{
+    if (InterlockedCompareExchange(&g_eval_cs_ready, 1, 0) == 0)
+        InitializeCriticalSection(&g_eval_cs);
+}
+
+int companion_is_active(void)
+{
+    return g_companion_active != 0;
+}
+
+int companion_is_ready(void)
+{
+    return g_companion_ready != 0;
+}
+
+void companion_status_note(const char *text)
+{
+    if (text == NULL || g_companion_active == 0)
+        return;
+    pipe_send_text("status", text, (int)strlen(text));
+}
+
+int companion_eval_idle(const char *text)
+{
+    int rc;
+
+    if (text == NULL || g_companion_active == 0)
+        return -1;
+    eval_lock_init();
+    EnterCriticalSection(&g_eval_cs);
+    g_evaluating = 1;
+    rc = forth_eval(text, strlen(text));
+    g_evaluating = 0;
+    LeaveCriticalSection(&g_eval_cs);
+    companion_flush();
+    return rc;
+}
 static HANDLE g_break_ev = NULL;
 static HANDLE g_break_stop = NULL;
 static HANDLE g_break_thread = NULL;
@@ -863,11 +922,13 @@ int companion_run(const wchar_t *pipe_name)
         if (n > 0)
             pipe_send_text("version", msg, n);
     }
+    g_companion_active = 1;
     forth_autoload();
     companion_flush();
     companion_send_cwd();
     forth_prompt();
     companion_flush();
+    g_companion_ready = 1;
 
     for (;;) {
         char op[32];
@@ -902,9 +963,12 @@ int companion_run(const wchar_t *pipe_name)
             rc = 0;
             break;
         }
+        eval_lock_init();
+        EnterCriticalSection(&g_eval_cs);
         g_evaluating = 1;
         forth_eval(text, strlen(text));
         g_evaluating = 0;
+        LeaveCriticalSection(&g_eval_cs);
         if (g_quit_req) {
             rc = 0;
             break;
@@ -916,6 +980,8 @@ int companion_run(const wchar_t *pipe_name)
     }
 
 done:
+    g_companion_ready = 0;
+    g_companion_active = 0;
     host_debug_set_notify(NULL, NULL);
     host_set_edit(NULL);
     host_set_edit_at(NULL);
