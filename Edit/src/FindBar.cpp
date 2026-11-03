@@ -1,5 +1,8 @@
 #include "FindBar.h"
 
+#include "ForthConsole.h"
+
+#include <QApplication>
 #include <QCheckBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -112,11 +115,25 @@ void FindBar::findNext() { find(false); }
 
 void FindBar::findPrevious() { find(true); }
 
+bool FindBar::replaceAllowed(int position) const {
+    if (m_edit == nullptr || m_edit->isReadOnly())
+        return false;
+    if (const auto *console = qobject_cast<const ForthConsole *>(m_edit)) {
+        if (position < console->protectedEnd()) {
+            QApplication::beep();
+            return false;
+        }
+    }
+    return true;
+}
+
 void FindBar::replaceSelection() {
     if (m_edit == nullptr || m_edit->isReadOnly())
         return;
     QTextCursor cursor = m_edit->textCursor();
     if (!cursor.hasSelection())
+        return;
+    if (!replaceAllowed(cursor.selectionStart()))
         return;
     const QString selected = cursor.selectedText();
     const QString needle = m_find->text();
@@ -147,11 +164,24 @@ void FindBar::replaceAll() {
     cursor.movePosition(QTextCursor::Start);
     m_edit->setTextCursor(cursor);
     int count = 0;
+    bool blocked = false;
     while (m_edit->find(needle, flags)) {
+        const int at = m_edit->textCursor().selectionStart();
+        if (const auto *console = qobject_cast<const ForthConsole *>(m_edit)) {
+            if (at < console->protectedEnd()) {
+                blocked = true;
+                QTextCursor skip = m_edit->textCursor();
+                skip.setPosition(skip.selectionEnd());
+                m_edit->setTextCursor(skip);
+                continue;
+            }
+        }
         m_edit->textCursor().insertText(m_replace->text());
         ++count;
         if (count > 100000)
             break;
     }
     cursor.endEditBlock();
+    if (count == 0 && blocked)
+        QApplication::beep();
 }

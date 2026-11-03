@@ -121,6 +121,7 @@ EXTRN host_library_path:PROC
 EXTRN host_mprotect:PROC
 EXTRN host_ms:PROC
 EXTRN host_native_ret7:PROC
+EXTRN host_pause:PROC
 EXTRN host_pwd:PROC
 EXTRN host_read:PROC
 EXTRN host_register:PROC
@@ -148,6 +149,7 @@ EXTRN msg_huh:BYTE
 EXTRN native_dsp_end:BYTE
 EXTRN next_debug:PROC
 EXTRN pad_buffer:BYTE
+EXTRN pause_hook:BYTE
 EXTRN redef_warn:BYTE
 EXTRN resolve_buf:BYTE
 EXTRN scr_var:BYTE
@@ -7171,6 +7173,147 @@ XKEYQ:
     mov rax, 0
     mov QWORD PTR arm_x20, rax
 XKEYQ_END:
+    ; cbnz    x28, next_debug_gate
+    mov rax, QWORD PTR arm_x28
+    cmp rax, 0
+    jne next_debug_gate
+    ; lea x1, debug_break_asap
+    lea rax, debug_break_asap
+    mov QWORD PTR arm_x1, rax
+    ; ldr     x1, [x1]
+    mov r10, QWORD PTR arm_x1
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; cbnz    x1, next_debug_gate
+    mov rax, QWORD PTR arm_x1
+    cmp rax, 0
+    jne next_debug_gate
+    ; ldr     x21, [x19], #8
+    mov r10, QWORD PTR arm_x19
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x21, rax
+    mov rax, QWORD PTR arm_x19
+    add rax, 8
+    mov QWORD PTR arm_x19, rax
+    ; ldr     x1, [x21]
+    mov r10, QWORD PTR arm_x21
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; br      x1
+    mov rax, QWORD PTR arm_x1
+    jmp rax
+BWSTR SEGMENT ALIGN(1) READ
+nm_XPAUSE:
+    ; DCB "PAUSE", 0
+    DB "PAUSE", 0
+hl_XPAUSE:
+    ; DCB "PAUSE ( -- ) show pending console output then wait 1 ms", 0
+    DB "PAUSE ( -- ) show pending console output then wait 1 ms", 0
+BWSTR ENDS
+BOOTWORD SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+row_XPAUSE:
+    ; DCQ     nm_XPAUSE, hl_XPAUSE
+    DQ OFFSET nm_XPAUSE, OFFSET hl_XPAUSE
+    ; DCQ     0
+    DQ 0
+    ; DCQ     XPAUSE, XPAUSE_END
+    DQ OFFSET XPAUSE, OFFSET XPAUSE_END
+BOOTWORD ENDS
+BOOTPTR SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+    ; DCQ     row_XPAUSE
+    DQ OFFSET row_XPAUSE
+BOOTPTR ENDS
+.CODE
+XPAUSE:
+    ; sub     sp, sp, #64
+    mov rax, rsp
+    sub rax, 40h
+    mov rsp, rax
+    ; stp     x29, x30, [sp, #32]
+    lea r10, [rsp]
+    add r10, 20h
+    mov rax, QWORD PTR arm_x29
+    mov QWORD PTR [r10+0], rax
+    mov rax, QWORD PTR arm_x30
+    mov QWORD PTR [r10+8], rax
+    ; lea x1, pause_hook
+    lea rax, pause_hook
+    mov QWORD PTR arm_x1, rax
+    ; ldr     x1, [x1]
+    mov r10, QWORD PTR arm_x1
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR arm_x1, rax
+    ; cbz     x1, _pause_sleep
+    mov rax, QWORD PTR arm_x1
+    cmp rax, 0
+    je _pause_sleep
+    ; blr     x1
+    push rbx
+    mov rbx, rsp
+    and rsp, -16
+    sub rsp, 80
+    mov rcx, QWORD PTR arm_x0
+    mov rdx, QWORD PTR arm_x1
+    mov r8, QWORD PTR arm_x2
+    mov r9, QWORD PTR arm_x3
+    mov rax, QWORD PTR arm_x4
+    mov QWORD PTR [rsp+32], rax
+    mov rax, QWORD PTR arm_x5
+    mov QWORD PTR [rsp+40], rax
+    mov rax, QWORD PTR arm_x6
+    mov QWORD PTR [rsp+48], rax
+    mov rax, QWORD PTR arm_x7
+    mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
+    mov r11, QWORD PTR arm_x1
+    call r11
+    mov QWORD PTR arm_x0, rax
+    mov rsp, rbx
+    pop rbx
+    ; b       _pause_done
+    jmp _pause_done
+_pause_sleep:
+    ; bl      host_pause
+    push rbx
+    mov rbx, rsp
+    and rsp, -16
+    sub rsp, 80
+    mov rcx, QWORD PTR arm_x0
+    mov rdx, QWORD PTR arm_x1
+    mov r8, QWORD PTR arm_x2
+    mov r9, QWORD PTR arm_x3
+    mov rax, QWORD PTR arm_x4
+    mov QWORD PTR [rsp+32], rax
+    mov rax, QWORD PTR arm_x5
+    mov QWORD PTR [rsp+40], rax
+    mov rax, QWORD PTR arm_x6
+    mov QWORD PTR [rsp+48], rax
+    mov rax, QWORD PTR arm_x7
+    mov QWORD PTR [rsp+56], rax
+    mov rax, QWORD PTR [rbx+8]
+    mov QWORD PTR [rsp+64], rax
+    call host_pause
+    mov QWORD PTR arm_x0, rax
+    mov rsp, rbx
+    pop rbx
+_pause_done:
+    ; ldp     x29, x30, [sp, #32]
+    lea r10, [rsp]
+    add r10, 20h
+    mov rax, QWORD PTR [r10]
+    mov rcx, QWORD PTR [r10+8]
+    mov QWORD PTR arm_x29, rax
+    mov QWORD PTR arm_x30, rcx
+    ; add     sp, sp, #64
+    mov rax, rsp
+    add rax, 40h
+    mov rsp, rax
+XPAUSE_END:
     ; cbnz    x28, next_debug_gate
     mov rax, QWORD PTR arm_x28
     cmp rax, 0

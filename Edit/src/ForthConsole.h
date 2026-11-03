@@ -16,6 +16,7 @@ public:
     void setEngineAlive(bool alive);
     // While the stepper is armed, copy and navigation stay. Typing does not.
     void setInputLocked(bool locked);
+    int protectedEnd() const { return m_prot; }
     // Put the line just submitted back into the input area.
     void retractSubmit();
 

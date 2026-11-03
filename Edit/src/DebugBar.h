@@ -23,6 +23,7 @@ public:
 
 signals:
     void pauseRequested();
+    void restartRequested();
     void includeRequested();
     void runRequested();
     void breakpointsRequested();
@@ -53,6 +54,7 @@ private:
     QLabel *m_note = nullptr;
     QWidget *m_tools = nullptr;
     QPushButton *m_pause = nullptr;
+    QPushButton *m_restart = nullptr;
     QPushButton *m_include = nullptr;
     QPushButton *m_run = nullptr;
     QPushButton *m_arm = nullptr;

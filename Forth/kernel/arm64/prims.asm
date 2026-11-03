@@ -187,6 +187,10 @@ XBYE_END
 XRESTART
         b       _interpret_loop
 
+; Empty is DSP==SP0 and TOS unused. Each DPUSH stores the previous TOS,
+; so n real cells leave n memory cells: the oldest values, then a 0 sentinel
+; at SP0-8, with the newest value in x20. Depth is (SP0-DSP)/8. Skip the
+; sentinel. Print the cells under TOS from oldest to newest, then TOS.
 _print_dots PROC
         sub     sp, sp, #80
         stp     x29, x30, [sp, #32]
@@ -197,14 +201,16 @@ _print_dots PROC
         adrp    x25, dstack
         add     x25, x25, dstack
         add     x25, x25, #1, lsl #12
+        cmp     x22, x25
+        b.hs    _print_dots_empty
         sub     x26, x25, x22
         lsr     x26, x26, #3
-        add     x0, x26, #1
+        mov     x0, x26
         bl      _print_signed
         adrp    x0, msg_mid
         add     x0, x0, msg_mid
         bl      emit_cstr
-        sub     x25, x25, #8
+        sub     x25, x25, #16
 _print_dots_loop
         cmp     x25, x22
         b.lo    _print_dots_tos
@@ -219,6 +225,14 @@ _print_dots_tos
         bl      _print_signed
         mov     x0, #32
         bl      _putchar
+        b       _print_dots_done
+_print_dots_empty
+        mov     x0, #0
+        bl      _print_signed
+        adrp    x0, msg_mid
+        add     x0, x0, msg_mid
+        bl      emit_cstr
+_print_dots_done
         ldp     x25, x26, [sp, #48]
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #80

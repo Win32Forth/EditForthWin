@@ -13,6 +13,7 @@
 void host_debug_set_notify(void (*flush)(void), void (*send)(const char *json));
 void forth_autoload(void);
 void forth_set_key_hook(int (*fn)(void));
+void kernel_set_pause(void (*fn)(void));
 
 extern uint64_t debug_busy;
 extern uint64_t debug_armed;
@@ -275,18 +276,28 @@ static void companion_flush(void)
     companion_flush_n(g_out_n);
 }
 
+/* A finished line goes to the editor at once. A long eval, such as
+   FORTH-1968, would otherwise hold its sign-on until the word returned. */
 static void companion_sink(const void *p, size_t n)
 {
     const char *s = (const char *)p;
 
     while (n > 0) {
+        const char *nl = (const char *)memchr(s, '\n', n);
         size_t room = (size_t)(COMPANION_OUT - g_out_n);
-        size_t take = n < room ? n : room;
+        size_t take = nl != NULL ? (size_t)(nl - s) + 1 : n;
         int keep;
+
+        if (take > room)
+            take = room;
         memcpy(g_out + g_out_n, s, take);
         g_out_n += (int)take;
         s += take;
         n -= take;
+        if (g_out_n > 0 && g_out[g_out_n - 1] == '\n') {
+            companion_flush();
+            continue;
+        }
         if (g_out_n < COMPANION_OUT)
             continue;
         keep = utf8_tail(g_out, g_out_n);
@@ -754,19 +765,38 @@ static int read_message(char *op, int opcap, char *text, int textcap)
     return 1;
 }
 
+static int pipe_pending(void)
+{
+    DWORD avail = 0;
+
+    if (g_pipe == INVALID_HANDLE_VALUE)
+        return 0;
+    if (!PeekNamedPipe(g_pipe, NULL, 0, NULL, &avail, NULL))
+        return 0;
+    return avail > 0;
+}
+
+/* KEY while a command is running. The editor sends one "key" message per
+   character. A break returns -1 so the next NEXT can pause. */
 static int companion_key(void)
 {
     char op[32];
     char text[8192];
     static const char paused[] = "debugger paused - use Step, Continue, or Stop";
+    static const char busy[] = "busy — finish current command first";
 
-    if (debug_busy == 0)
-        return -1;
     for (;;) {
         int got;
+
         if (g_quit_req)
             return 27;
+        if (debug_busy == 0 && debug_break_asap != 0)
+            return -1;
         companion_flush();
+        if (debug_busy == 0 && !pipe_pending()) {
+            Sleep(10);
+            continue;
+        }
         got = read_message(op, (int)sizeof op, text, (int)sizeof text);
         if (got == 0) {
             g_quit_req = 1;
@@ -780,11 +810,11 @@ static int companion_key(void)
         }
         if (strcmp(op, "key") == 0)
             return (int)strtol(text, NULL, 10);
-        if (strcmp(op, "arm") == 0) {
+        if (debug_busy != 0 && strcmp(op, "arm") == 0) {
             debug_bp_go = 1;
             return 'g';
         }
-        if (strcmp(op, "runto") == 0) {
+        if (debug_busy != 0 && strcmp(op, "runto") == 0) {
             debug_runto_off = _strtoui64(text, NULL, 10);
             debug_runto_ip = 0;
             debug_runto_status = 0;
@@ -793,7 +823,8 @@ static int companion_key(void)
         if (handle_side(op, text))
             continue;
         if (strcmp(op, "eval") == 0)
-            pipe_send_text("err", paused, (int)sizeof paused - 1);
+            pipe_send_text("err", debug_busy != 0 ? paused : busy,
+                           (int)strlen(debug_busy != 0 ? paused : busy));
     }
 }
 
@@ -877,6 +908,17 @@ static void companion_edit(const char *path, int kind)
     pipe_send_text("edit", buf, n);
 }
 
+static void companion_pause(void)
+{
+    companion_flush();
+    Sleep(1);
+}
+
+static void companion_idle(void)
+{
+    pipe_send("{\"op\":\"idle\"}");
+}
+
 static void companion_edit_at(const char *path, long long line)
 {
     int n;
@@ -911,6 +953,7 @@ int companion_run(const wchar_t *pipe_name)
     host_set_edit(companion_edit);
     host_set_edit_at(companion_edit_at);
     forth_set_key_hook(companion_key);
+    kernel_set_pause(companion_pause);
     if (forth_boot() != 0) {
         companion_flush();
         goto done;
@@ -928,6 +971,7 @@ int companion_run(const wchar_t *pipe_name)
     companion_send_cwd();
     forth_prompt();
     companion_flush();
+    companion_idle();
     g_companion_ready = 1;
 
     for (;;) {
@@ -977,6 +1021,7 @@ int companion_run(const wchar_t *pipe_name)
         companion_send_cwd();
         forth_prompt();
         companion_flush();
+        companion_idle();
     }
 
 done:

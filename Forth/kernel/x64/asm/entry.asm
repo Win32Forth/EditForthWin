@@ -95,6 +95,7 @@ EXTRN line_origin:BYTE
 EXTRN local_frame_depth:BYTE
 EXTRN next_debug:PROC
 EXTRN noname_xt:BYTE
+EXTRN pause_hook:BYTE
 EXTRN restart_cell:BYTE
 EXTRN return_stack:BYTE
 EXTRN source_base:BYTE
@@ -121,6 +122,8 @@ PUBLIC kernel_set_emit
 PUBLIC _kernel_set_emit
 PUBLIC kernel_set_key
 PUBLIC _kernel_set_key
+PUBLIC kernel_set_pause
+PUBLIC _kernel_set_pause
 PUBLIC kernel_set_facility_op
 PUBLIC _kernel_set_facility_op
 PUBLIC _kernel_cold_common
@@ -173,6 +176,22 @@ kernel_set_key:
     mov QWORD PTR arm_x3, r9
     ; lea x1, key_hook
     lea rax, key_hook
+    mov QWORD PTR arm_x1, rax
+    ; str     x0, [x1]
+    mov r10, QWORD PTR arm_x1
+    mov rax, QWORD PTR arm_x0
+    mov QWORD PTR [r10], rax
+    ; ret
+    mov rax, QWORD PTR arm_x0
+    ret
+_kernel_set_pause:
+kernel_set_pause:
+    mov QWORD PTR arm_x0, rcx
+    mov QWORD PTR arm_x1, rdx
+    mov QWORD PTR arm_x2, r8
+    mov QWORD PTR arm_x3, r9
+    ; lea x1, pause_hook
+    lea rax, pause_hook
     mov QWORD PTR arm_x1, rax
     ; str     x0, [x1]
     mov r10, QWORD PTR arm_x1

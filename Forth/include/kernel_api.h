@@ -18,6 +18,7 @@ int kernel_eval(const char *line, size_t n);
 
 void kernel_set_emit(void (*fn)(int c));
 void kernel_set_key(int (*fn)(void));
+void kernel_set_pause(void (*fn)(void));
 void kernel_set_facility_op(void (*fn)(int64_t op, int64_t a, int64_t b));
 
 /* (HX-BG-REINDEX). 1 = the new index is in place. 0 = nothing to reload now. */

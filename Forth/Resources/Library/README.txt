@@ -1,11 +1,21 @@
+Windows: the user tree is Documents\EditForthWin. System sits beside Library.
+FROMLIB still finds Assembler, AutoLoad, Debugger, Emitter, Hyper, Reference, Sources, and Testing under System.
+
 64Forth Library — sources under 64Forth/Resources/Library/
 
 Build (TZForth-style Run Script "Copy Library") wipes and re-copies this
 folder into the app bundle as Contents/Resources/Library/ on every build
-so FROMLIB never sees a stale tree. Same for AutoLoad and Docs.
+so FROMLIB never sees a stale tree. Docs is copied the same way.
+AutoLoad ships inside System (Copy System).
 
-FROMLIB resolves relative paths under the bundle Library - no machine-specific
-absolute paths.
+Library/TCOM was removed in 2.6.2. Programs from that folder that run
+on EditForth are in Sample. ZTREE needs the host shell.
+
+FROMLIB resolves relative paths under the bundle Library. Assembler,
+Debugger, Emitter, Hyper, Reference, Sources, and Testing live in the
+sibling System folder. FROMLIB still finds those names there
+(FROMLIB FLOAD Emitter/emitter.fth, FROMLIB FLOAD Testing/…). A path
+written as System/Debugger/… is relative to Documents/EditForth.
 
 Examples
 --------
@@ -25,19 +35,49 @@ Examples
   FROMLIB S" Pascal/PASY.PAS" PASCAL-TO-FILE   \ then INCLUDED + DEMO
   FROMLIB FLOAD Sample/DOODLE64.fth        \ then: DOODLE (1-bit mouse demo)
   FROMLIB FLOAD Sample/DOODLECOLOR64.fth   \ then: DOODLECOLOR (COLOR8 + color bar)
+  FROMLIB FLOAD Sample/RINGS.fth           \ then: RINGS (random COLOR8 rings; any key stops)
+  FROMLIB FLOAD Sample/KOKO.fth            \ then: KOKO (COLOR8 fractal; any key stops)
+  FROMLIB FLOAD Sample/MANGEN.fth          \ then: MANGEN (COLOR8 Mandelbrot; S writes mandel.raw)
+  FROMLIB FLOAD Sample/MANSHOW.fth         \ then: MANSHOW (pan and zoom mandel.raw)
+  FROMLIB FLOAD Sample/OBJECT.fth          \ then: OBJECT-DEMO (vehicles and automobiles)
+  FROMLIB FLOAD Sample/SPREAD.fth          \ then: SPREAD (26x26 sheet; Esc quits)
+  FROMLIB FLOAD Sample/SZ.fth              \ then: SZ (graphics editor; Esc opens the menu)
+  FROMLIB FLOAD Sample/LEDIT.fth           \ then: LEDIT (one-line editor)
+  FROMLIB FLOAD Sample/ZLIST.fth           \ then: ZLIST (list a file; skip lines that start with %)
+  FROMLIB FLOAD Sample/LOOK.fth            \ then: LOOK (find a string; a blank line finishes)
+  FROMLIB FLOAD Sample/GLOBAL.fth          \ then: GLOBAL (replace text in one file)
+  FROMLIB FLOAD Sample/ZIM.fth             \ then: ZIM or ZIM-EXPAND
+  FROMLIB FLOAD Sample/ALLSPECS.fth        \ then: ALLSPECS (collect file names)
+  \ Sample/LOOK.txt                        \ notes for LOOK (not a Forth program)
+  FROMLIB FLOAD Sample/BANNER.fth          \ then: BANNER-DEMO (big text; any key stops)
+  FROMLIB FLOAD Sample/COMPLEX.fth         \ then: COMPLEX-DEMO (complex arithmetic)
+  FROMLIB FLOAD Sample/FPMATH.fth          \ then: FPMATH (square root, log, exp, arctan, sine)
+  FROMLIB FLOAD Sample/FILTER.fth          \ then: FILTER (copy a file and tidy control characters)
+  FROMLIB FLOAD Sample/CARD.fth            \ then: CARD (16-line card file)
+  FROMLIB FLOAD Sample/TEXTFORM.fth        \ then: TEXTFORM (dot commands, writes name.prn)
+  FROMLIB FLOAD Sample/ZTREE.fth           \ then: ZTREE (directory sizes; EditForth only, needs the shell)
+  FROMLIB FLOAD Sample/SWINDOW.fth         \ then: SWINDOW (message box; a key returns)
+  FROMLIB FLOAD Sample/LINES.fth           \ then: LINES (random lines; any key stops)
+  FROMLIB FLOAD Sample/LINEWALK.fth        \ then: LINEWALK (a bouncing line; any key stops)
+  FROMLIB FLOAD Sample/LINESCAN.fth        \ then: LINESCAN (crawling lines; + and - change the count)
+  FROMLIB FLOAD Sample/GSS.fth             \ then: GSS (growing squares; any key stops)
+  FROMLIB FLOAD Sample/SPLAT.fth           \ then: SPLAT (wandering dots; Esc stops if no password)
+  FROMLIB FLOAD Sample/DRAW.fth            \ then: DRAW (mouse sketch; Esc returns)
+  FROMLIB FLOAD Sample/ICON.fth            \ then: ICON (40x40 color icon; Esc returns)
+  FROMLIB FLOAD Sample/SSBLIT.fth          \ then: SSBLIT (logo and a moving Z; any key stops)
   FROMLIB FLOAD Sample/IMAGEVIEW64.fth     \ then: IMAGEVIEW (TRUECOLOR open/zoom)
   FROMLIB FLOAD Sample/EDIT64.fth          \ then: EDIT64 (GRAPHICS mini-editor; EMITable)
   \ REF / XREF / USEDIN / CALLS / ANYWORDS — cold-loaded (Kernel/xref.fth .incbin)
   \   REF DUP          \ colon/DEFER refs; Space=pause Esc/Q=stop; title shows leaf:line
   \   ANYWORDS OVER    \ WORDS-like across FORTH + named VOCABULARYs (optional filter)
-  \   (Classic TCOM source kept at TCOM/REF.FTH; do not FLOAD Sample/XREF.)
+  \   (Library/TCOM was removed in 2.6.2. Do not FLOAD Sample/XREF.)
 
 Assembler (ASMARM64)
 --------------------
-  Full source: Library/Assembler/asmarm64.fth
-  Interactive: Library/Assembler/ASSEMBLER.fth  →  CODE / END-CODE / C; / NEXT,
+  Full source: System/Assembler/asmarm64.fth
+  Interactive: System/Assembler/ASSEMBLER.fth  →  CODE / END-CODE / C; / NEXT,
                (64Forth ITC only; not loaded by 64TCOM; does not redefine ASSEMBLER)
-  Tests:       Library/Assembler/ASMARMTESTS.fth  →  ASM-TESTS
+  Tests:       System/Assembler/ASMARMTESTS.fth  →  ASM-TESTS
   Twin copies: Documents/64TCOM/64TCOMARM64/ASMARM64.fth + ASMARMTESTS.fth
   Last synced: Aug 23, 2026 3:16 PM (see header stamp in both .fth files)
   TCOM loads only the pack assembler via TARGETARM64.
@@ -70,5 +110,5 @@ User data (Documents/64Forth)
 After editing Library .fth files, rebuild/run so the bundle copy updates
 (or use Tools → Update / Restore for the Documents/64Forth tree).
 
-See Testing/ANSValidate/README.txt, Editor/SZ-EDITOR-README.txt,
+See Testing/ANSValidate/src/README.txt, Editor/SZ-EDITOR-README.txt,
 Pascal/README.txt, and Docs/README.txt.

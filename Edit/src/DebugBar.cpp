@@ -66,11 +66,15 @@ DebugBar::DebugBar(QWidget *parent) : QWidget(parent) {
     m_include = new QPushButton(QStringLiteral("INCLUDE"), this);
     m_run = new QPushButton(QStringLiteral("RUN"), this);
     m_pause = new QPushButton(QStringLiteral("Pause"), this);
+    m_restart = new QPushButton(QStringLiteral("Restart"), this);
+    m_restart->setToolTip(QStringLiteral(
+        "Restart Forth — fresh image. The editor, file list, and open tabs stay."));
     auto *breaks = new QPushButton(QStringLiteral("Breakpoints"), this);
     m_dock = new QPushButton(QStringLiteral("Undock"), this);
     connect(m_include, &QPushButton::clicked, this, &DebugBar::includeRequested);
     connect(m_run, &QPushButton::clicked, this, &DebugBar::runRequested);
     connect(m_pause, &QPushButton::clicked, this, &DebugBar::pauseRequested);
+    connect(m_restart, &QPushButton::clicked, this, &DebugBar::restartRequested);
     connect(breaks, &QPushButton::clicked, this, &DebugBar::showBreaks);
     connect(m_dock, &QPushButton::clicked, this, &DebugBar::dockToggleRequested);
 
@@ -84,6 +88,7 @@ DebugBar::DebugBar(QWidget *parent) : QWidget(parent) {
     strip->addWidget(m_include);
     strip->addWidget(m_run);
     strip->addWidget(m_pause);
+    strip->addWidget(m_restart);
     strip->addWidget(breaks);
     strip->addWidget(m_dock);
 
@@ -231,6 +236,7 @@ void DebugBar::apply() {
         m_tools->setStyleSheet(m_connected ? QStringLiteral("background: #d7ecd4;")
                                            : QStringLiteral("background: #ffe8cc;"));
     m_pause->setEnabled(m_connected);
+    m_restart->setEnabled(m_connected);
     m_include->setVisible(!m_armed);
     m_run->setVisible(!m_armed);
     m_include->setEnabled(m_connected && !m_armed);

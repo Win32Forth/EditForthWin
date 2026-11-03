@@ -34,7 +34,7 @@ function Copy-Missing {
     }
 }
 
-foreach ($name in @('Library', 'AutoLoad', 'Docs', 'Config')) {
+foreach ($name in @('Library', 'System', 'Docs', 'Config')) {
     $src = Join-Path $srcRoot $name
     if (Test-Path -LiteralPath $src) {
         Copy-Missing $src (Join-Path $Dest $name)

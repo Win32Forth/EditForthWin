@@ -24,6 +24,8 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFileSystemModel>
+#include <QTreeView>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
@@ -135,6 +137,146 @@ void storeBrowse(const QString &path, bool on) {
         paths.append(path);
     QSettings().setValue(QStringLiteral("browsePaths"), paths);
 }
+
+bool inUserFolder(const QString &path, const QString &folder) {
+    const QString prefix = QFileInfo(QDir(userFolder()).filePath(folder)).absoluteFilePath();
+    const QString canon = QFileInfo(path).absoluteFilePath();
+    if (!canon.startsWith(prefix, Qt::CaseInsensitive))
+        return false;
+    if (canon.size() == prefix.size())
+        return true;
+    const QChar next = canon.at(prefix.size());
+    return next == QLatin1Char('\\') || next == QLatin1Char('/');
+}
+
+bool shippedReadOnly(const QString &path) {
+    return inUserFolder(path, QStringLiteral("Docs")) || inUserFolder(path, QStringLiteral("System"));
+}
+
+bool canLoadForthFile(const QString &path) {
+    const QString ext = QFileInfo(path).suffix().toLower();
+    const bool allowed = ext == QLatin1String("fth") || ext == QLatin1String("fs") || ext == QLatin1String("f");
+    const bool blocked = inUserFolder(path, QStringLiteral("System")) &&
+                         !inUserFolder(path, QStringLiteral("System/Testing"));
+    return allowed && !blocked;
+}
+
+bool refuseLoad(QWidget *parent, const QString &path) {
+    if (canLoadForthFile(path))
+        return false;
+    QMessageBox::warning(
+        parent, QStringLiteral("EditForthWin"),
+        QStringLiteral("Only .fth, .fs, and .f files can be loaded, and you cannot load a system file "
+                       "because they are already loaded."));
+    return true;
+}
+
+// Next Forth token after `:`. Skips spaces, line comments, and `( … )`.
+// Returns empty at end of file. Does not treat `."` / `S"` as skippable here;
+// that matches the Mac scan used for the RUN name.
+QString nextForthToken(const QString &source, int &i, bool &lineComment, int &paren) {
+    const int n = source.size();
+    while (i < n) {
+        const QChar ch = source.at(i);
+        if (ch == QLatin1Char('\n') || ch == QLatin1Char('\r')) {
+            lineComment = false;
+            ++i;
+            continue;
+        }
+        if (lineComment || ch == QLatin1Char(' ') || ch == QLatin1Char('\t')) {
+            ++i;
+            continue;
+        }
+        const int start = i;
+        while (i < n) {
+            const QChar c = source.at(i);
+            if (c == QLatin1Char(' ') || c == QLatin1Char('\t') || c == QLatin1Char('\n') ||
+                c == QLatin1Char('\r'))
+                break;
+            ++i;
+        }
+        const QString token = source.mid(start, i - start);
+        if (paren > 0) {
+            paren += token.count(QLatin1Char('('));
+            paren -= token.count(QLatin1Char(')'));
+            if (paren < 0)
+                paren = 0;
+            continue;
+        }
+        if (token == QLatin1String("\\")) {
+            lineComment = true;
+            continue;
+        }
+        if (token == QLatin1String("(")) {
+            paren = 1;
+            continue;
+        }
+        return token;
+    }
+    return {};
+}
+
+QString lastColonName(const QString &source) {
+    bool lineComment = false;
+    int paren = 0;
+    QString last;
+    int i = 0;
+    const int n = source.size();
+    while (i < n) {
+        const QChar ch = source.at(i);
+        if (ch == QLatin1Char('\n') || ch == QLatin1Char('\r')) {
+            lineComment = false;
+            ++i;
+            continue;
+        }
+        if (lineComment || ch == QLatin1Char(' ') || ch == QLatin1Char('\t')) {
+            ++i;
+            continue;
+        }
+        const int start = i;
+        while (i < n) {
+            const QChar c = source.at(i);
+            if (c == QLatin1Char(' ') || c == QLatin1Char('\t') || c == QLatin1Char('\n') ||
+                c == QLatin1Char('\r'))
+                break;
+            ++i;
+        }
+        const QString token = source.mid(start, i - start);
+        if (paren > 0) {
+            paren += token.count(QLatin1Char('('));
+            paren -= token.count(QLatin1Char(')'));
+            if (paren < 0)
+                paren = 0;
+            continue;
+        }
+        if (token == QLatin1String("\\")) {
+            lineComment = true;
+            continue;
+        }
+        if (token == QLatin1String("(")) {
+            paren = 1;
+            continue;
+        }
+        if (token == QLatin1String(".(") || token == QLatin1String(".\"") || token == QLatin1String("S\"") ||
+            token == QLatin1String("C\"") || token == QLatin1String("ABORT\"") || token == QLatin1String("S\\\"")) {
+            const QChar end = token.endsWith(QLatin1Char('(')) ? QLatin1Char(')') : QLatin1Char('"');
+            while (i < n && source.at(i) != end && source.at(i) != QLatin1Char('\n') &&
+                   source.at(i) != QLatin1Char('\r'))
+                ++i;
+            if (i < n && source.at(i) == end)
+                ++i;
+            continue;
+        }
+        if (token == QLatin1String(":")) {
+            // The name is the next real token. `\` and `(` after `:` are comments,
+            // so a trailing `: \` cannot become the RUN word.
+            const QString name = nextForthToken(source, i, lineComment, paren);
+            if (!name.isEmpty() && name.compare(QLatin1String("NONAME"), Qt::CaseInsensitive) != 0)
+                last = name;
+        }
+    }
+    return last;
+}
 }
 
 // Floating Forth console. Closing it hides the transcript and leaves Forth running.
@@ -242,6 +384,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_tabs->setDocumentMode(true);
     m_tabs->setTabsClosable(true);
     m_tabs->setMovable(true);
+    m_tabs->setUsesScrollButtons(true);
+    m_tabs->tabBar()->setExpanding(false);
+    m_tabs->tabBar()->setUsesScrollButtons(true);
 
     m_console = new ForthConsole(this);
     m_debug = new DebugBar(this);
@@ -264,7 +409,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             presentSourceDialog(bare == BareSource::Load);
             return;
         }
-        m_pipe->eval(line);
+        submitForth(line);
     });
     m_forthDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) +
                  QStringLiteral("/EditForthWin");
@@ -290,7 +435,17 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         if (!shown.isEmpty())
             m_console->appendOutput(shown);
     });
+    connect(m_pipe, &ForthPipe::idleReceived, this, &MainWindow::noteForthIdle);
     connect(m_pipe, &ForthPipe::engineStopped, this, [this] {
+        m_forthBusy = false;
+        if (m_busyNote) {
+            m_busyNote = false;
+            refreshStatus();
+        }
+        if (m_restarting) {
+            m_restarting = false;
+            return;
+        }
         m_connected = false;
         m_armed = false;
         m_paused = false;
@@ -334,6 +489,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             if (m_float != nullptr)
                 m_float->setWindowTitle(consoleName);
         }
+        refreshStatus();
     });
     connect(m_pipe, &ForthPipe::statusReceived, this, [this](const QString &text) {
         QString trimmed = text;
@@ -351,6 +507,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         });
     });
     connect(m_debug, &DebugBar::includeRequested, this, &MainWindow::includeCurrent);
+    connect(m_debug, &DebugBar::restartRequested, this, &MainWindow::restartForth);
     connect(m_debug, &DebugBar::runRequested, this, [this] { prepareRun(RunKind::Execute); });
     connect(m_debug, &DebugBar::pauseRequested, this, &MainWindow::pauseNow);
     connect(m_debug, &DebugBar::breakpointsRequested, m_pipe, &ForthPipe::requestBreaks);
@@ -392,7 +549,25 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(m_splitEdit, &CodeEdit::runToRequested, this, &MainWindow::runToHere);
     connect(m_splitEdit, &CodeEdit::browseChanged, this, [this](bool on) { noteBrowse(m_splitEdit, on); });
 
+    m_fileModel = new QFileSystemModel(this);
+    m_fileModel->setFilter(QDir::AllDirs | QDir::Files | QDir::NoDotAndDotDot);
+    m_fileModel->setRootPath(m_forthDir);
+    m_files = new QTreeView(this);
+    m_files->setModel(m_fileModel);
+    m_files->setHeaderHidden(true);
+    m_files->setRootIndex(m_fileModel->index(m_forthDir));
+    m_files->hideColumn(1);
+    m_files->hideColumn(2);
+    m_files->hideColumn(3);
+    m_files->setMinimumWidth(180);
+    m_files->setMaximumWidth(320);
+    connect(m_files, &QTreeView::doubleClicked, this, [this](const QModelIndex &index) {
+        if (!m_fileModel->isDir(index))
+            openFile(m_fileModel->filePath(index));
+    });
+
     m_editors = new QSplitter(Qt::Horizontal, this);
+    m_editors->addWidget(m_files);
     m_editors->addWidget(m_tabs);
     m_editors->addWidget(m_right);
     m_askPanel = new AskForthPanel(m_editors);
@@ -437,9 +612,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     });
     connect(m_askPanel, &AskForthPanel::placeToggleRequested, this, &MainWindow::toggleAskPlace);
     m_editors->addWidget(m_askPanel);
-    m_editors->setStretchFactor(0, 1);
+    m_editors->setStretchFactor(0, 0);
     m_editors->setStretchFactor(1, 1);
-    m_editors->setStretchFactor(2, 0);
+    m_editors->setStretchFactor(2, 1);
+    m_editors->setStretchFactor(3, 0);
     m_askPanel->hide();
 
     auto *top = new QWidget(this);
@@ -590,6 +766,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         if (edit != nullptr)
             edit->setBrowse(false);
     });
+    m_filesAction = viewMenu->addAction(QStringLiteral("Show File List"));
+    m_filesAction->setCheckable(true);
+    m_filesAction->setChecked(true);
+    connect(m_filesAction, &QAction::toggled, this, [this](bool on) {
+        if (m_files != nullptr)
+            m_files->setVisible(on);
+    });
     m_showConsoleAction = viewMenu->addAction(QStringLiteral("Show Forth Console"));
     m_showConsoleAction->setCheckable(true);
     m_showConsoleAction->setChecked(true);
@@ -627,6 +810,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     });
     m_askAction->setChecked(settings.value(QStringLiteral("showAIAssistant"), false).toBool());
     viewMenu->addAction(QStringLiteral("Open Web Page"), this, &MainWindow::openWebPage);
+    viewMenu->addAction(QStringLiteral("Open GitHub in Browser"), this, [this] {
+        QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/Win32Forth/EditForthWin")));
+    });
     m_splitAction = viewMenu->addAction(QStringLiteral("Split Editor"), this, &MainWindow::toggleSplit);
     auto *wrapMenu = viewMenu->addMenu(QStringLiteral("Wrap at Column"));
     auto *wrapGroup = new QActionGroup(this);
@@ -685,7 +871,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     auto *forthMenu = menuBar()->addMenu(QStringLiteral("F&orth"));
     m_actInclude = forthMenu->addAction(QStringLiteral("&INCLUDE Current File"),
                                         QKeySequence(Qt::Key_F4), this, &MainWindow::includeCurrent);
-    m_actRun = forthMenu->addAction(QStringLiteral("&RUN LAST"), QKeySequence(Qt::Key_F5), this, [this] {
+    m_actRun = forthMenu->addAction(QStringLiteral("&RUN"), QKeySequence(Qt::Key_F5), this, [this] {
         if (m_paused)
             sendStep(103);
         else
@@ -724,10 +910,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     forthMenu->addAction(QStringLiteral("&Restore Shipped Files..."), this, &MainWindow::restoreShipped);
     forthMenu->addSeparator();
     forthMenu->addAction(QStringLiteral("Open EditForthWin &Folder"), this, [this] { showUserFolder(); });
+    forthMenu->addAction(QStringLiteral("&Restart"), this, &MainWindow::restartForth);
 
     auto *helpMenu = menuBar()->addMenu(QStringLiteral("&Help"));
-    helpMenu->addAction(QStringLiteral("EditForthWin Startup &Messages"), this,
-                        &MainWindow::showStartupMessages);
+    helpMenu->addAction(QStringLiteral("Show Boot &Messages"), this,
+                        &MainWindow::showBootMessages);
     helpMenu->addAction(QStringLiteral("&About EditForthWin"), this, &MainWindow::showAbout);
 
     statusBar();
@@ -802,7 +989,16 @@ void MainWindow::presentSourceDialog(bool loadIntoForth) {
             m_pipe->eval(QString());
             return;
         }
-        m_pipe->eval(includedLine(path));
+        if (refuseLoad(this, path)) {
+            m_pipe->eval(QString());
+            return;
+        }
+        QFile source(path);
+        QString text;
+        if (source.open(QIODevice::ReadOnly))
+            text = QString::fromUtf8(source.readAll());
+        m_runName = lastColonName(text);
+        submitForth(includedLine(path));
         return;
     }
     if (!path.isEmpty())
@@ -842,7 +1038,7 @@ void MainWindow::openFile(const QString &path) {
     edit->document()->setModified(false);
     edit->setProperty(kPath, canonical);
     applyEditorChrome(edit);
-    edit->setBrowse(browseSaved(canonical));
+    edit->setBrowse(shippedReadOnly(canonical) || browseSaved(canonical));
     addEditor(edit, QFileInfo(canonical).fileName());
 }
 
@@ -1078,16 +1274,34 @@ void MainWindow::refreshTitle(CodeEdit *edit) {
 }
 
 void MainWindow::refreshStatus() {
+    if (m_busyNote)
+        return;
     CodeEdit *edit = currentEdit();
+    QString banner = QStringLiteral("EditForthWin");
+    if (!m_engineVersion.isEmpty())
+        banner += QLatin1Char(' ') + m_engineVersion;
     if (!edit) {
-        statusBar()->clearMessage();
+        statusBar()->showMessage(banner);
         return;
     }
     const QTextCursor cursor = edit->textCursor();
     const QString path = edit->property(kPath).toString();
     const QString where = path.isEmpty() ? edit->property("title").toString() : path;
-    statusBar()->showMessage(
-        QStringLiteral("%1    Ln %2, Col %3").arg(where).arg(cursor.blockNumber() + 1).arg(cursor.columnNumber() + 1));
+    statusBar()->showMessage(QStringLiteral("%1    %2    Ln %3, Col %4")
+                                  .arg(banner, where)
+                                  .arg(cursor.blockNumber() + 1)
+                                  .arg(cursor.columnNumber() + 1));
+}
+
+void MainWindow::paintSelectedTab() {
+    if (m_tabs == nullptr || m_tabs->tabBar() == nullptr)
+        return;
+    const int index = m_tabs->currentIndex();
+    const bool readOnly = currentEdit() != nullptr && currentEdit()->browse();
+    m_tabs->setStyleSheet(readOnly ? QStringLiteral("QTabBar::tab:selected { background: #fff3c4; }")
+                                   : QStringLiteral("QTabBar::tab:selected { background: #d8f5d8; }"));
+    if (index >= 0)
+        m_tabs->tabBar()->setTabTextColor(index, QColor(0x1a, 0x1a, 0x1a));
 }
 
 void MainWindow::applyLineNumbers() {
@@ -1171,7 +1385,7 @@ void MainWindow::armDebug() {
         return;
     }
     m_debug->setError(QString());
-    m_pipe->eval(QStringLiteral("BPGO %1").arg(word));
+    submitForth(QStringLiteral("BPGO %1").arg(word));
 }
 
 void MainWindow::pauseNow() {
@@ -1193,6 +1407,25 @@ void MainWindow::toggleCaretBreak() {
     m_pipe->toggleBreak(word);
 }
 
+namespace {
+bool isBootLine(const QString &line) {
+    const QString text = line.trimmed();
+    if (text.startsWith(QLatin1String("Loading: ")) ||
+        text.startsWith(QLatin1String("Finished Loading: ")))
+        return true;
+    if (text.contains(QLatin1String(":Loading module")) ||
+        text.contains(QLatin1String(":Reloading module")))
+        return true;
+    return text.startsWith(QLatin1String("HYPER-REINDEX:"));
+}
+
+void rememberBootLine(QString &log, const QString &line) {
+    if (!log.isEmpty())
+        log += QLatin1Char('\n');
+    log += line;
+}
+}
+
 QString MainWindow::consumeStartup(const QString &text) {
     if (!m_captureStartup)
         return text;
@@ -1206,44 +1439,49 @@ QString MainWindow::consumeStartup(const QString &text) {
         m_startupPartial.remove(0, nl + 1);
         if (line.endsWith(QLatin1Char('\r')))
             line.chop(1);
-        const bool cold = line.startsWith(QLatin1String("Loading: ")) ||
-                          line.startsWith(QLatin1String("Finished Loading: "));
-        if (cold) {
-            if (!m_startupLog.isEmpty())
-                m_startupLog += QLatin1Char('\n');
-            m_startupLog += line;
-            continue;
-        }
-        visible += line;
-        visible += QLatin1Char('\n');
-        if (line.startsWith(QLatin1String("=== EditForthWin "))) {
-            m_captureStartup = false;
-            visible += m_startupPartial;
-            m_startupPartial.clear();
-            break;
+        // Cold Loading lines, AutoLoad module lines, and the boot reindex
+        // stay out of the console. Help → Show Boot Messages appends them.
+        if (isBootLine(line))
+            rememberBootLine(m_startupLog, line);
+        else {
+            visible += line;
+            visible += QLatin1Char('\n');
         }
     }
     return visible;
 }
 
-void MainWindow::showStartupMessages() {
-    auto *dlg = new QDialog(this);
-    dlg->setAttribute(Qt::WA_DeleteOnClose);
-    dlg->setWindowTitle(QStringLiteral("EditForthWin Startup Messages"));
-    dlg->resize(640, 320);
-    auto *text = new QPlainTextEdit(dlg);
-    text->setReadOnly(true);
-    text->setLineWrapMode(QPlainTextEdit::NoWrap);
-    text->setFont(m_console->font());
-    text->setPlainText(m_startupLog.isEmpty()
-                           ? QStringLiteral("No startup messages were captured.")
-                           : m_startupLog);
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, dlg);
-    connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::close);
-    auto *layout = new QVBoxLayout(dlg);
-    layout->addWidget(text);
-    layout->addWidget(buttons);
-    dlg->open();
+void MainWindow::finishBootCapture() {
+    if (!m_captureStartup)
+        return;
+    m_captureStartup = false;
+    if (m_startupPartial.isEmpty())
+        return;
+    QString line = m_startupPartial;
+    m_startupPartial.clear();
+    if (line.endsWith(QLatin1Char('\r')))
+        line.chop(1);
+    if (isBootLine(line))
+        rememberBootLine(m_startupLog, line);
+    else if (m_console != nullptr)
+        m_console->appendOutput(line);
+}
+
+void MainWindow::showBootMessages() {
+    QString block = QStringLiteral("=== Cold bootstrap messages ===\n");
+    if (m_startupLog.isEmpty())
+        block += QStringLiteral("No cold-bootstrap messages.\n");
+    else {
+        block += m_startupLog;
+        if (!block.endsWith(QLatin1Char('\n')))
+            block += QLatin1Char('\n');
+    }
+    if (m_consoleHidden)
+        dockConsole();
+    else if (!m_docked && m_float != nullptr)
+        m_float->show();
+    m_console->appendOutput(block);
+    m_console->setFocus();
 }
 
 void MainWindow::showAbout() {
@@ -1407,7 +1645,7 @@ void MainWindow::includeCurrent() {
             this, QStringLiteral("FLOAD"), m_forthDir, kSourceFilter);
         if (picked.isEmpty())
             return;
-        if (!pathAccepts(picked)) {
+        if (!pathAccepts(picked) || refuseLoad(this, picked)) {
             m_debug->setError(QStringLiteral("That path cannot be INCLUDEd."));
             return;
         }
@@ -1428,7 +1666,8 @@ void MainWindow::includeCurrent() {
         if (untitledIndex >= 0 && editAt(untitledIndex) == edit && opened != edit)
             closeTab(untitledIndex);
         m_debug->setError(QString());
-        m_pipe->eval(QStringLiteral("ANEW %1 %2").arg(moduleMarker(openedPath), includedLine(openedPath)));
+        m_runName = lastColonName(opened->toPlainText());
+        submitForth(QStringLiteral("ANEW %1 %2").arg(moduleMarker(openedPath), includedLine(openedPath)));
         return;
     }
     if (edit->document()->isModified() && !saveEdit(edit))
@@ -1438,19 +1677,42 @@ void MainWindow::includeCurrent() {
         m_debug->setError(QStringLiteral("Save the file before INCLUDE."));
         return;
     }
-    if (!pathAccepts(path)) {
+    if (!pathAccepts(path) || refuseLoad(this, path)) {
         m_debug->setError(QStringLiteral("That path cannot be INCLUDEd."));
         return;
     }
     m_debug->setError(QString());
-    m_pipe->eval(QStringLiteral("ANEW %1 %2").arg(moduleMarker(path), includedLine(path)));
+    m_runName = lastColonName(edit->toPlainText());
+    submitForth(QStringLiteral("ANEW %1 %2").arg(moduleMarker(path), includedLine(path)));
+}
+
+// One selected Forth word. A bare caret is not a highlight, so RUN does not
+// pick the token under the caret (often `\` on a comment line).
+QString highlightedForthWord(const CodeEdit *edit) {
+    if (edit == nullptr)
+        return {};
+    const QTextCursor cursor = edit->textCursor();
+    if (!cursor.hasSelection())
+        return {};
+    const QString raw = cursor.selectedText().trimmed();
+    if (raw.isEmpty())
+        return {};
+    for (const QChar ch : raw) {
+        if (ch.isSpace())
+            return {};
+    }
+    return raw;
 }
 
 void MainWindow::prepareRun(RunKind kind) {
     if (!forthIdle(m_debug, m_connected, m_armed))
         return;
     m_pendingRun = kind;
-    const QString word = caretWord();
+    QString word = highlightedForthWord(currentEdit());
+    if (word.isEmpty() && m_right != nullptr && m_right->isVisible())
+        word = highlightedForthWord(m_splitEdit);
+    if (word.isEmpty())
+        word = m_runName;
     if (!word.isEmpty()) {
         fillRun(word);
         return;
@@ -1522,12 +1784,27 @@ void MainWindow::runToHere(int utf8Offset) {
 }
 
 void MainWindow::showFind(bool replace) {
-    CodeEdit *edit = currentEdit();
-    if (edit == nullptr) {
+    QPlainTextEdit *target = nullptr;
+    for (QWidget *widget = QApplication::focusWidget(); widget != nullptr;
+         widget = widget->parentWidget()) {
+        if (qobject_cast<ForthConsole *>(widget) != nullptr) {
+            target = m_console;
+            break;
+        }
+        if (auto *edit = qobject_cast<CodeEdit *>(widget)) {
+            target = edit;
+            break;
+        }
+    }
+    if (target == nullptr)
+        target = currentEdit();
+    if (target == nullptr)
+        target = m_console;
+    if (target == nullptr) {
         statusBar()->showMessage(QStringLiteral("Find needs a source tab."));
         return;
     }
-    m_find->attach(edit);
+    m_find->attach(target);
     if (replace)
         m_find->showReplace();
     else
@@ -1606,7 +1883,7 @@ void MainWindow::showEvent(QShowEvent *event) {
     QMainWindow::showEvent(event);
     if (m_askPanel != nullptr && m_askPanel->isVisible()) {
         const QList<int> sizes = m_editors->sizes();
-        if (sizes.size() == 3 && sizes.first() < 200)
+        if (sizes.size() >= 4 && sizes.at(1) < 200)
             showAskPanel(true);
     }
 }
@@ -1671,17 +1948,24 @@ void MainWindow::dockAsk() {
     m_askPanel->setFloating(false);
     syncAskChrome();
     QList<int> sizes = m_editors->sizes();
-    if (sizes.size() < 3)
+    if (sizes.size() < 4)
         return;
-    const int total = qMax(m_editors->width(), sizes[0] + sizes[1] + sizes[2]);
-    if (total < 640)
+    int total = m_editors->width();
+    for (int part : sizes)
+        total = qMax(total, part);
+    int sum = 0;
+    for (int part : sizes)
+        sum += part;
+    total = qMax(total, sum);
+    if (total < 820)
         return;
+    const int files = qBound(180, sizes[0], 320);
     const int ask = 360;
-    const int mid = m_right != nullptr && m_right->isVisible() ? qBound(160, sizes[1], total / 2) : 0;
-    const int left = total - mid - ask;
+    const int mid = m_right != nullptr && m_right->isVisible() ? qBound(160, sizes[2], total / 2) : 0;
+    const int left = total - files - mid - ask;
     if (left < 240)
         return;
-    m_editors->setSizes({left, mid, ask});
+    m_editors->setSizes({files, left, mid, ask});
 }
 
 void MainWindow::undockAsk() {
@@ -1724,12 +2008,17 @@ void MainWindow::floadDialog() {
         this, QStringLiteral("FLOAD"), m_forthDir, kSourceFilter);
     if (path.isEmpty())
         return;
-    if (!pathAccepts(path)) {
+    if (!pathAccepts(path) || refuseLoad(this, path)) {
         QMessageBox::warning(this, QStringLiteral("EditForthWin"),
                              QStringLiteral("That path cannot be FLOADed."));
         return;
     }
-    m_pipe->eval(includedLine(path));
+    QFile source(path);
+    QString text;
+    if (source.open(QIODevice::ReadOnly))
+        text = QString::fromUtf8(source.readAll());
+    m_runName = lastColonName(text);
+    submitForth(includedLine(path));
 }
 
 void MainWindow::chdirDialog() {
@@ -1743,7 +2032,7 @@ void MainWindow::chdirDialog() {
                              QStringLiteral("That path cannot be used with CHDIR."));
         return;
     }
-    m_pipe->eval(QStringLiteral("CHDIR \"%1\"").arg(path));
+    submitForth(QStringLiteral("CHDIR \"%1\"").arg(path));
 }
 
 void MainWindow::restoreShipped() {
@@ -1751,10 +2040,10 @@ void MainWindow::restoreShipped() {
         return;
     QMessageBox box(this);
     box.setWindowTitle(QStringLiteral("EditForthWin"));
-    box.setText(QStringLiteral("Restore the shipped Library, AutoLoad, and Docs?"));
+    box.setText(QStringLiteral("Restore the shipped Library, System, and Docs?"));
     box.setInformativeText(QStringLiteral(
         "Rename keeps your current Documents\\EditForthWin folder under a new name. "
-        "Replace overwrites Library, AutoLoad, and Docs. Config is left as it is."));
+        "Replace overwrites Library, System, and Docs. Config is left as it is."));
     auto *rename = box.addButton(QStringLiteral("Rename EditForthWin"), QMessageBox::AcceptRole);
     auto *replace = box.addButton(QStringLiteral("Replace EditForthWin"), QMessageBox::DestructiveRole);
     box.addButton(QMessageBox::Cancel);
@@ -1767,7 +2056,7 @@ void MainWindow::restoreShipped() {
         return;
     const auto sure = QMessageBox::warning(
         this, QStringLiteral("EditForthWin"),
-        QStringLiteral("Replace Library, AutoLoad, and Docs with the shipped copies?"),
+        QStringLiteral("Replace Library, System, and Docs with the shipped copies?"),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (sure == QMessageBox::Yes)
         m_pipe->requestTree(QStringLiteral("replace"));
@@ -1787,6 +2076,11 @@ void MainWindow::toggleBrowse(bool on) {
     CodeEdit *edit = currentEdit();
     if (edit == nullptr)
         return;
+    if (!on && shippedReadOnly(edit->property(kPath).toString())) {
+        edit->setBrowse(true);
+        statusBar()->showMessage(QStringLiteral("Docs and System open read-only."));
+        return;
+    }
     edit->setBrowse(on);
 }
 
@@ -1800,8 +2094,10 @@ void MainWindow::noteBrowse(CodeEdit *edit, bool on) {
         return;
     }
     const QString path = edit->property(kPath).toString();
-    if (!path.isEmpty())
+    if (!path.isEmpty() && !(shippedReadOnly(path) && !on))
         storeBrowse(path, on);
+    if (shippedReadOnly(path) && !on)
+        edit->setBrowse(true);
     if (m_splitSource == edit && m_splitEdit != nullptr && m_splitEdit->browse() != on)
         m_splitEdit->setBrowse(on);
     if (edit == currentEdit())
@@ -1942,13 +2238,62 @@ void MainWindow::syncTabChrome() {
         m_compareAction->setEnabled(edit != nullptr && !edit->property(kPath).toString().isEmpty());
     if (m_browseAction != nullptr) {
         const QSignalBlocker block(m_browseAction);
+        const bool locked = edit != nullptr && shippedReadOnly(edit->property(kPath).toString());
         const bool on = edit != nullptr && edit->browse();
-        m_browseAction->setEnabled(edit != nullptr);
+        m_browseAction->setEnabled(edit != nullptr && !locked);
         m_browseAction->setChecked(on);
         m_browseAction->setText(on ? QStringLiteral("Allow Editing") : QStringLiteral("Browse Mode"));
     }
+    paintSelectedTab();
     if (edit != nullptr && m_find != nullptr)
         m_find->attach(edit);
+}
+
+void MainWindow::feedRunningKeys(const QString &line) {
+    const QList<uint> chars = line.toUcs4();
+    for (uint ch : chars) {
+        if (ch == '\r' || ch > 0x10FFFF)
+            continue;
+        m_pipe->sendKey(static_cast<int>(ch));
+    }
+    m_pipe->sendKey(10);
+}
+
+void MainWindow::submitForth(const QString &line) {
+    if (m_forthBusy) {
+        feedRunningKeys(line);
+        return;
+    }
+    if (line.trimmed().isEmpty()) {
+        m_pipe->eval(line);
+        return;
+    }
+    m_forthBusy = true;
+    m_pipe->eval(line);
+}
+
+void MainWindow::noteForthIdle() {
+    finishBootCapture();
+    m_forthBusy = false;
+    if (!m_busyNote)
+        return;
+    m_busyNote = false;
+    refreshStatus();
+}
+
+void MainWindow::restartForth() {
+    m_restarting = true;
+    m_forthBusy = false;
+    m_busyNote = false;
+    m_runName.clear();
+    m_captureStartup = true;
+    m_startupPartial.clear();
+    m_startupLog.clear();
+    m_console->clearDisplay();
+    m_console->appendOutput(QStringLiteral("Restarting Forth…\n"));
+    m_pipe->shutdown();
+    m_connected = false;
+    m_pipe->start();
 }
 
 void MainWindow::applyEditorChrome(CodeEdit *edit) {

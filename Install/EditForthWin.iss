@@ -22,7 +22,7 @@
   #define AppGuid "{{E4F7A1B2-6C30-4D85-9A17-3B8E2F01A641}"
 #endif
 
-#define AppVersion "2.5.6.1"
+#define AppVersion "2.6.3"
 
 [Setup]
 AppId={#AppGuid}
@@ -66,4 +66,4 @@ Filename: "powershell.exe"; \
   Flags: runhidden waituntilterminated
 
 [Messages]
-FinishedLabel=EditForthWin {#AppArch} is installed. Library, AutoLoad, Docs, and Config are in Documents\EditForthWin. Files that were already there were left as they are. Uninstall removes this program and does not remove that folder.
+FinishedLabel=EditForthWin {#AppArch} is installed. Library, System, Docs, and Config are in Documents\EditForthWin. Files that were already there were left as they are. Uninstall removes this program and does not remove that folder.

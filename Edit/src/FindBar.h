@@ -6,7 +6,7 @@ class QCheckBox;
 class QLineEdit;
 class QPlainTextEdit;
 
-// Find and replace bar for the focused source editor.
+// Find and replace bar for the focused editor or the Forth console.
 class FindBar : public QWidget {
     Q_OBJECT
 public:
@@ -24,6 +24,7 @@ public:
 
 private:
     bool find(bool backward);
+    bool replaceAllowed(int position) const;
     void rememberEditor();
 
     QPlainTextEdit *m_edit = nullptr;

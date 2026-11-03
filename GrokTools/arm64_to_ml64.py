@@ -6,7 +6,7 @@ point at a different tree.
 
 The x64 image keeps one memory cell per ARM64 register. Real RSP is SP.
 Internal bl/ret use that virtual link register. Calls into the C host use
-the Windows x64 ABI. kernel_init, kernel_eval, and the three kernel_set
+the Windows x64 ABI. kernel_init, kernel_eval, and the kernel_set_*
 entry points take Windows arguments and return with a hardware ret.
 """
 
@@ -43,6 +43,7 @@ C_PROCS = {
     "kernel_eval",
     "kernel_set_emit",
     "kernel_set_key",
+    "kernel_set_pause",
     "kernel_set_facility_op",
 }
 

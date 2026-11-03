@@ -51,6 +51,7 @@ public slots:
     void noteLast(const QString &name);
     void noteVersion(const QString &text);
     void noteStatus(const QString &text);
+    void noteIdle();
 
 signals:
     void outputReceived(const QString &text);
@@ -65,6 +66,7 @@ signals:
     void lastReceived(const QString &name);
     void versionReceived(const QString &text);
     void statusReceived(const QString &text);
+    void idleReceived();
 
 private:
     void post(const QByteArray &json);

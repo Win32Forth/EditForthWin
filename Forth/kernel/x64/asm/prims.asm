@@ -1410,6 +1410,17 @@ _print_dots:
     mov rax, QWORD PTR arm_x25
     add rax, 1000h
     mov QWORD PTR arm_x25, rax
+    ; cmp     x22, x25
+    mov rax, QWORD PTR arm_x22
+    mov rcx, QWORD PTR arm_x25
+    cmp rax, rcx
+    seto BYTE PTR arm_v
+    sets BYTE PTR arm_n
+    setz BYTE PTR arm_z
+    setnc BYTE PTR arm_c
+    ; b.hs    _print_dots_empty
+    cmp BYTE PTR arm_c, 0
+    jne _print_dots_empty
     ; sub     x26, x25, x22
     mov rax, QWORD PTR arm_x25
     mov rcx, QWORD PTR arm_x22
@@ -1419,9 +1430,8 @@ _print_dots:
     mov rax, QWORD PTR arm_x26
     shr rax, 3
     mov QWORD PTR arm_x26, rax
-    ; add     x0, x26, #1
+    ; mov     x0, x26
     mov rax, QWORD PTR arm_x26
-    add rax, 1
     mov QWORD PTR arm_x0, rax
     ; bl      _print_signed
     lea rax, xret_14
@@ -1436,9 +1446,9 @@ _print_dots:
     mov QWORD PTR arm_x30, rax
     jmp emit_cstr
     xret_15:
-    ; sub     x25, x25, #8
+    ; sub     x25, x25, #16
     mov rax, QWORD PTR arm_x25
-    sub rax, 8
+    sub rax, 10h
     mov QWORD PTR arm_x25, rax
 _print_dots_loop:
     ; cmp     x25, x22
@@ -1492,6 +1502,26 @@ _print_dots_tos:
     mov QWORD PTR arm_x30, rax
     jmp _putchar
     xret_19:
+    ; b       _print_dots_done
+    jmp _print_dots_done
+_print_dots_empty:
+    ; mov     x0, #0
+    mov rax, 0
+    mov QWORD PTR arm_x0, rax
+    ; bl      _print_signed
+    lea rax, xret_20
+    mov QWORD PTR arm_x30, rax
+    jmp _print_signed
+    xret_20:
+    ; lea x0, msg_mid
+    lea rax, msg_mid
+    mov QWORD PTR arm_x0, rax
+    ; bl      emit_cstr
+    lea rax, xret_21
+    mov QWORD PTR arm_x30, rax
+    jmp emit_cstr
+    xret_21:
+_print_dots_done:
     ; ldp     x25, x26, [sp, #48]
     lea r10, [rsp]
     add r10, 30h
@@ -1559,10 +1589,10 @@ _print_rstack:
     setnc BYTE PTR arm_c
     ; b.hi    _pr_floor_keep
     cmp BYTE PTR arm_c, 0
-    je xsk_20
+    je xsk_22
     cmp BYTE PTR arm_z, 0
     je _pr_floor_keep
-    xsk_20:
+    xsk_22:
     ; cmp     x0, x23
     mov rax, QWORD PTR arm_x0
     mov rcx, QWORD PTR arm_x23
@@ -1697,28 +1727,28 @@ _pr_counted:
     lea rax, msg_open
     mov QWORD PTR arm_x0, rax
     ; bl      emit_cstr
-    lea rax, xret_21
+    lea rax, xret_23
     mov QWORD PTR arm_x30, rax
     jmp emit_cstr
-    xret_21:
+    xret_23:
     ; ldr     x0, [sp, #80]
     lea r10, [rsp]
     add r10, 50h
     mov rax, QWORD PTR [r10]
     mov QWORD PTR arm_x0, rax
     ; bl      _print_unsigned
-    lea rax, xret_22
+    lea rax, xret_24
     mov QWORD PTR arm_x30, rax
     jmp _print_unsigned
-    xret_22:
+    xret_24:
     ; lea x0, msg_mid
     lea rax, msg_mid
     mov QWORD PTR arm_x0, rax
     ; bl      emit_cstr
-    lea rax, xret_23
+    lea rax, xret_25
     mov QWORD PTR arm_x30, rax
     jmp emit_cstr
-    xret_23:
+    xret_25:
     ; mov     x25, #0
     mov rax, 0
     mov QWORD PTR arm_x25, rax
@@ -1780,18 +1810,18 @@ _pr_show_one:
     mov rax, QWORD PTR [r10]
     mov QWORD PTR arm_x0, rax
     ; bl      _print_unsigned
-    lea rax, xret_24
+    lea rax, xret_26
     mov QWORD PTR arm_x30, rax
     jmp _print_unsigned
-    xret_24:
+    xret_26:
     ; mov     x0, #32
     mov rax, 20h
     mov QWORD PTR arm_x0, rax
     ; bl      _putchar
-    lea rax, xret_25
+    lea rax, xret_27
     mov QWORD PTR arm_x30, rax
     jmp _putchar
-    xret_25:
+    xret_27:
     ; add     x25, x25, #1
     mov rax, QWORD PTR arm_x25
     add rax, 1
@@ -1803,26 +1833,26 @@ _pr_empty:
     lea rax, msg_open
     mov QWORD PTR arm_x0, rax
     ; bl      emit_cstr
-    lea rax, xret_26
-    mov QWORD PTR arm_x30, rax
-    jmp emit_cstr
-    xret_26:
-    ; mov     x0, #0
-    mov rax, 0
-    mov QWORD PTR arm_x0, rax
-    ; bl      _print_unsigned
-    lea rax, xret_27
-    mov QWORD PTR arm_x30, rax
-    jmp _print_unsigned
-    xret_27:
-    ; lea x0, msg_mid
-    lea rax, msg_mid
-    mov QWORD PTR arm_x0, rax
-    ; bl      emit_cstr
     lea rax, xret_28
     mov QWORD PTR arm_x30, rax
     jmp emit_cstr
     xret_28:
+    ; mov     x0, #0
+    mov rax, 0
+    mov QWORD PTR arm_x0, rax
+    ; bl      _print_unsigned
+    lea rax, xret_29
+    mov QWORD PTR arm_x30, rax
+    jmp _print_unsigned
+    xret_29:
+    ; lea x0, msg_mid
+    lea rax, msg_mid
+    mov QWORD PTR arm_x0, rax
+    ; bl      emit_cstr
+    lea rax, xret_30
+    mov QWORD PTR arm_x30, rax
+    jmp emit_cstr
+    xret_30:
 _pr_done:
     ; ldp     x25, x26, [sp, #48]
     lea r10, [rsp]

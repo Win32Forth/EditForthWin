@@ -85,6 +85,8 @@
         EXTERN host_accept
         EXTERN host_resize
         EXTERN host_sleep
+        EXTERN host_pause
+        EXTERN pause_hook
         EXTERN host_time_date
         EXTERN host_chdir
         EXTERN host_edit
@@ -1115,6 +1117,24 @@ XKEYQ
         str     x20, [x22, #-8]!
         mov     x20, #0
 XKEYQ_END
+        NEXT
+
+        BOOT_WORD PAUSE, PAUSE ( -- ) show pending console output then wait 1 ms, 0, XPAUSE, XPAUSE_END
+XPAUSE
+        sub     sp, sp, #64
+        stp     x29, x30, [sp, #32]
+        adrp    x1, pause_hook
+        add     x1, x1, pause_hook
+        ldr     x1, [x1]
+        cbz     x1, _pause_sleep
+        blr     x1
+        b       _pause_done
+_pause_sleep
+        bl      host_pause
+_pause_done
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #64
+XPAUSE_END
         NEXT
 
 ; ---------------------------------------------------------------------

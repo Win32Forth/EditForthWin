@@ -101,6 +101,7 @@
         EXPORT kernel_inited
         EXPORT emit_hook
         EXPORT key_hook
+        EXPORT pause_hook
         EXPORT data_stack
         EXPORT return_stack
         EXPORT user_dict_area
@@ -134,6 +135,8 @@ file_op_hook DCQ    0
 float_op_hook DCQ   host_float_op
 key_hook
 key_fn      DCQ     0
+pause_hook
+pause_fn    DCQ     0
 facility_op_hook DCQ 0
 vm_tos      DCQ     0
 vm_dsp      DCQ     0

@@ -12,6 +12,7 @@
 
         EXTERN emit_hook
         EXTERN key_hook
+        EXTERN pause_hook
         EXTERN facility_op_hook
         EXTERN kernel_inited
         EXTERN bye_flag
@@ -91,6 +92,8 @@
         EXPORT _kernel_set_emit
         EXPORT kernel_set_key
         EXPORT _kernel_set_key
+        EXPORT kernel_set_pause
+        EXPORT _kernel_set_pause
         EXPORT kernel_set_facility_op
         EXPORT _kernel_set_facility_op
         EXPORT _kernel_cold_common
@@ -132,6 +135,14 @@ _kernel_set_key
 kernel_set_key PROC
         adrp    x1, key_hook
         add     x1, x1, key_hook
+        str     x0, [x1]
+        ret
+        ENDP
+
+_kernel_set_pause
+kernel_set_pause PROC
+        adrp    x1, pause_hook
+        add     x1, x1, pause_hook
         str     x0, [x1]
         ret
         ENDP

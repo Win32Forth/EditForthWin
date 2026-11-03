@@ -455,7 +455,7 @@ static int hyper_launch(const char *building, HANDLE *process, HANDLE *thread, H
     si.hStdError = wr;
     _snwprintf_s(
         cmd, 2048, _TRUNCATE,
-        L"\"%s\" --agent --no-autoload -e \"ONLY FORTH DEFINITIONS VOCABULARY HYPER-VOC ONLY FORTH ALSO HYPER-VOC DEFINITIONS S\\\" Library/Hyper/hyper-index.fth\\\" INCLUDED\" -e \"S\\\" %s\\\" HX-SET-OUT-FILE MIN-HYPER-NOISE ON HX-BUILD-INDEX\"",
+        L"\"%s\" --agent --no-autoload -e \"ONLY FORTH DEFINITIONS VOCABULARY HYPER-VOC ONLY FORTH ALSO HYPER-VOC DEFINITIONS S\\\" System/Hyper/hyper-index.fth\\\" INCLUDED\" -e \"S\\\" %s\\\" HX-SET-OUT-FILE MIN-HYPER-NOISE ON HX-BUILD-INDEX\"",
         exe, pathfile);
     SetEnvironmentVariableA("HYPER_REINDEX_CHILD", "1");
     memset(&pi, 0, sizeof pi);

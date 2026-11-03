@@ -138,6 +138,7 @@ PUBLIC restart_cfa
 PUBLIC kernel_inited
 PUBLIC emit_hook
 PUBLIC key_hook
+PUBLIC pause_hook
 PUBLIC data_stack
 PUBLIC return_stack
 PUBLIC user_dict_area
@@ -205,6 +206,10 @@ float_op_hook:
     DQ OFFSET host_float_op
 key_hook:
 key_fn:
+    ; DCQ     0
+    DQ 0
+pause_hook:
+pause_fn:
     ; DCQ     0
     DQ 0
 facility_op_hook:

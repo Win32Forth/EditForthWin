@@ -13,10 +13,12 @@ class ForthConsole;
 class ForthFloat;
 class ForthPipe;
 class QComboBox;
+class QFileSystemModel;
 class QPushButton;
 class QShortcut;
 class QSplitter;
 class QTabWidget;
+class QTreeView;
 class QVBoxLayout;
 
 // One workspace window: a tab per Forth source, line numbers, open and save.
@@ -102,10 +104,19 @@ private:
     void ensureFloat();
     void syncConsoleChrome();
     void showAbout();
-    void showStartupMessages();
+    void showBootMessages();
+    void finishBootCapture();
     QString consumeStartup(const QString &text);
+    void submitForth(const QString &line);
+    void feedRunningKeys(const QString &line);
+    void restartForth();
+    void paintSelectedTab();
+    void noteForthIdle();
 
     QTabWidget *m_tabs = nullptr;
+    QTreeView *m_files = nullptr;
+    QFileSystemModel *m_fileModel = nullptr;
+    QAction *m_filesAction = nullptr;
     QSplitter *m_split = nullptr;
     QSplitter *m_editors = nullptr;
     QWidget *m_right = nullptr;
@@ -168,4 +179,8 @@ private:
     QString m_startupPartial;
     QString m_startupLog;
     int m_statusGen = 0;
+    bool m_forthBusy = false;
+    bool m_busyNote = false;
+    bool m_restarting = false;
+    QString m_runName;
 };

@@ -133,6 +133,7 @@ static void (*host_edit_fn)(const char *path, int kind);
 static void (*host_edit_at_fn)(const char *path, long long line);
 static char user_root[HOST_PATH];
 static char library_root[HOST_PATH];
+static char system_root[HOST_PATH];
 static char reg_path[HOST_REGS][256];
 static int reg_len[HOST_REGS];
 static int reg_n;
@@ -390,6 +391,59 @@ static int host_library_dir(char *dst, size_t cap)
     return n > 0 && (size_t)n < cap;
 }
 
+static int host_system_dir(char *dst, size_t cap)
+{
+    int n;
+
+    if (system_root[0] != '\0') {
+        n = snprintf(dst, cap, "%s", system_root);
+        return n > 0 && (size_t)n < cap;
+    }
+    if (user_root[0] != '\0') {
+        n = snprintf(dst, cap, "%s\\System", user_root);
+        return n > 0 && (size_t)n < cap;
+    }
+    n = snprintf(dst, cap, "System");
+    return n > 0 && (size_t)n < cap;
+}
+
+static int host_top_is(const char *path, const char *name)
+{
+    size_t n = strlen(name);
+
+    if (_strnicmp(path, name, n) != 0)
+        return 0;
+    return path[n] == '\\' || path[n] == '/' || path[n] == '\0';
+}
+
+/* First path component of a moved System folder (Assembler through Testing). */
+static int host_system_top(const char *path)
+{
+    static const char *names[] = {
+        "assembler", "autoload", "debugger", "emitter",
+        "hyper", "reference", "sources", "testing"
+    };
+    int i;
+
+    if (path == NULL)
+        return 0;
+    for (i = 0; i < (int)(sizeof names / sizeof names[0]); i++) {
+        if (host_top_is(path, names[i]))
+            return 1;
+    }
+    return 0;
+}
+
+/* Library\Debugger\... -> Debugger\... when that folder moved into System. */
+static const char *host_library_system_tail(const char *path)
+{
+    if (path == NULL || !host_prefix_ci(path, "Library\\"))
+        return NULL;
+    if (!host_system_top(path + 8))
+        return NULL;
+    return path + 8;
+}
+
 static int host_user_dir(char *dst, size_t cap)
 {
     int n;
@@ -492,6 +546,13 @@ static int host_spec_disk(const char *spec, char *disk, size_t cap)
         out = snprintf(disk, cap, "%s\\%s", user, rel);
         return out > 0 && (size_t)out < cap;
     }
+    if (host_system_top(rel)) {
+        char sys[HOST_PATH];
+        if (host_system_dir(sys, sizeof sys)) {
+            out = snprintf(disk, cap, "%s\\%s", sys, rel);
+            return out > 0 && (size_t)out < cap;
+        }
+    }
     out = snprintf(disk, cap, "%s\\%s", lib, rel);
     return out > 0 && (size_t)out < cap;
 }
@@ -559,7 +620,11 @@ static void host_expand_spec(const char *spec, HostList *batch)
     }
     if (!host_library_dir(lib, sizeof lib) || !host_user_dir(user, sizeof user))
         return;
-    if (host_prefix_ci(spec, "Resources/Library/") || host_prefix_ci(spec, "Library/"))
+    if (host_prefix_ci(spec, "Resources/System/") || host_prefix_ci(spec, "System/")) {
+        char sys[HOST_PATH];
+        if (host_system_dir(sys, sizeof sys))
+            host_walk_files(sys, host_glob_ext(spec), batch, 0);
+    } else if (host_prefix_ci(spec, "Resources/Library/") || host_prefix_ci(spec, "Library/"))
         host_walk_files(lib, host_glob_ext(spec), batch, 0);
     else
         host_walk_files(user, host_glob_ext(spec), batch, 0);
@@ -617,11 +682,12 @@ static void host_parse_hyper_cfg(const char *text, HostList *specs, HostList *ex
 static void host_hyper_defaults(HostList *specs, HostList *excludes)
 {
     static const char *default_specs[] = {
-        "Resources/Library/Sources/forth.s",
-        "Resources/Library/Sources/boot_words.inc",
-        "Resources/Library/Sources/boot_words_end.inc",
-        "Resources/Library/Sources/colon_words.inc",
-        "Resources/Library/Sources/kernel_api.h",
+        "Resources/System/Sources/boot_words.inc",
+        "Resources/System/Sources/boot_words_end.inc",
+        "Resources/System/Sources/colon_words.inc",
+        "Resources/System/Sources/kernel_api.h",
+        "Resources/System/**/*.fth",
+        "Resources/System/**/*.FTH",
         "Resources/Library/**/*.fth",
         "Resources/Library/**/*.FTH",
     };
@@ -1157,7 +1223,7 @@ static void host_install_user_tree(void)
     char ship_root[HOST_PATH];
     char src[HOST_PATH];
     char dst[HOST_PATH];
-    const char *names[] = {"Library", "AutoLoad", "Docs"};
+    const char *names[] = {"Library", "System", "Docs"};
     size_t home_len = 0;
     int i;
     int slash;
@@ -1177,6 +1243,9 @@ static void host_install_user_tree(void)
     if (snprintf(library_root, sizeof library_root, "%s\\Library", user_root) >=
         (int)sizeof library_root)
         library_root[0] = '\0';
+    if (snprintf(system_root, sizeof system_root, "%s\\System", user_root) >=
+        (int)sizeof system_root)
+        system_root[0] = '\0';
     if (!host_find_ship(ship_lib, (int)sizeof ship_lib)) {
         if (!host_has_marker(library_root))
             host_outs("Library source was not found. Documents\\EditForthWin has no Library yet.\n");
@@ -1216,7 +1285,7 @@ static void host_install_user_tree(void)
     SetCurrentDirectoryA(user_root);
 }
 
-/* mode 0: copy Library/AutoLoad/Docs files that are missing or older.
+/* mode 0: copy Library/System/Docs files that are missing or older.
    mode 1: replace those three folders from the ship tree. Config stays.
    mode 2: rename Documents\EditForthWin to EditForthWin.UserN, then copy fresh. */
 void host_user_tree(int mode)
@@ -1227,7 +1296,7 @@ void host_user_tree(int mode)
     char src[HOST_PATH];
     char dst[HOST_PATH];
     char renamed[HOST_PATH];
-    const char *names[] = {"Library", "AutoLoad", "Docs"};
+    const char *names[] = {"Library", "System", "Docs"};
     size_t home_len = 0;
     int i;
     int slash;
@@ -1293,7 +1362,7 @@ void host_user_tree(int mode)
                 continue;
             host_remove_tree(dst);
         }
-        host_outs("Replacing Library, AutoLoad, and Docs\n");
+        host_outs("Replacing Library, System, and Docs\n");
     }
 
     overwrite = mode == 0 ? 0 : 1;
@@ -1310,6 +1379,8 @@ void host_user_tree(int mode)
         CreateDirectoryA(dst, NULL);
     if (snprintf(library_root, sizeof library_root, "%s\\Library", user_root) >= (int)sizeof library_root)
         library_root[0] = '\0';
+    if (snprintf(system_root, sizeof system_root, "%s\\System", user_root) >= (int)sizeof system_root)
+        system_root[0] = '\0';
     if (mode == 0) {
         char msg[96];
         if (copied > 0)
@@ -1389,15 +1460,26 @@ long long host_resolve(const char *p, long long n, char *out, long long cap)
     memcpy(tmp, joined, strlen(joined) + 1);
     host_slashes(tmp);
     src = tmp;
-    if (!host_abs(tmp, (long long)strlen(tmp)) && fromlib_armed) {
-        fromlib_armed = 0;
-        if (library_root[0] == '\0' || !host_is_dir(library_root) ||
-            !host_join(joined, (int)sizeof joined, library_root, tmp)) {
-            host_outs("FROMLIB: Documents\\EditForthWin\\Library is missing\n");
-            return 0;
-        }
-        src = joined;
-    } else if (!host_abs(tmp, (long long)strlen(tmp)) && load_n > 0 && load_len[load_n - 1] > 0) {
+    if (!host_abs(tmp, (long long)strlen(tmp))) {
+        const char *sys_tail = host_library_system_tail(tmp);
+        int sys_hit = sys_tail != NULL || (fromlib_armed && host_system_top(tmp));
+        char sys[HOST_PATH];
+
+        if (sys_hit && host_system_dir(sys, sizeof sys)) {
+            const char *rel = sys_tail != NULL ? sys_tail : tmp;
+            fromlib_armed = 0;
+            if (!host_join(joined, (int)sizeof joined, sys, rel))
+                return 0;
+            src = joined;
+        } else if (fromlib_armed) {
+            fromlib_armed = 0;
+            if (library_root[0] == '\0' || !host_is_dir(library_root) ||
+                !host_join(joined, (int)sizeof joined, library_root, tmp)) {
+                host_outs("FROMLIB: Documents\\EditForthWin\\Library is missing\n");
+                return 0;
+            }
+            src = joined;
+        } else if (load_n > 0 && load_len[load_n - 1] > 0) {
         int dl = load_len[load_n - 1];
         size_t room;
         size_t cn;
@@ -1412,6 +1494,7 @@ long long host_resolve(const char *p, long long n, char *out, long long cap)
         memcpy(joined + dl, tmp, cn);
         joined[dl + cn] = '\0';
         src = joined;
+        }
     }
     need = GetFullPathNameA(src, (DWORD)cap, out, NULL);
     if (need == 0 || need >= (DWORD)cap) {
@@ -2116,6 +2199,13 @@ void host_sleep(unsigned long long ms)
     }
 }
 
+/* PAUSE with no host hook: flush the C stream, then wait 1 ms. */
+void host_pause(void)
+{
+    fflush(stdout);
+    Sleep(1);
+}
+
 void host_time_date(long long *out)
 {
     SYSTEMTIME st;
@@ -2293,9 +2383,10 @@ void forth_autoload_set(int on)
     autoload_enabled = on ? 1 : 0;
 }
 
-/* Evaluate AutoLoad/autoload.fth as one buffer from Documents\EditForthWin.
-   Relative Library/ names then resolve against that folder. INCLUDE would
-   push AutoLoad\ and look for Library beside the script. */
+/* Evaluate System/AutoLoad/autoload.fth as one buffer from Documents\EditForthWin.
+   A leftover top-level AutoLoad is used when System/AutoLoad is not there.
+   Relative Library/<system> names rewrite to System. INCLUDE would push
+   AutoLoad\ and look for siblings beside the script. */
 void forth_autoload(void)
 {
     char path[HOST_PATH];
@@ -2304,10 +2395,15 @@ void forth_autoload(void)
 
     if (!autoload_enabled || user_root[0] == '\0')
         return;
-    if (snprintf(path, sizeof path, "%s\\AutoLoad\\autoload.fth", user_root) >= (int)sizeof path)
+    if (snprintf(path, sizeof path, "%s\\System\\AutoLoad\\autoload.fth", user_root) >=
+        (int)sizeof path)
         return;
-    if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES)
-        return;
+    if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
+        if (snprintf(path, sizeof path, "%s\\AutoLoad\\autoload.fth", user_root) >= (int)sizeof path)
+            return;
+        if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES)
+            return;
+    }
     SetCurrentDirectoryA(user_root);
     rc = forth_eval_file(path);
     if (rc != 0)
