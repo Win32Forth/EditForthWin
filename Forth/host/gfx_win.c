@@ -6,6 +6,7 @@
 #include <initguid.h>
 #include <windows.h>
 #include <commdlg.h>
+#include <dlgs.h>
 #include <wincodec.h>
 
 #include <stdint.h>
@@ -30,6 +31,7 @@ struct gfx_job {
 
 struct oop_win {
     int used;
+    int size_dirty;
     HWND hwnd;
 };
 
@@ -68,6 +70,7 @@ static long long g_events[KEY_MAX];
 static int g_event_n;
 static uint32_t g_pal[256];
 static int g_pal_ready;
+static WPARAM g_last_vk;
 
 static void palette_init(void)
 {
@@ -117,6 +120,38 @@ static void push_key(long long c)
     if (g_key_n < KEY_MAX)
         g_keys[g_key_n++] = c;
     LeaveCriticalSection(&key_cs);
+}
+
+/* WINED64 and EDIT64: Shift 256, Control 512, Alt 1024.
+   Shift on a letter is already in the character. */
+static long long held_mods(int include_shift)
+{
+    long long mods = 0;
+
+    if (include_shift && (GetKeyState(VK_SHIFT) & 0x8000))
+        mods |= 256;
+    if (GetKeyState(VK_CONTROL) & 0x8000)
+        mods |= 512;
+    if (GetKeyState(VK_MENU) & 0x8000)
+        mods |= 1024;
+    return mods;
+}
+
+static int nav_code(WPARAM wp)
+{
+    switch (wp) {
+    case VK_LEFT: return 203;
+    case VK_RIGHT: return 205;
+    case VK_UP: return 200;
+    case VK_DOWN: return 208;
+    case VK_HOME: return 199;
+    case VK_END: return 207;
+    case VK_PRIOR: return 201;
+    case VK_NEXT: return 209;
+    case VK_DELETE: return 212;
+    case VK_INSERT: return 213;
+    default: return 0;
+    }
 }
 
 static long long take_key(void)
@@ -351,6 +386,10 @@ static void note_mouse(HWND hwnd, int x, int y, WPARAM wp)
         buttons |= 2;
     if (wp & MK_MBUTTON)
         buttons |= 4;
+    /* Alt while a button is down is bit 1024. Julia zooms out on that.
+       A release stays 0, so a poll can see the button come up. */
+    if (buttons != 0 && (GetKeyState(VK_MENU) & 0x8000))
+        buttons |= 1024;
     EnterCriticalSection(&gfx_cs);
     g_mouse_x = px;
     g_mouse_y = py;
@@ -380,33 +419,76 @@ static LRESULT CALLBACK gfx_wnd(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             ReleaseCapture();
         return 0;
     case WM_KEYDOWN:
-        if (wp == VK_LEFT) {
-            push_key(203);
-            return 0;
-        }
-        if (wp == VK_RIGHT) {
-            push_key(205);
-            return 0;
-        }
-        if (wp == VK_UP) {
-            push_key(200);
-            return 0;
-        }
-        if (wp == VK_DOWN) {
-            push_key(208);
-            return 0;
-        }
+    case WM_SYSKEYDOWN: {
+        int nav;
+        long long mods;
+
+        g_last_vk = wp;
         if (wp == VK_ESCAPE) {
             push_key(27);
             return 0;
         }
-        break;
-    case WM_CHAR:
-        if (wp > 0 && wp < 128 && wp != 27) {
-            push_key((long long)wp);
+        nav = nav_code(wp);
+        if (nav) {
+            mods = held_mods(1);
+            push_key(mods ? ((long long)nav | mods) : nav);
             return 0;
         }
         break;
+    }
+    case WM_CHAR:
+    case WM_SYSCHAR: {
+        long long ch = (long long)wp;
+        long long mods;
+        int ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+        int alt = (GetKeyState(VK_MENU) & 0x8000) != 0;
+        int shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+
+        if (ch == 27)
+            return 0;
+        if (ch <= 0 || ch >= 128)
+            break;
+        /* Ctrl+A..Z arrives as 1..26. Backspace, Tab, and Enter stay themselves. */
+        if (ctrl && ch >= 1 && ch <= 26
+            && g_last_vk != VK_BACK
+            && g_last_vk != VK_TAB
+            && g_last_vk != VK_RETURN) {
+            mods = 512;
+            if (shift)
+                mods |= 256;
+            if (alt)
+                mods |= 1024;
+            push_key((long long)('a' + (int)ch - 1) | mods);
+            return 0;
+        }
+        mods = 0;
+        if (ctrl)
+            mods |= 512;
+        if (alt)
+            mods |= 1024;
+        if (ch == 9 || ((ctrl || alt) && shift))
+            mods |= 256;
+        push_key(mods ? (ch | mods) : ch);
+        return 0;
+    }
+    case WM_MOUSEWHEEL: {
+        int delta = GET_WHEEL_DELTA_WPARAM(wp);
+        int steps;
+        int i;
+        long long code;
+
+        if (delta == 0)
+            return 0;
+        steps = abs(delta) / WHEEL_DELTA;
+        if (steps < 1)
+            steps = 1;
+        if (steps > 3)
+            steps = 3;
+        code = delta > 0 ? 210 : 211;
+        for (i = 0; i < steps; i++)
+            push_key(code);
+        return 0;
+    }
     case WM_EXITSIZEMOVE: {
         RECT rc;
         int c;
@@ -474,9 +556,15 @@ static LRESULT CALLBACK oop_wnd(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         int i = oop_from_hwnd(hwnd);
         if (i >= 0) {
             g_oop[i].used = 0;
+            g_oop[i].size_dirty = 0;
             g_oop[i].hwnd = NULL;
         }
         return 0;
+    }
+    if (msg == WM_SIZE) {
+        int i = oop_from_hwnd(hwnd);
+        if (i >= 0 && g_oop[i].used)
+            g_oop[i].size_dirty = 1;
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
@@ -1143,6 +1231,256 @@ long long host_app_file_save_as(void)
     return a.ior;
 }
 
+/* shell32 Pictures folder. A local declaration keeps initguid.h from
+   emitting the known-folder GUIDs into this file. */
+#define CSIDL_MYPICTURES 0x0027
+HRESULT WINAPI SHGetFolderPathW(HWND hwnd, int csidl, HANDLE token, DWORD flags, LPWSTR path);
+
+static const wchar_t picture_filter[] =
+    L"PNG\0*.png\0JPEG\0*.jpg;*.jpeg\0TIFF\0*.tif;*.tiff\0";
+
+struct picture_pick {
+    wchar_t file[1024];
+    wchar_t dir[1024];
+    wchar_t defext[8];
+    int index;
+    long long ior;
+};
+
+static void wcopy_cap(wchar_t *dst, const wchar_t *src, int cap)
+{
+    int i;
+
+    if (cap < 1)
+        return;
+    for (i = 0; i < cap - 1 && src[i] != 0; i++)
+        dst[i] = src[i];
+    dst[i] = 0;
+}
+
+/* 1 PNG, 2 JPEG, 3 TIFF, 0 anything else. */
+static int picture_kind(const wchar_t *path)
+{
+    const wchar_t *base;
+    const wchar_t *s;
+    const wchar_t *dot;
+
+    base = path;
+    for (s = path; *s != 0; s++) {
+        if (*s == L'\\' || *s == L'/')
+            base = s + 1;
+    }
+    dot = wcsrchr(base, L'.');
+    if (dot == NULL || dot == base || dot[1] == 0)
+        return 0;
+    if (_wcsicmp(dot, L".png") == 0)
+        return 1;
+    if (_wcsicmp(dot, L".jpg") == 0 || _wcsicmp(dot, L".jpeg") == 0)
+        return 2;
+    if (_wcsicmp(dot, L".tif") == 0 || _wcsicmp(dot, L".tiff") == 0)
+        return 3;
+    return 0;
+}
+
+static void picture_defext_set(struct picture_pick *a)
+{
+    const wchar_t *ext;
+
+    ext = L"png";
+    if (a->index == 2)
+        ext = L"jpg";
+    else if (a->index == 3)
+        ext = L"tif";
+    a->defext[0] = ext[0];
+    a->defext[1] = ext[1];
+    a->defext[2] = ext[2];
+    a->defext[3] = 0;
+}
+
+static void picture_apply_kind(wchar_t *name, int cap, int kind)
+{
+    wchar_t *base;
+    wchar_t *s;
+    wchar_t *dot;
+    const wchar_t *ext;
+    int cur;
+    int n;
+    int e;
+
+    if (cap < 16)
+        return;
+    if (kind < 1 || kind > 3)
+        kind = 1;
+    base = name;
+    for (s = name; *s != 0; s++) {
+        if (*s == L'\\' || *s == L'/')
+            base = s + 1;
+    }
+    if (base[0] == 0) {
+        wcopy_cap(name, kind == 2 ? L"Julia.jpg" : kind == 3 ? L"Julia.tif" : L"Julia.png", cap);
+        return;
+    }
+    cur = picture_kind(name);
+    if (cur == kind)
+        return;
+    ext = kind == 2 ? L".jpg" : kind == 3 ? L".tif" : L".png";
+    dot = wcsrchr(base, L'.');
+    if (dot != NULL && dot != base)
+        *dot = 0;
+    n = (int)wcslen(name);
+    e = (int)wcslen(ext);
+    if (n + e >= cap)
+        return;
+    memcpy(name + n, ext, (size_t)(e + 1) * sizeof(wchar_t));
+}
+
+static void pictures_dir(wchar_t *dir)
+{
+    wchar_t pics[MAX_PATH];
+
+    dir[0] = 0;
+    pics[0] = 0;
+    if (SHGetFolderPathW(NULL, CSIDL_MYPICTURES, NULL, 0, pics) == S_OK)
+        wcopy_cap(dir, pics, 1024);
+}
+
+/* A picture extension keeps its directory, name, and kind.
+   Any other staged path keeps its directory and suggests Julia.png. */
+static void picture_seed(struct picture_pick *a)
+{
+    wchar_t wide[1024];
+    wchar_t *slash;
+    wchar_t *s;
+    int kind;
+
+    a->file[0] = 0;
+    a->dir[0] = 0;
+    a->index = 1;
+    wide[0] = 0;
+    if (g_staged[0] == 0 ||
+        MultiByteToWideChar(CP_UTF8, 0, g_staged, -1, wide, 1024) <= 0) {
+        pictures_dir(a->dir);
+        wcopy_cap(a->file, L"Julia.png", 1024);
+        return;
+    }
+    slash = NULL;
+    for (s = wide; *s != 0; s++) {
+        if (*s == L'\\' || *s == L'/')
+            slash = s;
+    }
+    kind = picture_kind(wide);
+    if (kind != 0 && slash != NULL && slash[1] != 0) {
+        *slash = 0;
+        wcopy_cap(a->dir, wide, 1024);
+        wcopy_cap(a->file, slash + 1, 1024);
+        a->index = kind;
+        return;
+    }
+    if (kind != 0 && slash == NULL) {
+        pictures_dir(a->dir);
+        wcopy_cap(a->file, wide, 1024);
+        a->index = kind;
+        return;
+    }
+    if (slash != NULL) {
+        *slash = 0;
+        wcopy_cap(a->dir, wide, 1024);
+    } else {
+        pictures_dir(a->dir);
+    }
+    wcopy_cap(a->file, L"Julia.png", 1024);
+}
+
+static UINT_PTR CALLBACK picture_hook(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
+{
+    OFNOTIFYW *note;
+    struct picture_pick *pick;
+    wchar_t spec[1024];
+    int kind;
+
+    (void)wp;
+    if (msg != WM_NOTIFY)
+        return 0;
+    note = (OFNOTIFYW *)lp;
+    if (note->hdr.code == CDN_TYPECHANGE) {
+        kind = (int)note->lpOFN->nFilterIndex;
+        if (kind < 1 || kind > 3)
+            kind = 1;
+        spec[0] = 0;
+        if (CommDlg_OpenSave_GetSpecW(hdlg, spec, 1024) < 0)
+            spec[0] = 0;
+        picture_apply_kind(spec, 1024, kind);
+        SendMessageW(hdlg, CDM_SETCONTROLTEXT, edt1, (LPARAM)spec);
+        pick = (struct picture_pick *)note->lpOFN->lCustData;
+        if (pick != NULL) {
+            pick->index = kind;
+            picture_defext_set(pick);
+        }
+        return 0;
+    }
+    if (note->hdr.code == CDN_FILEOK) {
+        spec[0] = 0;
+        if (CommDlg_OpenSave_GetFilePathW(hdlg, spec, 1024) < 0 || picture_kind(spec) == 0) {
+            SetWindowLongPtrW(hdlg, DWLP_MSGRESULT, 1);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void picture_on_ui(void *p)
+{
+    struct picture_pick *a;
+    OPENFILENAMEW ofn;
+    HWND owner;
+    BOOL ok;
+
+    a = p;
+    a->ior = -2;
+    memset(&ofn, 0, sizeof ofn);
+    ofn.lStructSize = sizeof ofn;
+    EnterCriticalSection(&gfx_cs);
+    owner = g_hwnd;
+    LeaveCriticalSection(&gfx_cs);
+    ofn.hwndOwner = owner;
+    ofn.lpstrFilter = picture_filter;
+    ofn.lpstrFile = a->file;
+    ofn.nMaxFile = 1024;
+    ofn.lpstrInitialDir = a->dir[0] != 0 ? a->dir : NULL;
+    ofn.lpstrTitle = L"Save Picture";
+    ofn.lpstrDefExt = a->defext;
+    ofn.nFilterIndex = (DWORD)a->index;
+    ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR |
+                OFN_OVERWRITEPROMPT | OFN_ENABLEHOOK | OFN_HIDEREADONLY;
+    ofn.lpfnHook = picture_hook;
+    ofn.lCustData = (LPARAM)a;
+    ok = GetSaveFileNameW(&ofn);
+    if (!ok) {
+        a->ior = CommDlgExtendedError() ? -2 : -1;
+        return;
+    }
+    if (picture_kind(a->file) == 0) {
+        a->ior = -2;
+        return;
+    }
+    stage_wide(a->file);
+    a->ior = 0;
+}
+
+long long host_app_file_save_picture(void)
+{
+    struct picture_pick a;
+
+    if (g_headless)
+        return -1;
+    memset(&a, 0, sizeof a);
+    picture_seed(&a);
+    picture_defext_set(&a);
+    a.ior = -2;
+    gfx_call(picture_on_ui, &a);
+    return a.ior;
+}
+
 long long host_app_file_path(void *dest, long long max)
 {
     size_t n;
@@ -1271,7 +1609,9 @@ static void oop_on_ui(void *p)
             return;
         g_oop[i].used = 1;
         g_oop[i].hwnd = hwnd;
+        g_oop[i].size_dirty = 0;
         ShowWindow(hwnd, SW_SHOW);
+        g_oop[i].size_dirty = 0;
         a->result = i + 1;
         return;
     }
@@ -1279,6 +1619,29 @@ static void oop_on_ui(void *p)
     if (a->op == 2) {
         if (id >= 0 && id < OOP_MAX && g_oop[id].used)
             DestroyWindow(g_oop[id].hwnd);
+        return;
+    }
+    if (a->op == 8 || a->op == 9) {
+        RECT rc;
+        int w;
+        int h;
+
+        if (id < 0 || id >= OOP_MAX || !g_oop[id].used)
+            return;
+        if (a->op == 9) {
+            a->result = g_oop[id].size_dirty ? -1 : 0;
+            g_oop[id].size_dirty = 0;
+            return;
+        }
+        if (!GetClientRect(g_oop[id].hwnd, &rc))
+            return;
+        w = rc.right < 0 ? 0 : rc.right;
+        h = rc.bottom < 0 ? 0 : rc.bottom;
+        if (w > 65535)
+            w = 65535;
+        if (h > 65535)
+            h = 65535;
+        a->result = (long long)w | ((long long)h << 16);
         return;
     }
     id = (int)a->c - 1;

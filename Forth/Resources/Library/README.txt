@@ -23,6 +23,14 @@ Examples
   FROMLIB FLOAD Testing/ANSValidate/ANS-VALIDATE.fth
   FROMLIB FLOAD Testing/DbgSpanSmoke/span-tests.fth
   FROMLIB FLOAD BigInteger/big-int.fth
+  FROMLIB FLOAD FixPoint/FIXEDPOINT.fth    \ ALSO FIXED-POINT
+  \ FixPoint is one signed cell. XBITS defaults to 28.
+  \ Define CONSTANT XBITS before the load to choose another scale.
+  \ MANSHOW-COOP and MANSHOW-CORE define 52.
+  \ XUNIT, F>X, X>F, X*, X/, XSQRT, XSIN, XCOS, XEXP, XALOG,
+  \ XLN, XLOG, XATAN, XASIN, XACOS, and XATAN2 are in.
+  \ Log, exp, and inverse trig use constants written for 28 fraction bits.
+  \ + and - are the cell words.
   FROMLIB FLOAD PI/pi-test.fth
   FROMLIB FLOAD xchar-smoke.fth
   FROMLIB FLOAD Debugger/debugger.fth  \ DEBUG hub + loads Debugger/* (AutoLoad)
@@ -39,6 +47,12 @@ Examples
   FROMLIB FLOAD Sample/KOKO.fth            \ then: KOKO (COLOR8 fractal; any key stops)
   FROMLIB FLOAD Sample/MANGEN.fth          \ then: MANGEN (COLOR8 Mandelbrot; S writes mandel.raw)
   FROMLIB FLOAD Sample/MANSHOW.fth         \ then: MANSHOW (pan and zoom mandel.raw)
+  FROMLIB FLOAD Sample/MANSHOW-COOP.fth    \ then: MANSHOW-COOP (four cooperative tasks)
+  FROMLIB FLOAD Sample/MANSHOW-CORE.fth    \ then: MANSHOW-CORE (four worker cores)
+  FROMLIB FLOAD Juliav444/JULIAV444.fth    \ then: JULIAV444 (Q28 Julia and Mandelbrot; L loads a parameter file)
+  FROMLIB FLOAD Juliav444/JULIAV444-CORE4.fth \ then: JULIAV444-CORE4 (four cores)
+  FROMLIB FLOAD Juliav444/JULIAV444-CORE8.fth \ then: JULIAV444-CORE8 (eight cores)
+  FROMLIB FLOAD Juliav444/JULIAV444-CORE20.fth \ then: JULIAV444-CORE20 (twenty tasks, ten processors)
   FROMLIB FLOAD Sample/OBJECT.fth          \ then: OBJECT-DEMO (vehicles and automobiles)
   FROMLIB FLOAD Sample/SPREAD.fth          \ then: SPREAD (26x26 sheet; Esc quits)
   FROMLIB FLOAD Sample/SZ.fth              \ then: SZ (graphics editor; Esc opens the menu)
@@ -67,6 +81,7 @@ Examples
   FROMLIB FLOAD Sample/SSBLIT.fth          \ then: SSBLIT (logo and a moving Z; any key stops)
   FROMLIB FLOAD Sample/IMAGEVIEW64.fth     \ then: IMAGEVIEW (TRUECOLOR open/zoom)
   FROMLIB FLOAD Sample/EDIT64.fth          \ then: EDIT64 (GRAPHICS mini-editor; EMITable)
+  FROMLIB FLOAD WinEd/WINED64.fth          \ then: WINED64 (editor; keys match EditForth)
   \ REF / XREF / USEDIN / CALLS / ANYWORDS — cold-loaded (Kernel/xref.fth .incbin)
   \   REF DUP          \ colon/DEFER refs; Space=pause Esc/Q=stop; title shows leaf:line
   \   ANYWORDS OVER    \ WORDS-like across FORTH + named VOCABULARYs (optional filter)

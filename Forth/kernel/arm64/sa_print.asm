@@ -19,6 +19,7 @@
         EXPORT _sa_putchar
         EXPORT _sa_print_signed
         EXPORT _sa_print_unsigned
+        EXPORT _print_string_svc
 
         BOOT_WORD (SA-PRINT), (SA-PRINT) ( -- ) stand-alone print runtime block, FLAG_EMM, SA_PRINT, SA_PRINT_END
         BOOT_WORD (LOAD-BASE), (LOAD-BASE) ( -- ) x6 = BASE clamped 2..36, FLAG_EMM, _load_base, _load_base_end

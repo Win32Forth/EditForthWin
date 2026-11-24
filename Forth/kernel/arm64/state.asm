@@ -175,7 +175,7 @@ file_echo_pos DCQ   0
 file_echo_stack SPACE 64
 source_sp   DCQ     0
 eval_resume_sp DCQ  0
-source_stack SPACE  512
+source_stack SPACE  640
 eval_resume_stack SPACE 64
 resolve_buf SPACE   256
 pad_buffer  SPACE   1024
@@ -207,8 +207,8 @@ cfa_execute DCQ     0
 cfa_comma   DCQ     0
 restart_cell DCQ    restart_cfa
 numbuf      SPACE   32
-word_scratch SPACE  80
-wordlist_reg SPACE  256
+word_scratch SPACE  512
+wordlist_reg SPACE  1024
 words_user_base DCQ 0
 words_filter_len DCQ 0
 words_nk_tmp DCQ    0

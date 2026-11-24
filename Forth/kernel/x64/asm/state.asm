@@ -1,40 +1,8 @@
 ; Generated from Forth/kernel/arm64/state.asm. Do not edit.
 OPTION CASEMAP:NONE
-EXTRN arm_x0:QWORD
-EXTRN arm_x1:QWORD
-EXTRN arm_x2:QWORD
-EXTRN arm_x3:QWORD
-EXTRN arm_x4:QWORD
-EXTRN arm_x5:QWORD
-EXTRN arm_x6:QWORD
-EXTRN arm_x7:QWORD
-EXTRN arm_x8:QWORD
-EXTRN arm_x9:QWORD
-EXTRN arm_x10:QWORD
-EXTRN arm_x11:QWORD
-EXTRN arm_x12:QWORD
-EXTRN arm_x13:QWORD
-EXTRN arm_x14:QWORD
-EXTRN arm_x15:QWORD
-EXTRN arm_x16:QWORD
-EXTRN arm_x17:QWORD
-EXTRN arm_x18:QWORD
-EXTRN arm_x19:QWORD
-EXTRN arm_x20:QWORD
-EXTRN arm_x21:QWORD
-EXTRN arm_x22:QWORD
-EXTRN arm_x23:QWORD
-EXTRN arm_x24:QWORD
-EXTRN arm_x25:QWORD
-EXTRN arm_x26:QWORD
-EXTRN arm_x27:QWORD
-EXTRN arm_x28:QWORD
-EXTRN arm_x29:QWORD
-EXTRN arm_x30:QWORD
-EXTRN arm_n:BYTE
-EXTRN arm_z:BYTE
-EXTRN arm_c:BYTE
-EXTRN arm_v:BYTE
+EXTRN arm_excl:QWORD
+EXTRN arm_excl_addr:QWORD
+EXTRN arm_excl_val:QWORD
 EXTRN XCATCH_OK:PROC
 EXTRN XRESTART:PROC
 EXTRN XTW_CONTINUE:PROC
@@ -327,8 +295,8 @@ eval_resume_sp:
     ; DCQ  0
     DQ 0
 source_stack:
-    ; SPACE  512
-    DB 512 DUP(0)
+    ; SPACE  640
+    DB 640 DUP(0)
 eval_resume_stack:
     ; SPACE 64
     DB 64 DUP(0)
@@ -417,11 +385,11 @@ numbuf:
     ; SPACE   32
     DB 32 DUP(0)
 word_scratch:
-    ; SPACE  80
-    DB 80 DUP(0)
+    ; SPACE  512
+    DB 512 DUP(0)
 wordlist_reg:
-    ; SPACE  256
-    DB 256 DUP(0)
+    ; SPACE  1024
+    DB 1024 DUP(0)
 words_user_base:
     ; DCQ 0
     DQ 0

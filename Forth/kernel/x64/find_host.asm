@@ -1,25 +1,12 @@
 ; C-callable wrapper for the translated _find_word.
 ; Public domain.
 ;
-; The ARM64 kernel exports _find_word as a normal function (x0 = token,
-; x1 = length, ret = CFA). The x64 translation keeps those values in the
-; virtual register file and returns with jmp [arm_x30]. companion.c calls
-; it for Ctrl+click VIEW and breakpoints. A direct call ignores rcx/rdx
-; and jumps through a stale arm_x30, which kills forthx64.exe. The editor
-; then prints "Forth stopped."
-;
-; Save the register file, pass the C arguments in, return here, then put
-; the file back so the next eval still has its VM registers.
+; Save this thread's register file, pass the C arguments in, return here,
+; then put the file back so the next eval still has its VM registers.
 
 OPTION CASEMAP:NONE
 
-EXTERN arm_x0:QWORD
-EXTERN arm_x1:QWORD
-EXTERN arm_x30:QWORD
-EXTERN arm_n:BYTE
-EXTERN arm_z:BYTE
-EXTERN arm_c:BYTE
-EXTERN arm_v:BYTE
+EXTERN arm_load_base:PROC
 EXTERN _find_word:PROC
 
 .DATA
@@ -36,48 +23,50 @@ PUBLIC host_find_word
 host_find_word PROC
     push rbx
     push r12
-    mov rbx, rcx
-    mov r12, rdx
     push rsi
     push rdi
-    lea rsi, arm_x0
+    push r15
+    mov rbx, rcx
+    mov r12, rdx
+    sub rsp, 20h
+    call arm_load_base
+    mov r15, rax
+    lea rsi, [r15]
     lea rdi, save_arm
     mov rcx, 31
     rep movsq
-    mov al, BYTE PTR arm_n
+    mov al, BYTE PTR [r15+248]
     mov save_n, al
-    mov al, BYTE PTR arm_z
+    mov al, BYTE PTR [r15+249]
     mov save_z, al
-    mov al, BYTE PTR arm_c
+    mov al, BYTE PTR [r15+250]
     mov save_c, al
-    mov al, BYTE PTR arm_v
+    mov al, BYTE PTR [r15+251]
     mov save_v, al
-    pop rdi
-    pop rsi
-    mov QWORD PTR arm_x0, rbx
-    mov QWORD PTR arm_x1, r12
+    mov QWORD PTR [r15], rbx
+    mov QWORD PTR [r15+8], r12
     lea rax, host_find_back
-    mov QWORD PTR arm_x30, rax
+    mov QWORD PTR [r15+240], rax
+    add rsp, 20h
     jmp _find_word
 host_find_back:
-    mov rbx, QWORD PTR arm_x0
-    push rsi
-    push rdi
+    mov rbx, QWORD PTR [r15]
     lea rsi, save_arm
-    lea rdi, arm_x0
+    lea rdi, [r15]
     mov rcx, 31
     rep movsq
     mov al, save_n
-    mov BYTE PTR arm_n, al
+    mov BYTE PTR [r15+248], al
     mov al, save_z
-    mov BYTE PTR arm_z, al
+    mov BYTE PTR [r15+249], al
     mov al, save_c
-    mov BYTE PTR arm_c, al
+    mov BYTE PTR [r15+250], al
     mov al, save_v
-    mov BYTE PTR arm_v, al
+    mov BYTE PTR [r15+251], al
+    mov rax, rbx
+    pop r15
     pop rdi
     pop rsi
-    mov rax, rbx
     pop r12
     pop rbx
     ret

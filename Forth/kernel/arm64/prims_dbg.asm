@@ -48,11 +48,8 @@ DBG_DSAVE_MAX   EQU 64
         EXTERN host_debug_paint
         EXTERN host_debug_set_span
         EXTERN host_debug_get_span
-        EXTERN source_id
-        EXTERN source_base
-        EXTERN to_in
-        EXTERN line_mode
-        EXTERN line_origin
+        EXTERN up_var
+        EXTERN console_task
 
         EXPORT next_debug
         EXPORT debug_break_asap
@@ -102,6 +99,16 @@ DBG_DSAVE_MAX   EQU 64
 ; next_debug_gate is the in-file target of the NEXT macro.
 next_debug_gate
 next_debug
+        ; Workers are never the debugger. x27 == 0 is early boot.
+        adrp    x1, console_task
+        add     x1, x1, console_task
+        cmp     x27, x1
+        b.eq    nd_console
+        cbz     x27, nd_console
+        ldr     x21, [x19], #8
+        ldr     x1, [x21]
+        br      x1
+nd_console
         adrp    x1, debug_busy
         add     x1, x1, debug_busy
         ldr     x2, [x1]
@@ -2443,15 +2450,13 @@ vrp_fail
         ret
 
 ; x0 = 1-based line in the current SOURCE, or 0 when no file is registered
-; or the source is the console. Leaf: clobbers x1-x4 only.
+; or the source is the console. Leaf: clobbers x1-x4 and x16.
 _view_line_now
         adrp    x0, view_src_id
         add     x0, x0, view_src_id
         ldr     x0, [x0]
         cbz     x0, _vln_none
-        adrp    x0, source_id
-        add     x0, x0, source_id
-        ldr     x0, [x0]
+        UP_LOAD x0, TU_SRC_ID
         cbz     x0, _vln_none
         b       _source_line_now
 _vln_none
@@ -2460,19 +2465,11 @@ _vln_none
 
 ; x0 = 1-based line. Counts LF from the file origin through >IN.
 _source_line_now
-        adrp    x1, source_base
-        add     x1, x1, source_base
-        ldr     x1, [x1]
-        adrp    x2, to_in
-        add     x2, x2, to_in
-        ldr     x2, [x2]
-        adrp    x4, line_mode
-        add     x4, x4, line_mode
-        ldr     x4, [x4]
+        UP_LOAD x1, TU_SRC_ADDR
+        UP_LOAD x2, TU_TO_IN
+        UP_LOAD x4, TU_LINE_MODE
         cbz     x4, _source_line_at
-        adrp    x3, line_origin
-        add     x3, x3, line_origin
-        ldr     x3, [x3]
+        UP_LOAD x3, TU_LINE_ORIGIN
         add     x4, x1, x2
         sub     x2, x4, x3
         mov     x1, x3

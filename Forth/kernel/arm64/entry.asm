@@ -14,6 +14,9 @@
         EXTERN key_hook
         EXTERN pause_hook
         EXTERN facility_op_hook
+        EXTERN _task_cold_init
+        EXTERN eval_frame_sp
+        EXTERN up_var
         EXTERN kernel_inited
         EXTERN bye_flag
         EXTERN latest_var
@@ -24,29 +27,12 @@
         EXTERN vm_dsp
         EXTERN vm_rsp
         EXTERN debug_armed
-        EXTERN source_cur
-        EXTERN source_end
-        EXTERN source_base
-        EXTERN to_in
         EXTERN throw_handler
-        EXTERN line_mode
-        EXTERN line_origin
-        EXTERN line_limit
-        EXTERN line_next
-        EXTERN source_id
         EXTERN view_src_id
         EXTERN view_id_sp
         EXTERN _view_pop_src_id
         EXTERN file_echo
-        EXTERN file_echo_pos
-        EXTERN file_echo_stack
-        EXTERN blk_var
-        EXTERN blk_stack
-        EXTERN source_sp
-        EXTERN source_stack
         EXTERN local_frame_depth
-        EXTERN eval_resume_sp
-        EXTERN eval_resume_stack
         EXTERN cfa_exit
         EXTERN cfa_lit
         EXTERN cfa_branch
@@ -80,6 +66,13 @@
         EXTERN _record_words_user_base_once
         EXTERN emit_str
         EXTERN emit_cstr
+        EXTERN host_eval_fault_enter
+        EXTERN host_eval_fault_leave
+        EXTERN host_debug_paint
+        EXTERN debug_busy
+        EXTERN debug_bp_go
+        EXTERN debug_runto_ip
+        EXTERN debug_floor
         EXTERN _putchar
         EXTERN _print_unsigned
         EXTERN forth_init_str
@@ -113,6 +106,7 @@
         EXPORT _embed_finish
         EXPORT _do_quit
         EXPORT _arm_lines
+        EXPORT _set_source
         EXPORT _take_line
         EXPORT _push_source
         EXPORT _pop_source
@@ -122,6 +116,7 @@
         EXPORT _quit_exit
         EXPORT _embed_bye_return
         EXPORT _embed_ret_x0
+        EXPORT eval_fault_resume
 
 _kernel_set_emit
 kernel_set_emit PROC
@@ -158,6 +153,10 @@ kernel_set_facility_op PROC
 _kernel_init
 kernel_init PROC
         sub     sp, sp, #128
+        adrp    x16, eval_frame_sp
+        add     x16, x16, eval_frame_sp
+        mov     x17, sp
+        str     x17, [x16]
         stp     x29, x30, [sp, #32]
         stp     x19, x20, [sp, #48]
         stp     x21, x22, [sp, #64]
@@ -180,25 +179,16 @@ kernel_init PROC
         add     x1, x1, forth_init_end
         sub     x1, x1, x0
         sub     x1, x1, #1
-        adrp    x2, source_base
-        add     x2, x2, source_base
-        str     x0, [x2]
-        adrp    x2, to_in
-        add     x2, x2, to_in
-        str     xzr, [x2]
-        adrp    x2, source_cur
-        add     x2, x2, source_cur
-        str     x0, [x2]
-        adrp    x2, source_end
-        add     x2, x2, source_end
-        add     x0, x0, x1
-        str     x0, [x2]
+        bl      _set_source
+        UP_STORE xzr, TU_SRC_ID
         adrp    x2, throw_handler
         add     x2, x2, throw_handler
         str     xzr, [x2]
         adrp    x2, bye_flag
         add     x2, x2, bye_flag
         str     xzr, [x2]
+        ; After cold common, before the init string. A fault returns -1.
+        bl      host_eval_fault_enter
         b       _interpret_loop
 _kinit_already
         mov     x0, #0
@@ -210,6 +200,9 @@ _kinit_already
 _kernel_cold_common PROC
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
+        ; Headers are built while x27 is 0. A stale x27 must not look
+        ; like a background task with no slice.
+        mov     x27, #0
         adrp    x22, data_stack
         add     x22, x22, data_stack
         add     x22, x22, #1, lsl #12
@@ -243,6 +236,7 @@ _cold_clear
         bl      _boot_kernel
         adrp    x24, latest_var
         add     x24, x24, latest_var
+        bl      _task_cold_init
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
         ret
@@ -417,6 +411,10 @@ _zcmp_ne
 _kernel_eval
 kernel_eval PROC
         sub     sp, sp, #128
+        adrp    x16, eval_frame_sp
+        add     x16, x16, eval_frame_sp
+        mov     x17, sp
+        str     x17, [x16]
         stp     x29, x30, [sp, #32]
         stp     x19, x20, [sp, #48]
         stp     x21, x22, [sp, #64]
@@ -431,42 +429,43 @@ kernel_eval PROC
         neg     x0, x0
         b       _embed_ret_x0
 _eval_go
-        adrp    x2, source_base
-        add     x2, x2, source_base
-        str     x0, [x2]
-        adrp    x2, to_in
-        add     x2, x2, to_in
-        str     xzr, [x2]
-        adrp    x2, source_cur
-        add     x2, x2, source_cur
-        str     x0, [x2]
-        adrp    x2, source_end
-        add     x2, x2, source_end
-        add     x0, x0, x1
-        str     x0, [x2]
+        stp     x0, x1, [sp]
+        bl      host_eval_fault_enter
+        ldp     x0, x1, [sp]
+        UP_LOAD x2, TU_INPUT_PTR
+        mov     x3, #1023
+        cmp     x1, x3
+        b.ls    _eval_len_ok
+        mov     x1, x3
+_eval_len_ok
+        mov     x3, #0
+        cbz     x0, _eval_nul
+_eval_copy
+        cmp     x3, x1
+        b.hs    _eval_nul
+        ldrb    w4, [x0, x3]
+        strb    w4, [x2, x3]
+        add     x3, x3, #1
+        b       _eval_copy
+_eval_nul
+        strb    wzr, [x2, x3]
+        mov     x0, x2
+        mov     x1, x3
+        bl      _set_source
+        UP_STORE xzr, TU_SRC_ID
+        UP_STORE xzr, TU_SRC_SP
+        UP_STORE xzr, TU_EVAL_SP
         adrp    x2, throw_handler
         add     x2, x2, throw_handler
         str     xzr, [x2]
         adrp    x2, bye_flag
         add     x2, x2, bye_flag
         str     xzr, [x2]
-        adrp    x2, line_mode
-        add     x2, x2, line_mode
-        str     xzr, [x2]
-        adrp    x2, source_id
-        add     x2, x2, source_id
-        str     xzr, [x2]
-        adrp    x2, source_sp
-        add     x2, x2, source_sp
-        str     xzr, [x2]
         adrp    x2, view_src_id
         add     x2, x2, view_src_id
         str     xzr, [x2]
         adrp    x2, view_id_sp
         add     x2, x2, view_id_sp
-        str     xzr, [x2]
-        adrp    x2, eval_resume_sp
-        add     x2, x2, eval_resume_sp
         str     xzr, [x2]
         bl      _vm_load
         b       _interpret_loop
@@ -680,22 +679,16 @@ _undef_abandon
         b       _do_quit
 
 _interpret_empty
-        adrp    x0, line_mode
-        add     x0, x0, line_mode
-        ldr     x0, [x0]
+        UP_LOAD x0, TU_LINE_MODE
         cbz     x0, _ie_whole
         bl      _take_line
         cbnz    x0, _interpret_loop
         b       _ie_pop
 _ie_whole
-        adrp    x0, source_sp
-        add     x0, x0, source_sp
-        ldr     x0, [x0]
+        UP_LOAD x0, TU_SRC_SP
         cbz     x0, _embed_finish
 _ie_pop
-        adrp    x0, source_id
-        add     x0, x0, source_id
-        ldr     x25, [x0]
+        UP_LOAD x25, TU_SRC_ID
         bl      _pop_source
         cbz     x0, _embed_finish
         cmp     x25, #0
@@ -727,27 +720,17 @@ _do_quit
         adrp    x0, state_var
         add     x0, x0, state_var
         str     xzr, [x0]
-        adrp    x0, source_sp
-        add     x0, x0, source_sp
-        str     xzr, [x0]
-        adrp    x0, eval_resume_sp
-        add     x0, x0, eval_resume_sp
-        str     xzr, [x0]
-        adrp    x0, source_id
-        add     x0, x0, source_id
-        str     xzr, [x0]
+        UP_STORE xzr, TU_SRC_SP
+        UP_STORE xzr, TU_EVAL_SP
+        UP_STORE xzr, TU_SRC_ID
         adrp    x0, view_src_id
         add     x0, x0, view_src_id
         str     xzr, [x0]
         adrp    x0, view_id_sp
         add     x0, x0, view_id_sp
         str     xzr, [x0]
-        adrp    x0, line_mode
-        add     x0, x0, line_mode
-        str     xzr, [x0]
-        adrp    x0, blk_var
-        add     x0, x0, blk_var
-        str     xzr, [x0]
+        UP_STORE xzr, TU_LINE_MODE
+        UP_STORE xzr, TU_BLK
         adrp    x0, local_frame_depth
         add     x0, x0, local_frame_depth
         str     xzr, [x0]
@@ -769,7 +752,49 @@ _embed_bye_return
         mov     x0, #1
         b       _embed_ret_x0
 
+; Console memory fault. SP is the kernel_eval frame. Reset the
+; stacks, disarm DEBUG, print the fault line, and return -1.
+eval_fault_resume
+        adrp    x16, eval_frame_sp
+        add     x16, x16, eval_frame_sp
+        ldr     x16, [x16]
+        mov     sp, x16
+        bl      host_eval_fault_leave
+        bl      _vm_reset_stacks
+        mov     x28, #0
+        adrp    x1, debug_armed
+        add     x1, x1, debug_armed
+        str     xzr, [x1]
+        adrp    x1, debug_busy
+        add     x1, x1, debug_busy
+        str     xzr, [x1]
+        adrp    x1, debug_break_asap
+        add     x1, x1, debug_break_asap
+        str     xzr, [x1]
+        adrp    x1, debug_bp_go
+        add     x1, x1, debug_bp_go
+        str     xzr, [x1]
+        adrp    x1, debug_runto_ip
+        add     x1, x1, debug_runto_ip
+        str     xzr, [x1]
+        adrp    x1, debug_floor
+        add     x1, x1, debug_floor
+        str     xzr, [x1]
+        adrp    x1, throw_handler
+        add     x1, x1, throw_handler
+        str     xzr, [x1]
+        adrp    x0, msg_memfault
+        add     x0, x0, msg_memfault
+        bl      emit_cstr
+        bl      host_debug_paint
+        bl      _vm_save
+        mov     x0, #-1
+        b       _embed_ret_x0
+
 _embed_ret_x0
+        str     x0, [sp]
+        bl      host_eval_fault_leave
+        ldr     x0, [sp]
         ldp     x27, x28, [sp, #112]
         ldp     x25, x26, [sp, #96]
         ldp     x23, x24, [sp, #80]
@@ -780,11 +805,27 @@ _embed_ret_x0
         ret
         ENDP
 
-; Between outer-interpreter words. Empty is data_stack+4096.
-; Above that is underflow. Below data_stack is overflow.
+; Between outer-interpreter words. Empty is that task's TU_S0.
+; Above that is underflow. More than 4096 bytes below is overflow.
+; The console TU_S0 is still data_stack+4096.
 ; . on an empty stack has already printed the cached 0 and a space.
 ; Kept outside kernel_eval so ret returns to the interpreter, not to C.
 _check_stack
+        mov     x0, x27
+        cbnz    x0, _cs_have
+        adrp    x0, up_var
+        add     x0, x0, up_var
+        ldr     x0, [x0]
+_cs_have
+        cbz     x0, _cs_bss
+        ldr     x1, [x0, #48]
+        sub     x0, x1, #1, lsl #12
+        cmp     x22, x1
+        b.hi    _stack_underflow
+        cmp     x22, x0
+        b.lo    _stack_overflow
+        ret
+_cs_bss
         adrp    x0, data_stack
         add     x0, x0, data_stack
         add     x1, x0, #1, lsl #12
@@ -816,39 +857,24 @@ _file_echo_upto_cursor
         add     x0, x0, file_echo
         ldr     x0, [x0]
         cbz     x0, _fe_done
-        adrp    x0, source_id
-        add     x0, x0, source_id
-        ldr     x0, [x0]
+        UP_LOAD x0, TU_SRC_ID
         cmp     x0, #0
         b.gt    _fe_on
         cmn     x0, #2
         b.ne    _fe_done
 _fe_on
         sub     sp, sp, #48
-        adrp    x4, line_mode
-        add     x4, x4, line_mode
-        ldr     x4, [x4]
-        cbz     x4, _fe_src
-        adrp    x1, line_origin
-        add     x1, x1, line_origin
-        ldr     x1, [x1]
-        adrp    x2, line_limit
-        add     x2, x2, line_limit
-        ldr     x2, [x2]
+        UP_LOAD x0, TU_LINE_MODE
+        cbz     x0, _fe_plain
+        UP_LOAD x1, TU_LINE_ORIGIN
+        UP_LOAD x2, TU_LINE_LIMIT
         b       _fe_bounds
-_fe_src
-        adrp    x1, source_base
-        add     x1, x1, source_base
-        ldr     x1, [x1]
-        adrp    x2, source_end
-        add     x2, x2, source_end
-        ldr     x2, [x2]
+_fe_plain
+        UP_LOAD x1, TU_SRC_ADDR
+        UP_SRC_END x2
 _fe_bounds
-        str     x1, [sp]
-        str     x2, [sp, #8]
-        adrp    x0, source_cur
-        add     x0, x0, source_cur
-        ldr     x0, [x0]
+        stp     x1, x2, [sp]
+        UP_LOAD x0, TU_WORD_CURSOR
         cmp     x0, x1
         b.hs    _fe_clamp_hi
         mov     x0, x1
@@ -888,9 +914,7 @@ _fe_eol_scan
         b       _fe_eol_scan
 _fe_eol_ok
         str     x3, [sp, #16]
-        adrp    x4, file_echo_pos
-        add     x4, x4, file_echo_pos
-        ldr     x0, [x4]
+        UP_LOAD x0, TU_ECHO_POS
         ldr     x1, [sp]
         cmp     x0, x1
         b.hs    _fe_pos_hi
@@ -980,9 +1004,7 @@ _fe_one
         add     x1, x3, #1
 _fe_store
         str     x1, [sp, #24]
-        adrp    x4, file_echo_pos
-        add     x4, x4, file_echo_pos
-        str     x1, [x4]
+        UP_STORE x1, TU_ECHO_POS
         mov     x0, #10
         bl      _putchar
         b       _fe_line
@@ -1026,36 +1048,33 @@ _fe_print
         ldp     x29, x30, [sp], #32
         ret
 
-; Line window over an included file. Eight quads per source frame:
-; base, end, >IN, source-id, line_mode, origin, limit, next.
-; file_echo_pos is reset to the start of this file image.
+; Point SOURCE at c-addr u in x0, x1. Zeros >IN and line mode.
+; Does not set SOURCE-ID or BLK.
+_set_source
+        UP_STORE x0, TU_SRC_ADDR
+        UP_STORE x1, TU_SRC_LEN
+        UP_STORE xzr, TU_TO_IN
+        UP_STORE x0, TU_WORD_CURSOR
+        UP_STORE x0, TU_ECHO_POS
+        UP_STORE xzr, TU_LINE_MODE
+        ret
+
+; Line window over an included file. Ten quads per source frame:
+; addr, len, >IN, source-id, echo pos, BLK, line_mode, origin, limit, next.
+; Echo position is reset to the start of this file image.
 _arm_lines
-        adrp    x2, file_echo_pos
-        add     x2, x2, file_echo_pos
-        str     x0, [x2]
-        adrp    x2, line_origin
-        add     x2, x2, line_origin
-        str     x0, [x2]
+        UP_STORE x0, TU_ECHO_POS
+        UP_STORE x0, TU_LINE_ORIGIN
         add     x3, x0, x1
-        adrp    x2, line_limit
-        add     x2, x2, line_limit
-        str     x3, [x2]
-        adrp    x2, line_next
-        add     x2, x2, line_next
-        str     x0, [x2]
+        UP_STORE x3, TU_LINE_LIMIT
+        UP_STORE x0, TU_LINE_NEXT
         mov     x3, #1
-        adrp    x2, line_mode
-        add     x2, x2, line_mode
-        str     x3, [x2]
+        UP_STORE x3, TU_LINE_MODE
         ret
 
 _take_line
-        adrp    x2, line_next
-        add     x2, x2, line_next
-        ldr     x0, [x2]
-        adrp    x3, line_limit
-        add     x3, x3, line_limit
-        ldr     x3, [x3]
+        UP_LOAD x0, TU_LINE_NEXT
+        UP_LOAD x3, TU_LINE_LIMIT
         cmp     x0, x3
         b.hs    _tl_eof
         mov     x1, x0
@@ -1086,21 +1105,12 @@ _tl_cr
 _tl_eos
         mov     x5, x1
 _tl_set
-        adrp    x2, line_next
-        add     x2, x2, line_next
-        str     x1, [x2]
-        adrp    x2, source_base
-        add     x2, x2, source_base
-        str     x0, [x2]
-        adrp    x2, source_end
-        add     x2, x2, source_end
-        str     x5, [x2]
-        adrp    x2, to_in
-        add     x2, x2, to_in
-        str     xzr, [x2]
-        adrp    x2, source_cur
-        add     x2, x2, source_cur
-        str     x0, [x2]
+        sub     x6, x5, x0
+        UP_STORE x1, TU_LINE_NEXT
+        UP_STORE x0, TU_SRC_ADDR
+        UP_STORE x6, TU_SRC_LEN
+        UP_STORE xzr, TU_TO_IN
+        UP_STORE x0, TU_WORD_CURSOR
         mov     x0, #1
         ret
 _tl_eof
@@ -1108,59 +1118,34 @@ _tl_eof
         ret
 
 _push_source
-        adrp    x0, source_sp
-        add     x0, x0, source_sp
+        UP_ADDR x0, TU_SRC_SP
         ldr     x1, [x0]
         cmp     x1, #8
         b.hs    _ps_full
-        lsl     x3, x1, #6
-        adrp    x2, source_stack
-        add     x2, x2, source_stack
+        mov     x2, #80
+        mul     x3, x1, x2
+        UP_LOAD x2, TU_SSTK_PTR
         add     x2, x2, x3
-        adrp    x3, source_base
-        add     x3, x3, source_base
-        ldr     x3, [x3]
+        UP_LOAD x3, TU_SRC_ADDR
         str     x3, [x2], #8
-        adrp    x3, source_end
-        add     x3, x3, source_end
-        ldr     x3, [x3]
+        UP_LOAD x3, TU_SRC_LEN
         str     x3, [x2], #8
-        adrp    x3, to_in
-        add     x3, x3, to_in
-        ldr     x3, [x3]
+        UP_LOAD x3, TU_TO_IN
         str     x3, [x2], #8
-        adrp    x3, source_id
-        add     x3, x3, source_id
-        ldr     x3, [x3]
+        UP_LOAD x3, TU_SRC_ID
         str     x3, [x2], #8
-        adrp    x3, line_mode
-        add     x3, x3, line_mode
-        ldr     x3, [x3]
+        UP_LOAD x3, TU_ECHO_POS
         str     x3, [x2], #8
-        adrp    x3, line_origin
-        add     x3, x3, line_origin
-        ldr     x3, [x3]
+        UP_LOAD x3, TU_BLK
         str     x3, [x2], #8
-        adrp    x3, line_limit
-        add     x3, x3, line_limit
-        ldr     x3, [x3]
+        UP_LOAD x3, TU_LINE_MODE
         str     x3, [x2], #8
-        adrp    x3, line_next
-        add     x3, x3, line_next
-        ldr     x3, [x3]
+        UP_LOAD x3, TU_LINE_ORIGIN
+        str     x3, [x2], #8
+        UP_LOAD x3, TU_LINE_LIMIT
+        str     x3, [x2], #8
+        UP_LOAD x3, TU_LINE_NEXT
         str     x3, [x2]
-        adrp    x3, file_echo_pos
-        add     x3, x3, file_echo_pos
-        ldr     x3, [x3]
-        adrp    x2, file_echo_stack
-        add     x2, x2, file_echo_stack
-        str     x3, [x2, x1, lsl #3]
-        adrp    x3, blk_var
-        add     x3, x3, blk_var
-        ldr     x3, [x3]
-        adrp    x2, blk_stack
-        add     x2, x2, blk_stack
-        str     x3, [x2, x1, lsl #3]
         add     x1, x1, #1
         str     x1, [x0]
         mov     x0, #1
@@ -1170,65 +1155,37 @@ _ps_full
         ret
 
 _pop_source
-        adrp    x0, source_sp
-        add     x0, x0, source_sp
+        UP_ADDR x0, TU_SRC_SP
         ldr     x1, [x0]
         cbz     x1, _pop_empty
         sub     x1, x1, #1
         str     x1, [x0]
-        lsl     x3, x1, #6
-        adrp    x2, source_stack
-        add     x2, x2, source_stack
+        mov     x2, #80
+        mul     x3, x1, x2
+        UP_LOAD x2, TU_SSTK_PTR
         add     x2, x2, x3
+        ldr     x4, [x2], #8
+        UP_STORE x4, TU_SRC_ADDR
         ldr     x3, [x2], #8
-        adrp    x0, source_base
-        add     x0, x0, source_base
-        str     x3, [x0]
-        mov     x4, x3
+        UP_STORE x3, TU_SRC_LEN
         ldr     x3, [x2], #8
-        adrp    x0, source_end
-        add     x0, x0, source_end
-        str     x3, [x0]
-        ldr     x3, [x2], #8
-        adrp    x0, to_in
-        add     x0, x0, to_in
-        str     x3, [x0]
+        UP_STORE x3, TU_TO_IN
         add     x4, x4, x3
-        adrp    x0, source_cur
-        add     x0, x0, source_cur
-        str     x4, [x0]
+        UP_STORE x4, TU_WORD_CURSOR
         ldr     x3, [x2], #8
-        adrp    x0, source_id
-        add     x0, x0, source_id
-        str     x3, [x0]
+        UP_STORE x3, TU_SRC_ID
         ldr     x3, [x2], #8
-        adrp    x0, line_mode
-        add     x0, x0, line_mode
-        str     x3, [x0]
+        UP_STORE x3, TU_ECHO_POS
         ldr     x3, [x2], #8
-        adrp    x0, line_origin
-        add     x0, x0, line_origin
-        str     x3, [x0]
+        UP_STORE x3, TU_BLK
         ldr     x3, [x2], #8
-        adrp    x0, line_limit
-        add     x0, x0, line_limit
-        str     x3, [x0]
+        UP_STORE x3, TU_LINE_MODE
+        ldr     x3, [x2], #8
+        UP_STORE x3, TU_LINE_ORIGIN
+        ldr     x3, [x2], #8
+        UP_STORE x3, TU_LINE_LIMIT
         ldr     x3, [x2]
-        adrp    x0, line_next
-        add     x0, x0, line_next
-        str     x3, [x0]
-        adrp    x2, file_echo_stack
-        add     x2, x2, file_echo_stack
-        ldr     x3, [x2, x1, lsl #3]
-        adrp    x0, file_echo_pos
-        add     x0, x0, file_echo_pos
-        str     x3, [x0]
-        adrp    x2, blk_stack
-        add     x2, x2, blk_stack
-        ldr     x3, [x2, x1, lsl #3]
-        adrp    x0, blk_var
-        add     x0, x0, blk_var
-        str     x3, [x0]
+        UP_STORE x3, TU_LINE_NEXT
         mov     x0, #1
         ret
 _pop_empty
@@ -1236,13 +1193,11 @@ _pop_empty
         ret
 
 _eval_resume_push
-        adrp    x0, eval_resume_sp
-        add     x0, x0, eval_resume_sp
+        UP_ADDR x0, TU_EVAL_SP
         ldr     x1, [x0]
         cmp     x1, #8
         b.hs    _erp_full
-        adrp    x2, eval_resume_stack
-        add     x2, x2, eval_resume_stack
+        UP_LOAD x2, TU_EVALSTK_PTR
         lsl     x3, x1, #3
         str     x19, [x2, x3]
         add     x1, x1, #1
@@ -1251,14 +1206,12 @@ _erp_full
         ret
 
 _eval_resume_pop
-        adrp    x0, eval_resume_sp
-        add     x0, x0, eval_resume_sp
+        UP_ADDR x0, TU_EVAL_SP
         ldr     x1, [x0]
         cbz     x1, _erpop_empty
         sub     x1, x1, #1
         str     x1, [x0]
-        adrp    x2, eval_resume_stack
-        add     x2, x2, eval_resume_stack
+        UP_LOAD x2, TU_EVALSTK_PTR
         lsl     x3, x1, #3
         ldr     x0, [x2, x3]
         ret
@@ -1266,21 +1219,17 @@ _erpop_empty
         mov     x0, #0
         ret
 
-; x0 = source_sp to restore. Pop frames above that level.
+; x0 = saved source depth. Pop frames above that level.
 _throw_unwind_to_sp
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
         str     x0, [sp, #48]
 _tu_loop
-        adrp    x0, source_sp
-        add     x0, x0, source_sp
-        ldr     x1, [x0]
+        UP_LOAD x1, TU_SRC_SP
         ldr     x2, [sp, #48]
         cmp     x1, x2
         b.ls    _tu_done
-        adrp    x0, source_id
-        add     x0, x0, source_id
-        ldr     x0, [x0]
+        UP_LOAD x0, TU_SRC_ID
         str     x0, [sp, #56]
         bl      _pop_source
         cbz     x0, _tu_done
@@ -1310,6 +1259,9 @@ _vm_save
         ret
 
 _vm_load
+        adrp    x0, up_var
+        add     x0, x0, up_var
+        ldr     x27, [x0]
         adrp    x24, latest_var
         add     x24, x24, latest_var
         adrp    x0, vm_tos
@@ -1342,6 +1294,12 @@ _vm_reset_stacks
         adrp    x0, state_var
         add     x0, x0, state_var
         str     xzr, [x0]
+        adrp    x0, up_var
+        add     x0, x0, up_var
+        ldr     x0, [x0]
+        cbz     x0, _vm_reset_done
+        str     xzr, [x0, #TU_SRC_SP]
+_vm_reset_done
         ret
 
 next_debug_gate
@@ -1352,6 +1310,7 @@ next_debug_gate
         AREA |.rdata|, DATA, READONLY, ALIGN=8
 
 msg_huh         DCB     " ?", 10, 0
+msg_memfault    DCB     "memory access error", 10, 0
 msg_underflow   DCB     "stack underflow", 10, 0
 msg_overflow    DCB     "stack overflow", 10, 0
         ALIGN   8
