@@ -15,6 +15,7 @@ class ForthPipe;
 class QComboBox;
 class QFileSystemModel;
 class QPushButton;
+class QToolButton;
 class QShortcut;
 class QSplitter;
 class QTabWidget;
@@ -112,10 +113,20 @@ private:
     void restartForth();
     void paintSelectedTab();
     void noteForthIdle();
+    void rememberFileRoot(const QString &path);
+    void setFileRoot(const QString &path);
+    void chooseFileRoot();
+    void refreshFileRootMenu();
+    QString displayRoot(const QString &path) const;
+    void noteEditorPath(CodeEdit *edit);
 
     QTabWidget *m_tabs = nullptr;
     QTreeView *m_files = nullptr;
     QFileSystemModel *m_fileModel = nullptr;
+    QToolButton *m_fileRootButton = nullptr;
+    QString m_fileRoot;
+    QStringList m_recentRoots;
+    bool m_notedDocs = false;
     QAction *m_filesAction = nullptr;
     QSplitter *m_split = nullptr;
     QSplitter *m_editors = nullptr;

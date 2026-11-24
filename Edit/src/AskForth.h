@@ -90,6 +90,7 @@ private:
                              const QString &enhanceNote);
     void restoreSnapshot();
     QString sessionContext(const QString &reference) const;
+    QString stackModelReport(const QString &user) const;
     void insertAudit(const QString &comments);
     void saveAskFile();
     QString activeId() const;

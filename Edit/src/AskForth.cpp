@@ -2,6 +2,7 @@
 
 #include "AskForthSession.h"
 #include "CodeEdit.h"
+#include "ForthStackEffect.h"
 
 #include <QEvent>
 #include <QMouseEvent>
@@ -390,6 +391,7 @@ QString systemPrompt(const QString &fileName, bool enhance, bool continuing) {
         QStringLiteral("When asked for code, return Forth source the user can paste inside a ```forth fenced block when possible."),
         QStringLiteral("Never invent ANS or EditForthWin word names, stack effects, or APIs. If you are unsure, say so and suggest looking in Library/Reference or forth-standard.org."),
         QStringLiteral("Stack comments must match real argument order (e.g. c-addr u for strings, not a single invented string cell)."),
+        ForthStackEffect::promptRule(),
         QStringLiteral("Line comments use one backslash and run to the end of the line. Never start a word with \\\\, \\S, or \\\\S. Those swallow or stop the rest of an INCLUDE. Close every ( comment with ). Do not wrap Forth to a fixed column width."),
         QStringLiteral("Be concise.")};
     if (continuing)
@@ -820,12 +822,28 @@ QString AskForthPanel::Worker::runTools(const QVariantMap &job, const QString &s
             QStringLiteral("url"));
     addTool(QStringLiteral("library_search"),
             QStringLiteral("Search the Forth Library and Reference for excerpts."), QStringLiteral("query"));
+    addTool(QStringLiteral("stack_effect"),
+            QStringLiteral("Trace a Forth colon definition or fragment from an empty data stack. An underflow is an input. "
+                           "Returns comments marked copy, or not inferred. Copy a comment marked copy."),
+            QStringLiteral("source"));
+
+    QString toolSystem = system;
+    toolSystem += QStringLiteral(
+        "\nYou may call tools when they help answer accurately: stack_effect, web_search, fetch_url, library_search.\n"
+        "You may call stack_effect to check a definition you are about to write. Pass the colon definition, or a "
+        "fragment such as DUP +. Copy a comment marked copy. If the result says not inferred, say so instead of "
+        "guessing a stack comment.\n"
+        "Prefer library_search for local Sample/Reference knowledge; use web_search or fetch_url only when Library "
+        "is insufficient.\n"
+        "After tools return, ground the answer in tool and Library results. Do not invent tool results, word names, "
+        "or stack diagrams. A Stack model result overrides a Library excerpt for that definition.\n"
+        "If library_search returns nothing useful, say so rather than fabricating EditForthWin APIs.\n");
 
     QJsonArray messages;
-    if (!system.trimmed().isEmpty()) {
+    if (!toolSystem.trimmed().isEmpty()) {
         QJsonObject sys;
         sys.insert(QStringLiteral("role"), QStringLiteral("system"));
-        sys.insert(QStringLiteral("content"), system);
+        sys.insert(QStringLiteral("content"), toolSystem);
         messages.append(sys);
     }
     QJsonObject userMsg;
@@ -879,6 +897,9 @@ QString AskForthPanel::Worker::runTools(const QVariantMap &job, const QString &s
                 toolResult = fetchPage(url.isEmpty() ? argText : url, &error);
                 if (toolResult.isEmpty())
                     toolResult = error;
+            } else if (name == QLatin1String("stack_effect")) {
+                const QString source = argObj.value(QStringLiteral("source")).toString();
+                toolResult = ForthStackEffect::toolResult(source.isEmpty() ? argText : source);
             } else if (name == QLatin1String("library_search")) {
                 QString libNote;
                 toolResult = libraryBlock(job.value(QStringLiteral("folder")).toString(),
@@ -1111,6 +1132,11 @@ void AskForthPanel::Worker::start(const QVariant &payload) {
     const QString session = job.value(QStringLiteral("session")).toString();
     if (!session.isEmpty())
         context.prepend(session);
+    const QString stack = job.value(QStringLiteral("stack")).toString();
+    if (!stack.isEmpty()) {
+        context += stack + QStringLiteral("\n\n");
+        note += QStringLiteral(" · Stack model");
+    }
 
     QString system = job.value(QStringLiteral("system")).toString();
     if (searched && hits) {
@@ -1120,19 +1146,22 @@ void AskForthPanel::Worker::start(const QVariant &payload) {
             "Prefer quoting or paraphrasing stack diagrams from Reference over guessing.\n"
             "If the user asks for something not supported by the Library excerpts, say "
             "\"Not found in the provided Library context\" for that part, and label any extra suggestion clearly as unverified.\n"
-            "When citing, mention path:line from the Library headers when helpful.");
+            "When citing, mention path:line from the Library headers when helpful.\n"
+            "If a Stack model block is present, its comments override Library excerpts for those definitions.");
     } else if (searched) {
         system += QStringLiteral(
             "\n\nLibrary search ran but returned no matching excerpts for this prompt.\n"
             "Do not invent standard stack effects or Library APIs. Say that Library context had no hits, "
             "give only carefully labeled general Forth advice, and prefer \"I don't know / not in Library\" "
-            "over fabricating EditForthWin words.");
+            "over fabricating EditForthWin words.\n"
+            "If a Stack model block is present, its comments override Library excerpts for those definitions.");
     }
     QString user = job.value(QStringLiteral("user")).toString();
     if (hits) {
         user = context +
                QStringLiteral("Instructions for this answer:\n"
                               "- Use the Library context above as the source of truth for word names and stack effects.\n"
+                              "- If a Stack model block is present, its comments override Library excerpts for those definitions.\n"
                               "- If a needed fact is missing from that context, say it is not in the provided sources instead of inventing it.\n"
                               "- Put loadable Forth in a ```forth block when you provide code.\n\nUser request:\n") +
                user;
@@ -1140,6 +1169,7 @@ void AskForthPanel::Worker::start(const QVariant &payload) {
         const QString reminder = QStringLiteral(
             "Instructions for this answer:\n"
             "- Library search found no excerpts for this prompt.\n"
+            "- If a Stack model block is present, its comments override Library excerpts for those definitions.\n"
             "- Do not invent ANS/EditForthWin stack effects or APIs. Prefer saying you lack Library backing over fabricating a solution.\n\n");
         user = context + reminder + QStringLiteral("User request:\n") + user;
     } else if (!context.isEmpty()) {
@@ -1474,7 +1504,7 @@ void AskForthPanel::buildUi() {
     m_urls->setToolTip(QStringLiteral("Fetch http(s) links in the Prompt and add the page text. Ignored while Tool agent is on."));
     m_web->setToolTip(QStringLiteral("Search DuckDuckGo Lite. Default off. Ignored while Tool agent is on."));
     m_tools->setToolTip(QStringLiteral(
-        "Let the model call web_search, fetch_url, or library_search. Needs a tools-capable model."));
+        "Let the model call stack_effect, web_search, fetch_url, or library_search. Needs a tools-capable model."));
 
     QSettings settings;
     m_library->setChecked(settings.value(QStringLiteral("aiAssistantIncludeLibrary"), true).toBool());
@@ -2264,6 +2294,7 @@ QString AskForthPanel::referenceBlock(const QString &path) const {
 QStringList AskForthPanel::sessionSettingLines() const {
     QStringList lines;
     lines << QStringLiteral("Context window: %1").arg(profileById(activeId()).contextTokens);
+    lines << QStringLiteral("Stack model: on");
     const LibraryOpts opts = libraryOpts();
     if (m_library != nullptr && m_library->isChecked()) {
         lines << QStringLiteral("Include Library context: on");
@@ -2444,6 +2475,37 @@ void AskForthPanel::restoreSnapshot() {
     m_bodyStart = 0;
 }
 
+QString AskForthPanel::stackModelReport(const QString &user) const {
+    const QString fromUser = ForthStackEffect::report(user);
+    if (!fromUser.isEmpty())
+        return fromUser;
+    const QString fromPreface = ForthStackEffect::report(m_preface);
+    if (!fromPreface.isEmpty())
+        return fromPreface;
+    const QString path = effectiveReference();
+    if (path.isEmpty())
+        return QString();
+    const QString ext = QFileInfo(path).suffix().toLower();
+    if (ext != QLatin1String("fth") && ext != QLatin1String("fs") && ext != QLatin1String("f"))
+        return QString();
+    QString text;
+    bool readable = false;
+    if (m_tabReader)
+        readable = m_tabReader(path, &text);
+    if (!readable) {
+        QFile file(path);
+        if (file.open(QIODevice::ReadOnly)) {
+            text = QString::fromUtf8(file.readAll());
+            readable = true;
+        }
+    }
+    if (!readable || text.isEmpty())
+        return QString();
+    if (text.size() > 200000)
+        text.truncate(200000);
+    return ForthStackEffect::report(text);
+}
+
 QString AskForthPanel::sessionContext(const QString &reference) const {
     QString out;
     if (!m_preface.isEmpty())
@@ -2593,6 +2655,7 @@ void AskForthPanel::ask() {
     setStatus(displaced + asking);
     QVariantMap job = jobFor(profile, systemPrompt(fileHint, false, m_continued), prompt, prompt, false);
     job.insert(QStringLiteral("session"), sessionContext(reference));
+    job.insert(QStringLiteral("stack"), stackModelReport(prompt));
     launch(job);
 }
 
@@ -2669,6 +2732,7 @@ void AskForthPanel::startEnhance(const QString &transcript) {
     QVariantMap job = jobFor(profile, systemPrompt(fileHint, true, true), user,
                              QStringList{prompt, prior, transcript}.join(QLatin1Char('\n')), true);
     job.insert(QStringLiteral("session"), sessionContext(reference));
+    job.insert(QStringLiteral("stack"), stackModelReport(user));
     launch(job);
 }
 

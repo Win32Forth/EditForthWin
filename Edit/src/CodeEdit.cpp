@@ -18,7 +18,12 @@
 #include <QSizePolicy>
 #include <QStringList>
 #include <QTimer>
+#include <QButtonGroup>
+#include <QDesktopServices>
+#include <QDir>
+#include <QFileInfo>
 #include <QTextBlock>
+#include <QTextBrowser>
 #include <QTextCursor>
 #include <QVBoxLayout>
 
@@ -729,9 +734,43 @@ EditorPane::EditorPane(CodeEdit *edit, QWidget *parent) : QWidget(parent), m_edi
     row->addWidget(m_hint, 1);
     row->addWidget(editButton);
 
+    m_markdownBar = new QWidget(this);
+    auto *preview = new QPushButton(QStringLiteral("Preview"), m_markdownBar);
+    auto *source = new QPushButton(QStringLiteral("Source"), m_markdownBar);
+    preview->setCheckable(true);
+    source->setCheckable(true);
+    preview->setChecked(true);
+    auto *modes = new QButtonGroup(m_markdownBar);
+    modes->setExclusive(true);
+    modes->addButton(preview);
+    modes->addButton(source);
+    m_previewButton = preview;
+    m_sourceButton = source;
+    auto *modeRow = new QHBoxLayout(m_markdownBar);
+    modeRow->setContentsMargins(8, 4, 8, 4);
+    modeRow->addWidget(preview);
+    modeRow->addWidget(source);
+    modeRow->addStretch(1);
+    m_markdownBar->setToolTip(QStringLiteral("Preview shows formatted Markdown. Source is the plain-text editor."));
+    m_markdownBar->hide();
+
+    m_preview = new QTextBrowser(this);
+    m_preview->setOpenLinks(false);
+    m_preview->setOpenExternalLinks(false);
+    m_preview->hide();
+
+    layout->addWidget(m_markdownBar);
     layout->addWidget(m_banner);
+    layout->addWidget(m_preview, 1);
     layout->addWidget(m_edit, 1);
     connect(m_edit, &CodeEdit::browseChanged, this, [this](bool) { syncBanner(); });
+    connect(preview, &QPushButton::clicked, this, [this] { setMarkdownSource(false); });
+    connect(source, &QPushButton::clicked, this, [this] { setMarkdownSource(true); });
+    connect(m_edit, &QPlainTextEdit::textChanged, this, [this] {
+        if (m_markdown && !m_markdownSource && m_preview != nullptr)
+            m_preview->setMarkdown(m_edit->toPlainText());
+    });
+    connect(m_preview, &QTextBrowser::anchorClicked, this, &EditorPane::openMarkdownLink);
     syncBanner();
 }
 
@@ -743,8 +782,68 @@ void EditorPane::setDebugState(bool armed, bool paused) {
     syncBanner();
 }
 
+void EditorPane::notePath(const QString &path) {
+    m_path = path;
+    const QString ext = QFileInfo(path).suffix().toLower();
+    const bool markdown = ext == QLatin1String("md") || ext == QLatin1String("markdown");
+    if (markdown != m_markdown) {
+        m_markdown = markdown;
+        m_markdownSource = false;
+        if (m_previewButton != nullptr)
+            m_previewButton->setChecked(true);
+        if (m_sourceButton != nullptr)
+            m_sourceButton->setChecked(false);
+    }
+    syncMarkdown();
+}
+
+void EditorPane::setMarkdownSource(bool source) {
+    m_markdownSource = source;
+    syncMarkdown();
+}
+
+void EditorPane::syncMarkdown() {
+    const bool preview = m_markdown && !m_markdownSource;
+    if (m_markdownBar != nullptr)
+        m_markdownBar->setVisible(m_markdown);
+    if (m_preview != nullptr) {
+        m_preview->setVisible(preview);
+        if (preview) {
+            QFont font = m_edit->font();
+            font.setFamily(QStringLiteral("Segoe UI"));
+            font.setStyleHint(QFont::SansSerif);
+            font.setFixedPitch(false);
+            m_preview->setFont(font);
+            m_preview->setMarkdown(m_edit->toPlainText());
+        }
+    }
+    if (m_edit != nullptr)
+        m_edit->setVisible(!preview);
+    syncBanner();
+}
+
+void EditorPane::openMarkdownLink(const QUrl &url) {
+    const QString scheme = url.scheme().toLower();
+    if (scheme == QLatin1String("http") || scheme == QLatin1String("https")) {
+        QDesktopServices::openUrl(url);
+        return;
+    }
+    if (scheme == QLatin1String("file")) {
+        emit markdownLinkRequested(url.toLocalFile());
+        return;
+    }
+    QString relative = url.toString(QUrl::PrettyDecoded);
+    if (relative.isEmpty() || relative.startsWith(QLatin1Char('#')))
+        return;
+    const QString folder = QFileInfo(m_path).absolutePath();
+    if (folder.isEmpty())
+        return;
+    emit markdownLinkRequested(QFileInfo(QDir(folder).filePath(relative)).absoluteFilePath());
+}
+
 void EditorPane::syncBanner() {
-    const bool on = m_edit != nullptr && m_edit->browse();
+    const bool preview = m_markdown && !m_markdownSource;
+    const bool on = !preview && m_edit != nullptr && m_edit->browse();
     m_banner->setVisible(on);
     if (!on)
         return;

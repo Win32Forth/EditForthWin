@@ -12,9 +12,11 @@
 \   <outdir>/app.img      the copy the exe loads
 \   <outdir>/<NAME>.exe
 \   <outdir>/host.fix
-\ emit-win.exe (runner\emit-win.c) is the window host. This packer copies
-\ it to <outdir>/<NAME>.exe next to those images, plus host.fix so
-\ the runner can rebind sa_win_putchar and sa_win_file_op. SAVE-IMAGE
+\ emit-win.exe (System\Emitter\runner\emit-win.c) is the window host.
+\ FILE-STATUS resolves a System\ path at Documents\EditForthWin\System.
+\ This packer copies that exe to <outdir>/<NAME>.exe next to the images,
+\ plus host.fix so the runner can rebind sa_win_putchar and sa_win_file_op.
+\ SAVE-IMAGE
 \ writes <outdir>/<NAME>.img. That file stays there.
 \ The image still runs in this process via LOAD-IMAGE TGT-RUN-LOADED.
 \ Absolute host pointers (sa_win_putchar, sa_win_file_op, key_fn) stay
@@ -134,15 +136,11 @@ CREATE EMIT-COPYBUF   4096 ALLOT
   EMIT-APPBUF COUNT EMIT-WIN-IMG (EMIT-S+)
   S" /app.img" EMIT-WIN-IMG (EMIT-S+)
   EMIT-IMGBUF COUNT  EMIT-WIN-IMG COUNT  (EMIT-COPY-FILE)
-  LIBRARY-PATH DUP 0= IF
-    2DROP ." EMIT-APP: LIBRARY-PATH empty" CR ABORT
-  THEN
   EMIT-WIN-EXE (EMIT-S0)
-  EMIT-WIN-EXE (EMIT-S+)
   X64-HOST? IF
-    S" /Emitter/runner/emit-win-x64.exe"
+    S" System/Emitter/runner/emit-win-x64.exe"
   ELSE
-    S" /Emitter/runner/emit-win.exe"
+    S" System/Emitter/runner/emit-win.exe"
   THEN
   EMIT-WIN-EXE (EMIT-S+)
   EMIT-WIN-EXE COUNT FILE-STATUS NIP IF

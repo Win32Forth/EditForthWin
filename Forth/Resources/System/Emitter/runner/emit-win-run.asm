@@ -12,6 +12,8 @@ run_itc
         stp     x19, x20, [sp, #-16]!
         stp     x21, x22, [sp, #-16]!
         stp     x23, x28, [sp, #-16]!
+        str     x27, [sp, #-16]!
+        mov     x27, #0
         mov     x19, x0
         mov     x22, x19
         mov     x23, x1
@@ -27,6 +29,7 @@ run_itc
         ldr     x1, [x21]
         br      x1
 ew_back
+        ldr     x27, [sp], #16
         ldp     x23, x28, [sp], #16
         ldp     x21, x22, [sp], #16
         ldp     x19, x20, [sp], #16

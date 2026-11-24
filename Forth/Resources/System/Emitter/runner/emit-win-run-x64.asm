@@ -1,7 +1,9 @@
 ; emit-win-run-x64.asm — start a translated x64 image. Public domain.
 ; rcx = dsp   rdx = return stack   r8 = colon CFA
 ; r9 = exit xt   [rsp+40] = register file
-; The image addresses arm_xN through that file, and uses the real RSP.
+; The image addresses arm_xN through r15, which is that file.
+; rsi is the same pointer, for an image built before the r15 change.
+; The image uses the real RSP.
 
 OPTION CASEMAP:NONE
 
@@ -15,6 +17,8 @@ run_itc PROC
     push rdi
     push rsi
     push r12
+    push r15
+    mov r15, r11
     mov rsi, r11
     mov QWORD PTR [rsi+176], rcx
     mov QWORD PTR [rsi+184], rdx
@@ -39,6 +43,7 @@ run_itc PROC
     mov rax, QWORD PTR [rcx]
     jmp rax
 ew_back:
+    pop r15
     pop r12
     pop rsi
     pop rdi

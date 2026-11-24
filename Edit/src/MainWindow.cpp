@@ -25,6 +25,8 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFileSystemModel>
+#include <QMenu>
+#include <QToolButton>
 #include <QTreeView>
 #include <QHBoxLayout>
 #include <QInputDialog>
@@ -33,6 +35,7 @@
 #include <QPushButton>
 #include <QMessageBox>
 #include <QSettings>
+#include <QSizePolicy>
 #include <QSignalBlocker>
 #include <QStringList>
 #include <QShortcut>
@@ -413,6 +416,17 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     });
     m_forthDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) +
                  QStringLiteral("/EditForthWin");
+    m_recentRoots = QSettings().value(QStringLiteral("fileListRecentRoots")).toStringList();
+    QString startRoot = m_forthDir;
+    for (const QString &stored : m_recentRoots) {
+        if (QFileInfo(stored).isDir()) {
+            startRoot = QFileInfo(stored).absoluteFilePath();
+            break;
+        }
+    }
+    m_fileRoot = QFileInfo(startRoot).absoluteFilePath();
+    m_forthDir = m_fileRoot;
+    rememberFileRoot(m_fileRoot);
     connect(m_pipe, &ForthPipe::directoryChanged, this, [this](const QString &path) {
         if (!path.isEmpty())
             m_forthDir = path;
@@ -533,6 +547,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     splitBar->addWidget(closeSplit);
     m_splitEdit = new CodeEdit;
     auto *splitPane = new EditorPane(m_splitEdit, m_right);
+    connect(splitPane, &EditorPane::markdownLinkRequested, this, [this](const QString &path) {
+        if (QFileInfo(path).exists())
+            openFile(path);
+    });
     auto *rightLayout = new QVBoxLayout(m_right);
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(0);
@@ -551,23 +569,46 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
     m_fileModel = new QFileSystemModel(this);
     m_fileModel->setFilter(QDir::AllDirs | QDir::Files | QDir::NoDotAndDotDot);
-    m_fileModel->setRootPath(m_forthDir);
+    m_fileModel->setRootPath(m_fileRoot);
     m_files = new QTreeView(this);
     m_files->setModel(m_fileModel);
     m_files->setHeaderHidden(true);
-    m_files->setRootIndex(m_fileModel->index(m_forthDir));
+    m_files->setRootIndex(m_fileModel->index(m_fileRoot));
     m_files->hideColumn(1);
     m_files->hideColumn(2);
     m_files->hideColumn(3);
     m_files->setMinimumWidth(180);
-    m_files->setMaximumWidth(320);
+    m_fileRootButton = new QToolButton(this);
+    m_fileRootButton->setPopupMode(QToolButton::InstantPopup);
+    m_fileRootButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    m_fileRootButton->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    m_fileRootButton->setToolTip(QStringLiteral("Recent folders. The list shows the one you pick."));
+    auto *filePane = new QWidget(this);
+    auto *fileLayout = new QVBoxLayout(filePane);
+    fileLayout->setContentsMargins(0, 0, 0, 0);
+    fileLayout->setSpacing(0);
+    fileLayout->addWidget(m_fileRootButton);
+    fileLayout->addWidget(m_files, 1);
+    filePane->setMinimumWidth(180);
+    filePane->setMaximumWidth(320);
+    refreshFileRootMenu();
     connect(m_files, &QTreeView::doubleClicked, this, [this](const QModelIndex &index) {
         if (!m_fileModel->isDir(index))
             openFile(m_fileModel->filePath(index));
     });
+    connect(m_fileModel, &QFileSystemModel::directoryLoaded, this, [this](const QString &path) {
+        if (m_notedDocs)
+            return;
+        if (QDir::cleanPath(path).compare(QDir::cleanPath(m_fileRoot), Qt::CaseInsensitive) != 0)
+            return;
+        m_notedDocs = true;
+        const QString docs = QDir(m_fileRoot).filePath(QStringLiteral("Docs"));
+        if (QFileInfo(docs).isDir())
+            m_files->expand(m_fileModel->index(docs));
+    });
 
     m_editors = new QSplitter(Qt::Horizontal, this);
-    m_editors->addWidget(m_files);
+    m_editors->addWidget(filePane);
     m_editors->addWidget(m_tabs);
     m_editors->addWidget(m_right);
     m_askPanel = new AskForthPanel(m_editors);
@@ -770,7 +811,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_filesAction->setCheckable(true);
     m_filesAction->setChecked(true);
     connect(m_filesAction, &QAction::toggled, this, [this](bool on) {
-        if (m_files != nullptr)
+        if (m_fileRootButton != nullptr && m_fileRootButton->parentWidget() != nullptr)
+            m_fileRootButton->parentWidget()->setVisible(on);
+        else if (m_files != nullptr)
             m_files->setVisible(on);
     });
     m_showConsoleAction = viewMenu->addAction(QStringLiteral("Show Forth Console"));
@@ -1191,6 +1234,10 @@ CodeEdit *MainWindow::editAt(int index) const {
 void MainWindow::addEditor(CodeEdit *edit, const QString &title) {
     wire(edit);
     auto *pane = new EditorPane(edit);
+    connect(pane, &EditorPane::markdownLinkRequested, this, [this](const QString &path) {
+        if (QFileInfo(path).exists())
+            openFile(path);
+    });
     pane->setDebugState(m_armed, m_paused);
     edit->setDebugFocusLock(m_armed && edit->browse());
     const int index = m_tabs->addTab(pane, title);
@@ -2303,4 +2350,83 @@ void MainWindow::applyEditorChrome(CodeEdit *edit) {
     edit->setWrap(m_wrapMode, m_wrapColumn);
     const bool numbers = m_lineNumbersAction == nullptr || m_lineNumbersAction->isChecked();
     edit->setLineNumbersVisible(numbers);
+    noteEditorPath(edit);
+}
+
+QString MainWindow::displayRoot(const QString &path) const {
+    const QString clean = QDir::toNativeSeparators(QFileInfo(path).absoluteFilePath());
+    const QString home = QDir::toNativeSeparators(
+        QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::HomeLocation)));
+    if (clean.compare(home, Qt::CaseInsensitive) == 0)
+        return QStringLiteral("~");
+    const QString prefix = home + QDir::separator();
+    if (clean.startsWith(prefix, Qt::CaseInsensitive))
+        return QStringLiteral("~") + QDir::separator() + clean.mid(prefix.size());
+    return clean;
+}
+
+void MainWindow::rememberFileRoot(const QString &path) {
+    const QString next = QFileInfo(path).absoluteFilePath();
+    QStringList kept;
+    kept << next;
+    for (const QString &item : m_recentRoots) {
+        if (item.compare(next, Qt::CaseInsensitive) == 0)
+            continue;
+        kept << QFileInfo(item).absoluteFilePath();
+        if (kept.size() == 10)
+            break;
+    }
+    m_recentRoots = kept;
+    QSettings().setValue(QStringLiteral("fileListRecentRoots"), m_recentRoots);
+    refreshFileRootMenu();
+}
+
+void MainWindow::setFileRoot(const QString &path) {
+    const QString next = QFileInfo(path).absoluteFilePath();
+    rememberFileRoot(next);
+    if (next.compare(m_fileRoot, Qt::CaseInsensitive) == 0)
+        return;
+    m_fileRoot = next;
+    m_forthDir = next;
+    m_fileModel->setRootPath(next);
+    m_files->setRootIndex(m_fileModel->index(next));
+    m_files->collapseAll();
+}
+
+void MainWindow::chooseFileRoot() {
+    const QString path = QFileDialog::getExistingDirectory(
+        this, QStringLiteral("Show the folders and files in this directory."), m_fileRoot);
+    if (!path.isEmpty())
+        setFileRoot(path);
+}
+
+void MainWindow::refreshFileRootMenu() {
+    if (m_fileRootButton == nullptr)
+        return;
+    auto *menu = new QMenu(m_fileRootButton);
+    for (const QString &path : m_recentRoots) {
+        QAction *action = menu->addAction(displayRoot(path));
+        connect(action, &QAction::triggered, this, [this, path] { setFileRoot(path); });
+    }
+    if (!m_recentRoots.isEmpty())
+        menu->addSeparator();
+    QAction *choose = menu->addAction(QStringLiteral("Choose Folder…"));
+    connect(choose, &QAction::triggered, this, &MainWindow::chooseFileRoot);
+    m_fileRootButton->setMenu(menu);
+    const QString title = displayRoot(m_fileRoot.isEmpty() ? m_forthDir : m_fileRoot);
+    m_fileRootButton->setText(title);
+}
+
+void MainWindow::noteEditorPath(CodeEdit *edit) {
+    if (edit == nullptr || m_tabs == nullptr)
+        return;
+    const QString path = edit->property(kPath).toString();
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        if (auto *pane = qobject_cast<EditorPane *>(m_tabs->widget(i))) {
+            if (pane->edit() == edit)
+                pane->notePath(path);
+        }
+    }
+    if (auto *pane = qobject_cast<EditorPane *>(edit->parentWidget()))
+        pane->notePath(path);
 }

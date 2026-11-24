@@ -21,7 +21,14 @@ qt_add_executable(editforthwin WIN32
     src/AskForth.cpp
     src/AskForthSession.cpp
     src/AskForthEmbed.cpp
+    src/ForthStackEffect.cpp
 )
+
+qt_add_executable(stackcheck
+    src/stackcheck_main.cpp
+    src/ForthStackEffect.cpp
+)
+target_link_libraries(stackcheck PRIVATE Qt6::Core)
 
 target_link_libraries(editforthwin PRIVATE Qt6::Widgets Qt6::Network advapi32)
 

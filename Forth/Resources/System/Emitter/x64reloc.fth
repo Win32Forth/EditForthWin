@@ -529,6 +529,8 @@ CREATE X64-LOC-SZ  /SA-LOC-DEPTH , /SA-LOC-FRAMES , /SA-LOC-AUX , /SA-LOC-AUX ,
     code off + X64-REL TO op TO kind TO tgt
     kind 1 = op $8D = AND IF
       tgt SA-BSS-ENSURE TO da
+      \ Third RIP lea is up_var. The next lea repeats it.
+      n 2 = IF  da SA-UP-CELL !  THEN
       \ r15 TLS: lea rax, catch_ok_cell / mov [r15+152], rax.
       \ The rip-relative form stored that address through the register file.
       code off + len + DUP C@ $49 = IF
@@ -923,6 +925,8 @@ VARIABLE X64-TLEN
   X64-SP0-AT @ OR X64-CS-AT @ OR IF
     X64-DSP0-DATA
   THEN
+  \ Before the register file. That file stays the last 256 data bytes.
+  SA-UP-SETUP
   X64-PAD-CODE
   X64-ALLOT-REGS
   X64-APPLY

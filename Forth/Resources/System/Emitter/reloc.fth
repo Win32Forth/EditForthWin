@@ -703,6 +703,8 @@ VARIABLE SA-BSS-N
 VARIABLE SA-XC   \ host cell whose stand-in NEXT uses as the CATCH IP
 VARIABLE SA-DC   \ data stand-in for that cell
 VARIABLE SA-IP19 \ true when CATCH addresses that cell with X19
+VARIABLE SA-UP-CELL \ data stand-in for up_var
+VARIABLE SA-USER    \ stand-alone user area inside the data image
 
 \ Locals BSS sizes must match Kernel/forth.s LOCAL_* layout.
 8    CONSTANT /SA-LOC-DEPTH     \ local_frame_depth
@@ -861,7 +863,8 @@ VARIABLE SA-IP19 \ true when CATCH addresses that cell with X19
 
 : SA-BSS-RESET  ( -- )
   0 SA-BSS-N !
-  0 SA-XC !  0 SA-DC !  0 SA-IP19 ! ;
+  0 SA-XC !  0 SA-DC !  0 SA-IP19 !
+  0 SA-UP-CELL ! ;
 
 : SA-BSS-FIND  ( host -- data|0 )
   {: h | i -- :}
@@ -915,6 +918,51 @@ VARIABLE SA-IP19 \ true when CATCH addresses that cell with X19
 
 : SA-BSS-ENSURE  ( host -- data )
   8 SA-BSS-ENSURE-SZ ;
+
+\ forth.s task layout. Scratch pointers sit after the two stacks.
+280  4096 + 4096 + 512 + 1024 + 1024 + 640 + 64 + CONSTANT /SA-USER
+
+\ Anonymous data-segment bytes. Same bump as SA-BSS-ENSURE-SZ.
+: SA-DATA-ALLOT  ( u -- addr )
+  {: u | d -- :}
+  u 7 + -8 AND TO u
+  u 0= IF  8 TO u  THEN
+  TGT-DATA @ 0= IF  ." sa-bss: no data seg" CR ABORT  THEN
+  TGT-DATA-DP @ 7 + -8 AND TO d
+  d u + TGT-DATA-LIMIT @ U> IF  ." sa-bss: data overflow" CR ABORT  THEN
+  d u 0 FILL
+  d u + TGT-DATA-DP !
+  u TGT-DATA-BYTES +!
+  d ;
+
+\ Store addr at user+field and record the cell so the loader rebases it.
+: SA-UP-PTR!  ( addr field -- )
+  SA-USER @ +
+  DUP ROT SWAP !
+  1 PTR-RELOC-ADD ;
+
+\ CATCH falls back to [up_var] when x27 is 0. The stand-in cell is zero
+\ until this runs, and a saved image then reads TU_EVAL_SP at address 0xD0.
+\ TU_S0 and TU_DSP hold SA-DSP0-MAGIC. The runner replaces each copy.
+: SA-UP-SETUP  ( -- )
+  SA-UP-CELL @ 0= IF  EXIT  THEN
+  /SA-USER SA-DATA-ALLOT SA-USER !
+  SA-USER @ 280 + 4096 + 4096 +
+  DUP 216 SA-UP-PTR!
+  512 +
+  DUP 224 SA-UP-PTR!
+  1024 +
+  DUP 232 SA-UP-PTR!
+  1024 +
+  DUP 240 SA-UP-PTR!
+  640 +
+  248 SA-UP-PTR!
+  10 SA-USER @ 64 + !
+  SA-DSP0-MAGIC SA-USER @ 48 + !
+  SA-DSP0-MAGIC SA-USER @ 32 + !
+  SA-UP-CELL @ SA-USER @ SWAP !
+  SA-UP-CELL @ 1 PTR-RELOC-ADD
+  ." sa-up user " SA-USER @ U. CR ;
 
 \ LOCAL-INIT ADRP order (forth.s): depth, frames, rsp, n.
 \ Pre-size those spans so nested {: … :} (PI./PI-COMPUTE) keep digits.
@@ -1067,6 +1115,8 @@ $D63F0120 CONSTANT ARM-BLR-X9
     code off ADRP-ADD-ABS TO abs
     abs IF
       abs SA-BSS-ENSURE DROP
+      \ Third ADRP is up_var (first UP_LOAD). The next one repeats it.
+      n 2 = IF  abs SA-BSS-FIND SA-UP-CELL !  THEN
       \ ADRP X19 is the Windows IP cell (catch_ok_cell).
       code off + W@ $1F AND 19 = IF
         abs SA-XC !
@@ -1292,6 +1342,7 @@ $D63F0120 CONSTANT ARM-BLR-X9
   X64-HOST? IF
     X64-FINISH
   ELSE
+    SA-UP-SETUP
     SA-DOCOL-IP8
     SA-FIX-BI-HOOKS
     SA-FIX-TIME-DATE

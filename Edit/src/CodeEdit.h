@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QPlainTextEdit>
+#include <QUrl>
 #include <QWidget>
 
 class QLabel;
@@ -75,6 +76,9 @@ private:
 
 // One file pane: the view-mode banner, then that file's editor.
 // The banner stays inside this pane so each tab and the split each have their own.
+class QTextBrowser;
+class QPushButton;
+
 class EditorPane : public QWidget {
     Q_OBJECT
 public:
@@ -82,13 +86,28 @@ public:
 
     CodeEdit *edit() const { return m_edit; }
     void setDebugState(bool armed, bool paused);
+    // `.md` and `.markdown` open in the formatted preview. Source is the text editor.
+    void notePath(const QString &path);
+
+signals:
+    void markdownLinkRequested(const QString &path);
 
 private:
     void syncBanner();
+    void syncMarkdown();
+    void setMarkdownSource(bool source);
+    void openMarkdownLink(const QUrl &url);
 
     CodeEdit *m_edit = nullptr;
     QWidget *m_banner = nullptr;
     QLabel *m_hint = nullptr;
+    QWidget *m_markdownBar = nullptr;
+    QTextBrowser *m_preview = nullptr;
+    QPushButton *m_previewButton = nullptr;
+    QPushButton *m_sourceButton = nullptr;
+    QString m_path;
+    bool m_markdown = false;
+    bool m_markdownSource = false;
     bool m_armed = false;
     bool m_paused = false;
 };
