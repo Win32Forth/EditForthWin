@@ -1305,8 +1305,11 @@ _word_store
         mov     x5, #63
 _word_len_ok
         bl      _cursor_commit
+        UP_LOAD x6, TU_WORD_PTR
+        cbnz    x6, _word_have
         adrp    x6, word_scratch
         add     x6, x6, word_scratch
+_word_have
         strb    w5, [x6]
         mov     x1, #0
 _word_copy
@@ -1324,8 +1327,11 @@ _word_done
         NEXT
 _word_empty
         bl      _cursor_commit
+        UP_LOAD x6, TU_WORD_PTR
+        cbnz    x6, _word_empty_have
         adrp    x6, word_scratch
         add     x6, x6, word_scratch
+_word_empty_have
         strb    wzr, [x6]
         mov     x20, x6
         ldp     x29, x30, [sp, #32]

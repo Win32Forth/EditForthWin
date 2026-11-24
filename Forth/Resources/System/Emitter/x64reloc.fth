@@ -189,10 +189,13 @@ VARIABLE X64-H3
   X64-REG0 @ ?DUP IF  EXIT  THEN
   ['] LOCAL-INIT PRIM-SPAN DROP
   DUP X64-REL
-  DROP 1 <> IF
-    ." x64: LOCAL-INIT does not start with a rip load" CR ABORT
+  DROP 1 = IF
+    160 - DUP X64-REG0 ! EXIT
   THEN
-  160 - DUP X64-REG0 ! ;
+  \ r15 TLS has no static register file. A low sentinel keeps the
+  \ rip-target range check from matching a real address.
+  2DROP
+  8 DUP X64-REG0 ! ;
 
 : X64-FIX-ADD ( disp-addr kind arg tail -- )
   X64-FN @ #X64-FIX U< 0= IF
@@ -526,15 +529,25 @@ CREATE X64-LOC-SZ  /SA-LOC-DEPTH , /SA-LOC-FRAMES , /SA-LOC-AUX , /SA-LOC-AUX ,
     code off + X64-REL TO op TO kind TO tgt
     kind 1 = op $8D = AND IF
       tgt SA-BSS-ENSURE TO da
-      \ The next instruction stores the address into arm_x19 for the IP cell.
-      code off + len + X64-REL TO op TO kind TO tgt
-      kind 1 = tgt X64-REG-BASE 152 + = AND IF
-        da TGT-DATA-ORG @ - 
-        \ remember the host cell and its data stand-in
-        code off + X64-REL DROP DROP
-        SA-XC !
-        da SA-DC !
-        1 SA-IP19 !
+      \ r15 TLS: lea rax, catch_ok_cell / mov [r15+152], rax.
+      \ The rip-relative form stored that address through the register file.
+      code off + len + DUP C@ $49 = IF
+        DUP 1+ C@ $89 = OVER 2 + C@ $87 = AND
+        OVER 3 + X64-LD32 152 = AND IF
+          tgt SA-XC !
+          da SA-DC !
+          1 SA-IP19 !
+        THEN
+        DROP
+      ELSE
+        X64-REL TO op TO kind TO tgt
+        kind 1 = tgt X64-REG-BASE 152 + = AND IF
+          da TGT-DATA-ORG @ -
+          code off + X64-REL DROP DROP
+          SA-XC !
+          da SA-DC !
+          1 SA-IP19 !
+        THEN
       THEN
       n 1+ TO n
     THEN
@@ -626,12 +639,17 @@ VARIABLE X64-D
   X64-AT @ TGT-ORG @ - 4 + -
   X64-AT @ X64-ST32
   4 X64-AT +! ;
+\ Copied prims address x19/x20/x22 through r15. The in-process
+\ runner uses that same file. A rip slot in the data image is empty.
+: X64-IMM32 ( n -- )
+  X64-AT @ X64-ST32
+  4 X64-AT +! ;
 : X64-LDX ( index -- )
-  $48 XB $8B XB $05 XB
-  X64-CODELEN @ X64-REGOFF @ + SWAP 8 * + X64-DTO ;
+  $49 XB $8B XB $87 XB
+  8 * X64-IMM32 ;
 : X64-STX ( index -- )
-  $48 XB $89 XB $05 XB
-  X64-CODELEN @ X64-REGOFF @ + SWAP 8 * + X64-DTO ;
+  $49 XB $89 XB $87 XB
+  8 * X64-IMM32 ;
 : X64-JMP-NEXT ( -- )
   $E9 XB
   ['] (NEXT) MAP-FIND 8 + TGT-ORG @ - X64-DTO ;
@@ -641,8 +659,7 @@ VARIABLE X64-D
   X64-0B @ X64-AT !
   20 X64-LDX
   0 X64-STX
-  $4C XB $8B XB $15 XB
-  X64-CODELEN @ X64-REGOFF @ + 176 + X64-DTO
+  $4D XB $8B XB $97 XB  176 X64-IMM32
   $49 XB $8B XB $02 XB
   20 X64-STX
   22 X64-LDX

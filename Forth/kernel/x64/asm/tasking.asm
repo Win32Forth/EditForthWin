@@ -7,6 +7,7 @@ EXTRN arm_excl_val:QWORD
 EXTRN _do_quit:PROC
 EXTRN _getchar:PROC
 EXTRN _print_string_svc:PROC
+EXTRN _set_source:PROC
 EXTRN base_var:BYTE
 EXTRN data_stack:BYTE
 EXTRN debug_armed:BYTE
@@ -1165,6 +1166,86 @@ _ty_take:
     ; mov     x27, x12
     mov rax, QWORD PTR [r15+96]
     mov QWORD PTR [r15+216], rax
+    ; lea x9, console_task
+    lea rax, console_task
+    mov QWORD PTR [r15+72], rax
+    ; cmp     x12, x9
+    mov rax, QWORD PTR [r15+96]
+    mov rcx, QWORD PTR [r15+72]
+    cmp rax, rcx
+    seto BYTE PTR [r15+251]
+    sets BYTE PTR [r15+248]
+    setz BYTE PTR [r15+249]
+    setnc BYTE PTR [r15+250]
+    ; b.ne    _ty_leaving_console
+    cmp BYTE PTR [r15+249], 0
+    je _ty_leaving_console
+    ; lea x10, console_hw_sp
+    lea rax, console_hw_sp
+    mov QWORD PTR [r15+80], rax
+    ; ldr     x10, [x10]
+    mov r10, QWORD PTR [r15+80]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+80], rax
+    ; cbz     x10, _ty_done
+    mov rax, QWORD PTR [r15+80]
+    cmp rax, 0
+    je _ty_done
+    ; mov     sp, x10
+    mov rax, QWORD PTR [r15+80]
+    mov rsp, rax
+    ; cbnz    x28, next_debug_gate
+    mov rax, QWORD PTR [r15+224]
+    cmp rax, 0
+    jne next_debug_gate
+    ; lea x1, debug_break_asap
+    lea rax, debug_break_asap
+    mov QWORD PTR [r15+8], rax
+    ; ldr     x1, [x1]
+    mov r10, QWORD PTR [r15+8]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+8], rax
+    ; cbnz    x1, next_debug_gate
+    mov rax, QWORD PTR [r15+8]
+    cmp rax, 0
+    jne next_debug_gate
+    ; ldr     x21, [x19], #8
+    mov r10, QWORD PTR [r15+152]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+168], rax
+    mov rax, QWORD PTR [r15+152]
+    add rax, 8
+    mov QWORD PTR [r15+152], rax
+    ; ldr     x1, [x21]
+    mov r10, QWORD PTR [r15+168]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+8], rax
+    ; br      x1
+    mov rax, QWORD PTR [r15+8]
+    jmp rax
+_ty_leaving_console:
+    ; cmp     x11, x9
+    mov rax, QWORD PTR [r15+88]
+    mov rcx, QWORD PTR [r15+72]
+    cmp rax, rcx
+    seto BYTE PTR [r15+251]
+    sets BYTE PTR [r15+248]
+    setz BYTE PTR [r15+249]
+    setnc BYTE PTR [r15+250]
+    ; b.ne    _ty_done
+    cmp BYTE PTR [r15+249], 0
+    je _ty_done
+    ; lea x10, console_hw_sp
+    lea rax, console_hw_sp
+    mov QWORD PTR [r15+80], rax
+    ; add     x13, sp, #16
+    mov rax, rsp
+    add rax, 10h
+    mov QWORD PTR [r15+104], rax
+    ; str     x13, [x10]
+    mov r10, QWORD PTR [r15+80]
+    mov rax, QWORD PTR [r15+104]
+    mov QWORD PTR [r10], rax
     ; b       _ty_done
     jmp _ty_done
 _ty_stay:
@@ -7559,10 +7640,106 @@ str_stop_console:
 str_wait_stuck:
     ; DCB "? WAIT: no other task can SIGNAL", 10, 0
     DB "? WAIT: no other task can SIGNAL", 0Ah, 0
+BWSTR SEGMENT ALIGN(1) READ
+nm_XSOURCE_STORE:
+    ; DCB "(SOURCE!)", 0
+    DB "(SOURCE!)", 0
+hl_XSOURCE_STORE:
+    ; DCB "(SOURCE!) ( c-addr u -- ) set this task's SOURCE and zero >IN", 0
+    DB "(SOURCE!) ( c-addr u -- ) set this task's SOURCE and zero >IN", 0
+BWSTR ENDS
+BOOTWORD SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+row_XSOURCE_STORE:
+    ; DCQ     nm_XSOURCE_STORE, hl_XSOURCE_STORE
+    DQ OFFSET nm_XSOURCE_STORE, OFFSET hl_XSOURCE_STORE
+    ; DCQ     0
+    DQ 0
+    ; DCQ     XSOURCE_STORE, XSOURCE_STORE_END
+    DQ OFFSET XSOURCE_STORE, OFFSET XSOURCE_STORE_END
+BOOTWORD ENDS
+BOOTPTR SEGMENT ALIGN(8) READ
+    ; ALIGN 8
+ALIGN 8
+    ; DCQ     row_XSOURCE_STORE
+    DQ OFFSET row_XSOURCE_STORE
+BOOTPTR ENDS
+.CODE
+XSOURCE_STORE:
+    ; stp     x29, x30, [sp, #-16]!
+    add rsp, -16
+    lea r10, [rsp]
+    mov rax, QWORD PTR [r15+232]
+    mov QWORD PTR [r10+0], rax
+    mov rax, QWORD PTR [r15+240]
+    mov QWORD PTR [r10+8], rax
+    ; mov     x1, x20
+    mov rax, QWORD PTR [r15+160]
+    mov QWORD PTR [r15+8], rax
+    ; ldr     x0, [x22], #8
+    mov r10, QWORD PTR [r15+176]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+0], rax
+    mov rax, QWORD PTR [r15+176]
+    add rax, 8
+    mov QWORD PTR [r15+176], rax
+    ; ldr     x20, [x22], #8
+    mov r10, QWORD PTR [r15+176]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+160], rax
+    mov rax, QWORD PTR [r15+176]
+    add rax, 8
+    mov QWORD PTR [r15+176], rax
+    ; bl      _set_source
+    lea rax, xret_105
+    mov QWORD PTR [r15+240], rax
+    jmp _set_source
+    xret_105:
+    ; ldp     x29, x30, [sp], #16
+    lea r10, [rsp]
+    mov rax, QWORD PTR [r10]
+    mov rcx, QWORD PTR [r10+8]
+    mov QWORD PTR [r15+232], rax
+    mov QWORD PTR [r15+240], rcx
+    add rsp, 10h
+XSOURCE_STORE_END:
+    ; cbnz    x28, next_debug_gate
+    mov rax, QWORD PTR [r15+224]
+    cmp rax, 0
+    jne next_debug_gate
+    ; lea x1, debug_break_asap
+    lea rax, debug_break_asap
+    mov QWORD PTR [r15+8], rax
+    ; ldr     x1, [x1]
+    mov r10, QWORD PTR [r15+8]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+8], rax
+    ; cbnz    x1, next_debug_gate
+    mov rax, QWORD PTR [r15+8]
+    cmp rax, 0
+    jne next_debug_gate
+    ; ldr     x21, [x19], #8
+    mov r10, QWORD PTR [r15+152]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+168], rax
+    mov rax, QWORD PTR [r15+152]
+    add rax, 8
+    mov QWORD PTR [r15+152], rax
+    ; ldr     x1, [x21]
+    mov r10, QWORD PTR [r15+168]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+8], rax
+    ; br      x1
+    mov rax, QWORD PTR [r15+8]
+    jmp rax
 .DATA
 console_task:
     ; SPACE TU_BYTES
     DB 280 DUP(0)
+console_hw_sp:
+    ; DCQ 0
+    DQ 0
 up_var:
     ; DCQ 0
     DQ 0

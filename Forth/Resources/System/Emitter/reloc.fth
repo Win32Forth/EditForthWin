@@ -63,10 +63,11 @@ $D61F0200 CONSTANT ARM-BR-X16
 \ 28 CLIP!  29 CLIP@  30 CWD@  (bl _host_clip_* / _host_cwd_get).
 \ 31 SYSTEM (blr x9 system_hook → /bin/sh -c).
 \ 32 MS (bl _nanosleep).
+\ 33 RESIZE (bl host_resize). Slots 12–14 are already the BI hooks.
 \ .quad = HOST-CALL-MAGIC|slot until HOST-BIND.
 
 $C0DE000000000000 CONSTANT HOST-CALL-MAGIC
-33 CONSTANT #HOST-APP
+34 CONSTANT #HOST-APP
 128 CONSTANT #HOST-RELOC
 
 CREATE HOST-APP-VA     #HOST-APP CELLS ALLOT
@@ -615,6 +616,9 @@ S" KEY?"  (GFX-IO-XT) CONSTANT GFX-KEY?
   \ ALLOCATE/FREE bl libc — SA would NOP those BLs and crash on first heap use.
   ['] ALLOCATE 10 HOST-APP-SET
   ['] FREE 11 HOST-APP-SET
+  \ RESIZE bl host_resize. Same stand-in path as ALLOCATE. Without a
+  \ slot the BL is NOP'd and the buffer never grows.
+  ['] RESIZE 33 HOST-APP-SET
   \ Slots 12–14 (BI-*) are wired by SA-FIX-BI-HOOKS (blr x9, not bl host).
   \ (APP-MOUSE) bl _host_app_mouse — without a slot, SA NOP'd the BL (zeros)
   \ or left a bad abs veneer; DOODLE.app flashed/crashed on first G-MOUSE.

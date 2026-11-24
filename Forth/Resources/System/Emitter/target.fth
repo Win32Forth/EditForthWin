@@ -198,9 +198,11 @@ VARIABLE SA-THROW-SEEN
   R> DROP
   2DUP SWAP - NIP ;
 
-\ Translated x64 prims begin with REX.W MOV (48 8B ...). ARM64 LOCAL-INIT does not.
+\ Translated x64 prims begin with a REX.W prefix ($48-$4F). A base in
+\ r8-r15 sets the B bit, so LOCAL-INIT's first mov is $49, not $48.
+\ ARM64 LOCAL-INIT does not start in that range.
 : X64-HOST?  ( -- flag )
-  ['] LOCAL-INIT PRIM-SPAN DROP C@ $48 = ;
+  ['] LOCAL-INIT PRIM-SPAN DROP C@ $48 $50 WITHIN ;
 
 \ CREATE/VALUE/CONSTANT/DOES>: default identity map (in-process TGT-RUN).
 \ /EMIT-STANDALONE copies each data region into the target image (Phase 1).

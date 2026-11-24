@@ -46,6 +46,7 @@ TASK_SCRATCH_BYTES EQU TASK_WORD_BYTES + TASK_PAD_BYTES + TASK_INPUT_BYTES + TAS
 TASK_ALLOT      EQU TU_BYTES + TASK_STACK_BYTES + TASK_STACK_BYTES + TASK_SCRATCH_BYTES
 
         EXTERN  host_pause
+        EXTERN  _set_source
         EXTERN  _print_string_svc
         EXTERN  _getchar
         EXTERN  _do_quit
@@ -404,6 +405,26 @@ _ty_take
         add     x9, x9, up_var
         str     x12, [x9]
         mov     x27, x12
+        ; A task that stops inside ALLOT leaves C frames on this stack.
+        ; The console resume point was saved when it yielded. Jumping back
+        ; there drops those frames so kernel_eval's epilogue still matches.
+        adrp    x9, console_task
+        add     x9, x9, console_task
+        cmp     x12, x9
+        b.ne    _ty_leaving_console
+        adrp    x10, console_hw_sp
+        add     x10, x10, console_hw_sp
+        ldr     x10, [x10]
+        cbz     x10, _ty_done
+        mov     sp, x10
+        NEXT
+_ty_leaving_console
+        cmp     x11, x9
+        b.ne    _ty_done
+        adrp    x10, console_hw_sp
+        add     x10, x10, console_hw_sp
+        add     x13, sp, #16
+        str     x13, [x10]
         b       _ty_done
 _ty_stay
         ldr     x19, [x11, #TU_IP]
@@ -1979,9 +2000,25 @@ str_slice_none DCB "? SLICE: task has no dictionary", 10, 0
 str_stop_console DCB "STOP: the console task stays awake", 10, 0
 str_wait_stuck DCB "? WAIT: no other task can SIGNAL", 10, 0
 
+; (SOURCE!) ( c-addr u -- )  point this task's SOURCE at a string. >IN = 0.
+        AREA |.bwstr|, DATA, READONLY
+nm_XSOURCE_STORE DCB "(SOURCE!)", 0
+hl_XSOURCE_STORE DCB "(SOURCE!) ( c-addr u -- ) set this task's SOURCE and zero >IN", 0
+        BOOT_ROW nm_XSOURCE_STORE, hl_XSOURCE_STORE, 0, XSOURCE_STORE, XSOURCE_STORE_END, row_XSOURCE_STORE
+XSOURCE_STORE
+        stp     x29, x30, [sp, #-16]!
+        mov     x1, x20
+        ldr     x0, [x22], #8
+        ldr     x20, [x22], #8
+        bl      _set_source
+        ldp     x29, x30, [sp], #16
+XSOURCE_STORE_END
+        NEXT
+
         AREA |.data|, DATA, READWRITE, ALIGN=8
 
 console_task SPACE TU_BYTES
+console_hw_sp DCQ 0
 up_var       DCQ 0
 multi_var    DCQ 0
 cores_var    DCQ 0

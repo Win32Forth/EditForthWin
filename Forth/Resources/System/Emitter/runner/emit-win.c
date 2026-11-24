@@ -21,12 +21,12 @@
 /* Same cell as SA-DSP0-MAGIC in Emitter/target.fth. The runner stores
  * the empty data-stack pointer here so DEPTH/SP0/CLEARSTACK can find it. */
 #define EW_DSP0_MAGIC 0xC0DE0000000000D0ull
-#define EW_SLOTS 33
+#define EW_SLOTS 34
 #define EW_PAGE  0x10000u
-#define EW_COLS_MAX 256
-#define EW_ROWS_MAX 128
+#define EW_COLS_MAX 384
+#define EW_ROWS_MAX 192
 #define EW_KEYS 64
-#define EW_IMG_MAX (16 * 1024 * 1024)
+#define EW_IMG_MAX (36 * 1024 * 1024)
 
 #ifdef _M_X64
 extern void run_itc(void *dsp, void *rp, void *cfa, void *xt, void *regfile);
@@ -346,6 +346,8 @@ static void note_mouse(HWND hwnd, int x, int y, WPARAM wp) {
         buttons |= 2;
     if (wp & MK_MBUTTON)
         buttons |= 4;
+    if (buttons != 0 && (GetKeyState(VK_MENU) & 0x8000))
+        buttons |= 1024;
     g_mouse_x = px;
     g_mouse_y = py;
     g_mouse_b = buttons;
@@ -690,6 +692,11 @@ static long long ew_alloc(long long n) {
 static long long ew_free(long long p) {
     free((void *)(uintptr_t)p);
     return 0;
+}
+
+/* Slot 33: RESIZE. x0=ptr, x1=size. A zero size becomes 1, matching host_resize. */
+static long long ew_resize(long long p, long long n) {
+    return (long long)(uintptr_t)realloc((void *)(uintptr_t)p, n == 0 ? 1 : (size_t)n);
 }
 
 static long long ew_stub0(void) { return 0; }
@@ -1109,6 +1116,7 @@ static void slots_init(void) {
     g_slot[26] = (void *)ew_size;
     g_slot[27] = (void *)ew_time_date;
     g_slot[32] = (void *)ew_sleep;
+    g_slot[33] = (void *)ew_resize;
     (void)ew_stub0;
 }
 

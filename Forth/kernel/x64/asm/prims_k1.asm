@@ -8157,9 +8157,34 @@ _word_len_ok:
     mov QWORD PTR [r15+240], rax
     jmp _cursor_commit
     xret_56:
+    ; mov     x16, x27
+    mov rax, QWORD PTR [r15+216]
+    mov QWORD PTR [r15+128], rax
+    ; cbnz    x16, L91_333
+    mov rax, QWORD PTR [r15+128]
+    cmp rax, 0
+    jne L91_333
+    ; lea x16, up_var
+    lea rax, up_var
+    mov QWORD PTR [r15+128], rax
+    ; ldr     x16, [x16]
+    mov r10, QWORD PTR [r15+128]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+128], rax
+L91_333:
+    ; ldr     x6, [x16, #TU_WORD_PTR]
+    mov r10, QWORD PTR [r15+128]
+    add r10, 0D8h
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+48], rax
+    ; cbnz    x6, _word_have
+    mov rax, QWORD PTR [r15+48]
+    cmp rax, 0
+    jne _word_have
     ; lea x6, word_scratch
     lea rax, word_scratch
     mov QWORD PTR [r15+48], rax
+_word_have:
     ; strb    w5, [x6]
     mov r10, QWORD PTR [r15+48]
     mov eax, DWORD PTR [r15+40]
@@ -8252,9 +8277,34 @@ _word_empty:
     mov QWORD PTR [r15+240], rax
     jmp _cursor_commit
     xret_57:
+    ; mov     x16, x27
+    mov rax, QWORD PTR [r15+216]
+    mov QWORD PTR [r15+128], rax
+    ; cbnz    x16, L91_336
+    mov rax, QWORD PTR [r15+128]
+    cmp rax, 0
+    jne L91_336
+    ; lea x16, up_var
+    lea rax, up_var
+    mov QWORD PTR [r15+128], rax
+    ; ldr     x16, [x16]
+    mov r10, QWORD PTR [r15+128]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+128], rax
+L91_336:
+    ; ldr     x6, [x16, #TU_WORD_PTR]
+    mov r10, QWORD PTR [r15+128]
+    add r10, 0D8h
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+48], rax
+    ; cbnz    x6, _word_empty_have
+    mov rax, QWORD PTR [r15+48]
+    cmp rax, 0
+    jne _word_empty_have
     ; lea x6, word_scratch
     lea rax, word_scratch
     mov QWORD PTR [r15+48], rax
+_word_empty_have:
     ; strb    wzr, [x6]
     mov r10, QWORD PTR [r15+48]
     mov BYTE PTR [r10], 0
@@ -8354,10 +8404,10 @@ XDOTPAREN:
     ; mov     x16, x27
     mov rax, QWORD PTR [r15+216]
     mov QWORD PTR [r15+128], rax
-    ; cbnz    x16, L91_338
+    ; cbnz    x16, L91_342
     mov rax, QWORD PTR [r15+128]
     cmp rax, 0
-    jne L91_338
+    jne L91_342
     ; lea x16, up_var
     lea rax, up_var
     mov QWORD PTR [r15+128], rax
@@ -8365,7 +8415,7 @@ XDOTPAREN:
     mov r10, QWORD PTR [r15+128]
     mov rax, QWORD PTR [r10]
     mov QWORD PTR [r15+128], rax
-L91_338:
+L91_342:
     ; ldr     x6, [x16, #TU_SRC_ADDR]
     mov r10, QWORD PTR [r15+128]
     add r10, 68h
@@ -8511,10 +8561,10 @@ XBACKSLASH:
     ; mov     x16, x27
     mov rax, QWORD PTR [r15+216]
     mov QWORD PTR [r15+128], rax
-    ; cbnz    x16, L91_343
+    ; cbnz    x16, L91_347
     mov rax, QWORD PTR [r15+128]
     cmp rax, 0
-    jne L91_343
+    jne L91_347
     ; lea x16, up_var
     lea rax, up_var
     mov QWORD PTR [r15+128], rax
@@ -8522,7 +8572,7 @@ XBACKSLASH:
     mov r10, QWORD PTR [r15+128]
     mov rax, QWORD PTR [r10]
     mov QWORD PTR [r15+128], rax
-L91_343:
+L91_347:
     ; ldr     x0, [x16, #TU_BLK]
     mov r10, QWORD PTR [r15+128]
     add r10, 88h
@@ -8554,10 +8604,10 @@ L91_343:
     ; mov     x16, x27
     mov rax, QWORD PTR [r15+216]
     mov QWORD PTR [r15+128], rax
-    ; cbnz    x16, L91_345
+    ; cbnz    x16, L91_349
     mov rax, QWORD PTR [r15+128]
     cmp rax, 0
-    jne L91_345
+    jne L91_349
     ; lea x16, up_var
     lea rax, up_var
     mov QWORD PTR [r15+128], rax
@@ -8565,7 +8615,7 @@ L91_343:
     mov r10, QWORD PTR [r15+128]
     mov rax, QWORD PTR [r10]
     mov QWORD PTR [r15+128], rax
-L91_345:
+L91_349:
     ; ldr     x9, [x16, #TU_SRC_ADDR]
     mov r10, QWORD PTR [r15+128]
     add r10, 68h
@@ -8680,46 +8730,6 @@ _bs_block:
     ; mov     x16, x27
     mov rax, QWORD PTR [r15+216]
     mov QWORD PTR [r15+128], rax
-    ; cbnz    x16, L91_348
-    mov rax, QWORD PTR [r15+128]
-    cmp rax, 0
-    jne L91_348
-    ; lea x16, up_var
-    lea rax, up_var
-    mov QWORD PTR [r15+128], rax
-    ; ldr     x16, [x16]
-    mov r10, QWORD PTR [r15+128]
-    mov rax, QWORD PTR [r10]
-    mov QWORD PTR [r15+128], rax
-L91_348:
-    ; ldr     x1, [x16, #TU_TO_IN]
-    mov r10, QWORD PTR [r15+128]
-    add r10, 78h
-    mov rax, QWORD PTR [r10]
-    mov QWORD PTR [r15+8], rax
-    ; mov     x16, x27
-    mov rax, QWORD PTR [r15+216]
-    mov QWORD PTR [r15+128], rax
-    ; cbnz    x16, L91_350
-    mov rax, QWORD PTR [r15+128]
-    cmp rax, 0
-    jne L91_350
-    ; lea x16, up_var
-    lea rax, up_var
-    mov QWORD PTR [r15+128], rax
-    ; ldr     x16, [x16]
-    mov r10, QWORD PTR [r15+128]
-    mov rax, QWORD PTR [r10]
-    mov QWORD PTR [r15+128], rax
-L91_350:
-    ; ldr     x3, [x16, #TU_SRC_ADDR]
-    mov r10, QWORD PTR [r15+128]
-    add r10, 68h
-    mov rax, QWORD PTR [r10]
-    mov QWORD PTR [r15+24], rax
-    ; mov     x16, x27
-    mov rax, QWORD PTR [r15+216]
-    mov QWORD PTR [r15+128], rax
     ; cbnz    x16, L91_352
     mov rax, QWORD PTR [r15+128]
     cmp rax, 0
@@ -8732,6 +8742,46 @@ L91_350:
     mov rax, QWORD PTR [r10]
     mov QWORD PTR [r15+128], rax
 L91_352:
+    ; ldr     x1, [x16, #TU_TO_IN]
+    mov r10, QWORD PTR [r15+128]
+    add r10, 78h
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+8], rax
+    ; mov     x16, x27
+    mov rax, QWORD PTR [r15+216]
+    mov QWORD PTR [r15+128], rax
+    ; cbnz    x16, L91_354
+    mov rax, QWORD PTR [r15+128]
+    cmp rax, 0
+    jne L91_354
+    ; lea x16, up_var
+    lea rax, up_var
+    mov QWORD PTR [r15+128], rax
+    ; ldr     x16, [x16]
+    mov r10, QWORD PTR [r15+128]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+128], rax
+L91_354:
+    ; ldr     x3, [x16, #TU_SRC_ADDR]
+    mov r10, QWORD PTR [r15+128]
+    add r10, 68h
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+24], rax
+    ; mov     x16, x27
+    mov rax, QWORD PTR [r15+216]
+    mov QWORD PTR [r15+128], rax
+    ; cbnz    x16, L91_356
+    mov rax, QWORD PTR [r15+128]
+    cmp rax, 0
+    jne L91_356
+    ; lea x16, up_var
+    lea rax, up_var
+    mov QWORD PTR [r15+128], rax
+    ; ldr     x16, [x16]
+    mov r10, QWORD PTR [r15+128]
+    mov rax, QWORD PTR [r10]
+    mov QWORD PTR [r15+128], rax
+L91_356:
     ; ldr     x2, [x16, #TU_SRC_LEN]
     mov r10, QWORD PTR [r15+128]
     add r10, 70h
@@ -8769,10 +8819,10 @@ _bs_blk_ok:
     ; mov     x16, x27
     mov rax, QWORD PTR [r15+216]
     mov QWORD PTR [r15+128], rax
-    ; cbnz    x16, L91_354
+    ; cbnz    x16, L91_358
     mov rax, QWORD PTR [r15+128]
     cmp rax, 0
-    jne L91_354
+    jne L91_358
     ; lea x16, up_var
     lea rax, up_var
     mov QWORD PTR [r15+128], rax
@@ -8780,7 +8830,7 @@ _bs_blk_ok:
     mov r10, QWORD PTR [r15+128]
     mov rax, QWORD PTR [r10]
     mov QWORD PTR [r15+128], rax
-L91_354:
+L91_358:
     ; str     x5, [x16, #TU_TO_IN]
     mov r10, QWORD PTR [r15+128]
     add r10, 78h
@@ -8794,10 +8844,10 @@ L91_354:
     ; mov     x16, x27
     mov rax, QWORD PTR [r15+216]
     mov QWORD PTR [r15+128], rax
-    ; cbnz    x16, L91_356
+    ; cbnz    x16, L91_360
     mov rax, QWORD PTR [r15+128]
     cmp rax, 0
-    jne L91_356
+    jne L91_360
     ; lea x16, up_var
     lea rax, up_var
     mov QWORD PTR [r15+128], rax
@@ -8805,7 +8855,7 @@ L91_354:
     mov r10, QWORD PTR [r15+128]
     mov rax, QWORD PTR [r10]
     mov QWORD PTR [r15+128], rax
-L91_356:
+L91_360:
     ; str     x3, [x16, #TU_WORD_CURSOR]
     mov r10, QWORD PTR [r15+128]
     add r10, 0B8h
@@ -8889,10 +8939,10 @@ XPAREN:
     ; mov     x16, x27
     mov rax, QWORD PTR [r15+216]
     mov QWORD PTR [r15+128], rax
-    ; cbnz    x16, L91_362
+    ; cbnz    x16, L91_366
     mov rax, QWORD PTR [r15+128]
     cmp rax, 0
-    jne L91_362
+    jne L91_366
     ; lea x16, up_var
     lea rax, up_var
     mov QWORD PTR [r15+128], rax
@@ -8900,7 +8950,7 @@ XPAREN:
     mov r10, QWORD PTR [r15+128]
     mov rax, QWORD PTR [r10]
     mov QWORD PTR [r15+128], rax
-L91_362:
+L91_366:
     ; ldr     x9, [x16, #TU_SRC_ADDR]
     mov r10, QWORD PTR [r15+128]
     add r10, 68h
@@ -8963,10 +9013,10 @@ _par_eol:
     ; mov     x16, x27
     mov rax, QWORD PTR [r15+216]
     mov QWORD PTR [r15+128], rax
-    ; cbnz    x16, L91_364
+    ; cbnz    x16, L91_368
     mov rax, QWORD PTR [r15+128]
     cmp rax, 0
-    jne L91_364
+    jne L91_368
     ; lea x16, up_var
     lea rax, up_var
     mov QWORD PTR [r15+128], rax
@@ -8974,7 +9024,7 @@ _par_eol:
     mov r10, QWORD PTR [r15+128]
     mov rax, QWORD PTR [r10]
     mov QWORD PTR [r15+128], rax
-L91_364:
+L91_368:
     ; ldr     x0, [x16, #TU_LINE_MODE]
     mov r10, QWORD PTR [r15+128]
     add r10, 90h
@@ -9004,10 +9054,10 @@ L91_364:
     ; mov     x16, x27
     mov rax, QWORD PTR [r15+216]
     mov QWORD PTR [r15+128], rax
-    ; cbnz    x16, L91_366
+    ; cbnz    x16, L91_370
     mov rax, QWORD PTR [r15+128]
     cmp rax, 0
-    jne L91_366
+    jne L91_370
     ; lea x16, up_var
     lea rax, up_var
     mov QWORD PTR [r15+128], rax
@@ -9015,7 +9065,7 @@ L91_364:
     mov r10, QWORD PTR [r15+128]
     mov rax, QWORD PTR [r10]
     mov QWORD PTR [r15+128], rax
-L91_366:
+L91_370:
     ; ldr     x9, [x16, #TU_SRC_ADDR]
     mov r10, QWORD PTR [r15+128]
     add r10, 68h
@@ -9239,10 +9289,10 @@ XSQUOTE:
     ; mov     x16, x27
     mov rax, QWORD PTR [r15+216]
     mov QWORD PTR [r15+128], rax
-    ; cbnz    x16, L91_376
+    ; cbnz    x16, L91_380
     mov rax, QWORD PTR [r15+128]
     cmp rax, 0
-    jne L91_376
+    jne L91_380
     ; lea x16, up_var
     lea rax, up_var
     mov QWORD PTR [r15+128], rax
@@ -9250,7 +9300,7 @@ XSQUOTE:
     mov r10, QWORD PTR [r15+128]
     mov rax, QWORD PTR [r10]
     mov QWORD PTR [r15+128], rax
-L91_376:
+L91_380:
     ; ldr     x6, [x16, #TU_SRC_ADDR]
     mov r10, QWORD PTR [r15+128]
     add r10, 68h
@@ -9673,10 +9723,10 @@ XCQUOTE:
     ; mov     x16, x27
     mov rax, QWORD PTR [r15+216]
     mov QWORD PTR [r15+128], rax
-    ; cbnz    x16, L91_387
+    ; cbnz    x16, L91_391
     mov rax, QWORD PTR [r15+128]
     cmp rax, 0
-    jne L91_387
+    jne L91_391
     ; lea x16, up_var
     lea rax, up_var
     mov QWORD PTR [r15+128], rax
@@ -9684,7 +9734,7 @@ XCQUOTE:
     mov r10, QWORD PTR [r15+128]
     mov rax, QWORD PTR [r10]
     mov QWORD PTR [r15+128], rax
-L91_387:
+L91_391:
     ; ldr     x6, [x16, #TU_SRC_ADDR]
     mov r10, QWORD PTR [r15+128]
     add r10, 68h

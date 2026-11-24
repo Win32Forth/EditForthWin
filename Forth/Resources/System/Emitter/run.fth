@@ -20,6 +20,13 @@ VARIABLE RUN-RSP-MEM
 : RUN-W,  ( u32 -- )
   RUN-HERE W!  4 RUN-DP +! ;
 
+: RUN-C,  ( c -- )
+  RUN-HERE C!  1 RUN-DP +! ;
+
+\ Little-endian cell into the run buffer.
+: RUN-Q,  ( u64 -- )
+  8 0 DO  DUP $FF AND RUN-C,  8 RSHIFT  LOOP DROP ;
+
 \ MOVZ Xd, #imm16, LSL #(hw*16)     hw = 0,1,2,3
 \ Encoding: imm16 at bits 20:5, Rd at 4:0, hw at 22:21.
 : ARM-MOVZ,  ( imm16 rd hw -- )
@@ -87,9 +94,54 @@ VARIABLE RUN-RSP-MEM
 
 VARIABLE RET-BODY
 
+\ In-process x64 entry. CALL-NATIVE has put the run DSP in virtual x19
+\ and calls this buffer with the Windows ABI. The image addresses the
+\ register file through r15, which is the host file for this call.
+\ The return gadget is a real RET back to CALL-NATIVE.
+\ EXIT pops an IP and NEXTs. That IP is a cell holding a CFA, and
+\ the CFA's first cell is the machine address of the RET gadget.
+: RUN-EMIT-X64  ( cfa -- )
+  {: cfa | lea disp retg cfar ipc -- :}
+  RUN-ORG @ RUN-DP !
+  $49 RUN-C, $8B RUN-C, $87 RUN-C, $98 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  $49 RUN-C, $89 RUN-C, $87 RUN-C, $B0 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  $48 RUN-C, $31 RUN-C, $C0 RUN-C,
+  $49 RUN-C, $89 RUN-C, $87 RUN-C, $E0 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  $49 RUN-C, $89 RUN-C, $87 RUN-C, $A0 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  $48 RUN-C, $B8 RUN-C,  RUN-RSP @ RUN-Q,
+  $49 RUN-C, $89 RUN-C, $87 RUN-C, $B8 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  $48 RUN-C, $B8 RUN-C,  cfa RUN-Q,
+  $49 RUN-C, $89 RUN-C, $87 RUN-C, $A8 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  RUN-HERE TO lea
+  $48 RUN-C, $8D RUN-C, $05 RUN-C,  0 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  $49 RUN-C, $8B RUN-C, $8F RUN-C, $B8 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  $48 RUN-C, $83 RUN-C, $E9 RUN-C, $08 RUN-C,
+  $49 RUN-C, $89 RUN-C, $8F RUN-C, $B8 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  $48 RUN-C, $89 RUN-C, $01 RUN-C,
+  $49 RUN-C, $8B RUN-C, $87 RUN-C, $A8 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  $48 RUN-C, $83 RUN-C, $C0 RUN-C, $08 RUN-C,
+  $49 RUN-C, $89 RUN-C, $87 RUN-C, $98 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  $48 RUN-C, $8B RUN-C, $08 RUN-C,
+  $48 RUN-C, $83 RUN-C, $C0 RUN-C, $08 RUN-C,
+  $49 RUN-C, $89 RUN-C, $87 RUN-C, $98 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  $49 RUN-C, $89 RUN-C, $8F RUN-C, $A8 RUN-C, 0 RUN-C, 0 RUN-C, 0 RUN-C,
+  $48 RUN-C, $8B RUN-C, $01 RUN-C,
+  $FF RUN-C, $E0 RUN-C,
+  RUN-HERE TO retg
+  $C3 RUN-C,
+  RUN-HERE 7 + -8 AND RUN-DP !
+  RUN-HERE TO cfar   retg RUN-Q,
+  RUN-HERE TO ipc    cfar RUN-Q,
+  ipc lea 7 + - TO disp
+  disp           lea 3 + C!
+  disp 8 RSHIFT  lea 4 + C!
+  disp 16 RSHIFT lea 5 + C!
+  disp 24 RSHIFT lea 6 + C! ;
+
 : RUN-EMIT  ( colon-xt -- )
   {: xt | cfa retc cfar body patch -- :}
   xt MAP-FIND DUP 0= IF  ." RUN unmapped" CR ABORT  THEN  TO cfa
+  X64-HOST? IF  cfa RUN-EMIT-X64 EXIT  THEN
   RUN-ORG @ RUN-DP !
   $AA1303F6 RUN-W,             \ MOV X22, X19   (DSP)
   0 28 0 ARM-MOVZ,             \ X28 = 0 (no debug NEXT)
@@ -157,6 +209,7 @@ VARIABLE RET-BODY
 \ Like RUN-EMIT but CFA already known (LOAD-IMAGE / no host xt map).
 : RUN-EMIT-CFA  ( cfa -- )
   {: cfa | retc cfar body patch -- :}
+  X64-HOST? IF  cfa RUN-EMIT-X64 EXIT  THEN
   RUN-ORG @ RUN-DP !
   $AA1303F6 RUN-W,             \ MOV X22, X19   (DSP)
   0 28 0 ARM-MOVZ,             \ X28 = 0 (no debug NEXT)

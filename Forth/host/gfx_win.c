@@ -15,10 +15,10 @@
 #include <string.h>
 
 #define GFX_JOB (WM_APP + 20)
-#define GFX_COLS_MAX 256
-#define GFX_ROWS_MAX 128
+#define GFX_COLS_MAX 384
+#define GFX_ROWS_MAX 192
 #define GFX_CELL_MAX (GFX_COLS_MAX * GFX_ROWS_MAX)
-#define GFX_PIX_MAX (16 * 1024 * 1024)
+#define GFX_PIX_MAX (36 * 1024 * 1024)
 #define KEY_MAX 64
 #define OOP_MAX 32
 #define PATH_MAX_UTF 4096
