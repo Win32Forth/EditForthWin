@@ -16,8 +16,7 @@ LOCAL_NAME_STR  EQU 32
 LOCAL_FRAME_MAX EQU 16
 
         EXTERN state_var
-        EXTERN source_base
-        EXTERN source_end
+        EXTERN up_var
         EXTERN data_stack
         EXTERN cfa_lit
         EXTERN cfa_local_init
@@ -38,6 +37,7 @@ LOCAL_FRAME_MAX EQU 16
         EXTERN _next_word
         EXTERN _dict_hash
         EXTERN _compile_cell
+        EXTERN _here_reserve
         EXTERN _cursor_load
         EXTERN _cursor_commit
         EXTERN here_ptr
@@ -59,6 +59,7 @@ LOCAL_FRAME_MAX EQU 16
         EXTERN host_app_img_render
         EXTERN host_app_file_choose
         EXTERN host_app_file_save_as
+        EXTERN host_app_file_save_picture
         EXTERN host_app_file_path
         EXTERN host_app_file_slurp
         EXTERN host_app_file_spew
@@ -546,13 +547,8 @@ _swl_zero
 
         BOOT_WORD SOURCE, SOURCE ( -- c-addr u ) current input buffer and length, 0, XSOURCE, 0
 XSOURCE
-        adrp    x0, source_base
-        add     x0, x0, source_base
-        ldr     x0, [x0]
-        adrp    x1, source_end
-        add     x1, x1, source_end
-        ldr     x1, [x1]
-        sub     x1, x1, x0
+        UP_LOAD x0, TU_SRC_ADDR
+        UP_LOAD x1, TU_SRC_LEN
         str     x20, [x22, #-8]!
         str     x0, [x22, #-8]!
         mov     x20, x1
@@ -838,6 +834,15 @@ XAPP_FILE_SAVE_AS
 XAPP_FILE_SAVE_AS_END
         NEXT
 
+        BOOT_WORD (APP-FILE-SAVE-PICTURE), (APP-FILE-SAVE-PICTURE) ( -- ior ) save picture via dialog, 0, XAPP_FILE_SAVE_PICTURE, XAPP_FILE_SAVE_PICTURE_END
+XAPP_FILE_SAVE_PICTURE
+        stp     x29, x30, [sp, #-16]!
+        bl      host_app_file_save_picture
+        ldp     x29, x30, [sp], #16
+        DPUSH
+XAPP_FILE_SAVE_PICTURE_END
+        NEXT
+
         BOOT_WORD (APP-FILE-PATH), (APP-FILE-PATH) ( c-addr u -- u2 ) copy the staged file path, 0, XAPP_FILE_PATH, XAPP_FILE_PATH_END
 XAPP_FILE_PATH
         mov     x1, x20
@@ -887,9 +892,7 @@ XSESCAPE
         stp     x29, x30, [sp, #32]
         bl      _cursor_load
         mov     x1, x0
-        adrp    x6, source_end
-        add     x6, x6, source_end
-        ldr     x6, [x6]
+        UP_SRC_END x6
         adrp    x8, slit_esc_which
         add     x8, x8, slit_esc_which
         ldr     x4, [x8]
@@ -1044,10 +1047,11 @@ _se_comp
         bl      _compile_cell
         ldr     x0, [sp, #56]
         bl      _compile_cell
+        ldr     x5, [sp, #56]
+        mov     x0, x5
+        bl      _here_reserve
+        mov     x1, x0
         ldp     x7, x5, [sp, #48]
-        adrp    x0, here_ptr
-        add     x0, x0, here_ptr
-        ldr     x1, [x0]
         mov     x3, #0
 _se_cpy
         cmp     x3, x5
@@ -1057,10 +1061,6 @@ _se_cpy
         add     x3, x3, #1
         b       _se_cpy
 _se_align
-        add     x1, x1, x5
-        add     x1, x1, #7
-        bic     x1, x1, #7
-        str     x1, [x0]
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #96
         NEXT

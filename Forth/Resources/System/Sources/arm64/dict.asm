@@ -23,10 +23,7 @@
         EXTERN noname_xt
         EXTERN here_ptr
         EXTERN state_var
-        EXTERN source_cur
-        EXTERN source_end
-        EXTERN source_base
-        EXTERN to_in
+        EXTERN up_var
         EXTERN current_var
         EXTERN search_order
         EXTERN search_order_n
@@ -37,6 +34,13 @@
         EXTERN view_src_id
         EXTERN exit_cfa
         EXTERN emit_cstr
+        EXTERN _here_reserve_exact
+        EXTERN _task_require_dict
+        EXTERN _task_dp_bounds
+        EXTERN _task_stop_or_abandon
+        EXTERN _core_console_only
+        EXTERN _print_string_svc
+        EXTERN str_dict_full
         EXTERN DOCOL
         EXPORT _dict_hash
         EXPORT _header_build
@@ -98,11 +102,23 @@ _header_build PROC
         mov     x21, x2
         mov     x22, x3
         mov     x23, x4
+        bl      _task_require_dict
+        bl      _task_dp_bounds
+        mov     x9, x0
+        adrp    x6, here_ptr
+        add     x6, x6, here_ptr
+        cmp     x9, x6
+        b.eq    _hb_here
+        ldr     x8, [x9]
+        add     x7, x8, #512
+        cmp     x7, x8
+        b.lo    _hb_full
+        cmp     x7, x1
+        b.hi    _hb_full
+_hb_here
         adrp    x24, current_var
         add     x24, x24, current_var
         ldr     x24, [x24]
-        adrp    x9, here_ptr
-        add     x9, x9, here_ptr
         ldr     x6, [x9]
         mov     x8, x6
         cmp     x22, #255
@@ -202,6 +218,16 @@ _hb_link
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #128
         ret
+_hb_full
+        ldp     x23, x24, [sp, #80]
+        ldp     x21, x22, [sp, #64]
+        ldp     x19, x20, [sp, #48]
+        ldp     x29, x30, [sp, #32]
+        add     sp, sp, #128
+        adrp    x0, str_dict_full
+        add     x0, x0, str_dict_full
+        bl      _print_string_svc
+        b       _task_stop_or_abandon
         ENDP
 
 ; x0=CFA -> x0=NFA. Clobbers x1.
@@ -409,33 +435,21 @@ _pnum_no
         mov     x0, #0
         ret
 
-; x0 = source_base + >IN. Also refreshes source_cur. Clobbers x1.
+; x0 = source base + >IN. Also refreshes the word cursor. Clobbers x1 and x16.
 _cursor_load
-        adrp    x0, source_base
-        add     x0, x0, source_base
-        ldr     x0, [x0]
-        adrp    x1, to_in
-        add     x1, x1, to_in
-        ldr     x1, [x1]
+        UP_LOAD x0, TU_SRC_ADDR
+        UP_LOAD x1, TU_TO_IN
         add     x0, x0, x1
-        adrp    x1, source_cur
-        add     x1, x1, source_cur
-        str     x0, [x1]
+        UP_STORE x0, TU_WORD_CURSOR
         ret
 
-; x0 = absolute cursor. Writes source_cur and >IN. Preserves x0 and x1.
+; x0 = absolute cursor. Writes the word cursor and >IN. Preserves x0 and x1.
 _cursor_commit
         stp     x0, x1, [sp, #-16]!
-        adrp    x1, source_cur
-        add     x1, x1, source_cur
-        str     x0, [x1]
-        adrp    x1, source_base
-        add     x1, x1, source_base
-        ldr     x1, [x1]
+        UP_STORE x0, TU_WORD_CURSOR
+        UP_LOAD x1, TU_SRC_ADDR
         sub     x0, x0, x1
-        adrp    x1, to_in
-        add     x1, x1, to_in
-        str     x0, [x1]
+        UP_STORE x0, TU_TO_IN
         ldp     x0, x1, [sp], #16
         ret
 
@@ -444,9 +458,7 @@ _cursor_commit
 _next_word
         stp     x29, x30, [sp, #-16]!
         bl      _cursor_load
-        adrp    x3, source_end
-        add     x3, x3, source_end
-        ldr     x3, [x3]
+        UP_SRC_END x3
 _nw_skip
         cmp     x0, x3
         b.hs    _nw_none
@@ -507,14 +519,20 @@ _nw_none
         ldp     x29, x30, [sp], #16
         ret
 
-; x0 = cell appended at HERE.
+; x0 = cell appended at HERE. Does not return if the cell does not fit.
+; Preserves x19–x28. The boot name is what vocemit.fth finds.
+        BOOT_WORD (COMPILE-CELL), (COMPILE-CELL) ( -- ) compile cell at HERE (bounds-checked), FLAG_EMM, XCOMPILE_CELL, XCOMPILE_CELL_END
+XCOMPILE_CELL
 _compile_cell
-        adrp    x1, here_ptr
-        add     x1, x1, here_ptr
-        ldr     x2, [x1]
-        str     x0, [x2], #8
-        str     x2, [x1]
+        stp     x29, x30, [sp, #-16]!
+        str     x0, [sp, #-16]!
+        mov     x0, #8
+        bl      _here_reserve_exact
+        ldr     x1, [sp], #16
+        str     x1, [x0]
+        ldp     x29, x30, [sp], #16
         ret
+XCOMPILE_CELL_END
 
 ; x0 = string. Returns length in x0.
 _strlen
@@ -545,6 +563,7 @@ _tph_ok
 
         BOOT_WORD :, ( 'name' -- ) start colon definition, 0, XCOLON, 0
 XCOLON
+        bl      _core_console_only
         sub     sp, sp, #96
         stp     x29, x30, [sp, #32]
         bl      _local_compile_reset
@@ -558,11 +577,8 @@ XCOLON
         mov     x5, #0
         bl      _header_build
         bl      _nfa_smudge_cfa
-        adrp    x1, here_ptr
-        add     x1, x1, here_ptr
-        ldr     x2, [x1]
-        str     xzr, [x2], #8
-        str     x2, [x1]
+        mov     x0, #0
+        bl      _compile_cell
         adrp    x1, state_var
         add     x1, x1, state_var
         mov     x2, #1
@@ -612,6 +628,7 @@ _semi_done
 
         BOOT_WORD :NONAME, :NONAME ( -- xt ) anonymous colon definition. semicolon leaves the xt, 0, XNONAME, 0
 XNONAME
+        bl      _core_console_only
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
         bl      _local_compile_reset
@@ -624,11 +641,8 @@ XNONAME
         mov     x5, #0
         bl      _header_build
         bl      _nfa_smudge_cfa
-        adrp    x1, here_ptr
-        add     x1, x1, here_ptr
-        ldr     x2, [x1]
-        str     xzr, [x2], #8
-        str     x2, [x1]
+        mov     x0, #0
+        bl      _compile_cell
         adrp    x1, last_cfa
         add     x1, x1, last_cfa
         ldr     x2, [x1]

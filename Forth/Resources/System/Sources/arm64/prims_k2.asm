@@ -28,11 +28,6 @@
         EXTERN grow_memory_used
         EXTERN wordlist_reg
         EXTERN wordlist_reg_n
-        EXTERN source_base
-        EXTERN source_cur
-        EXTERN source_end
-        EXTERN to_in
-        EXTERN pad_buffer
         EXTERN redef_warn
         EXTERN block_file
         EXTERN block_upd
@@ -48,12 +43,12 @@
         EXTERN tw_continue_cell
         EXTERN bootptr_start
         EXTERN bootptr_end
-        EXTERN key_fn
         EXTERN _getchar
         EXTERN debug_busy
         EXTERN _next_word
         EXTERN _find_word
         EXTERN _compile_cell
+        EXTERN _here_reserve
         EXTERN _local_lookup
         EXTERN _local_compile_reset
         EXTERN _local_add_name
@@ -126,7 +121,6 @@
         EXTERN jit_exec_mode
         EXTERN current_var
         EXTERN words_user_base
-        EXTERN blk_var
         EXTERN forget_cut
         EXTERN _quit_exit
         EXTERN _do_quit
@@ -134,21 +128,29 @@
         EXTERN _interpret_empty
         EXTERN _push_source
         EXTERN _arm_lines
+        EXTERN _set_source
         EXTERN _eval_resume_push
         EXTERN _take_line
-        EXTERN line_mode
-        EXTERN line_limit
-        EXTERN line_next
-        EXTERN source_id
-        EXTERN source_sp
-        EXTERN eval_resume_sp
         EXTERN resolve_buf
         EXTERN include_name_pending
         EXTERN include_name_len
         EXTERN _view_push_src_id
         EXTERN _view_set_src_from_pending
-        EXTERN msg_allot
         EXTERN msg_huh
+        EXTERN up_var
+        EXTERN console_task
+        EXTERN _task_dp_bounds
+        EXTERN _core_console_only
+        EXTERN _task_require_dict
+        EXTERN _task_stop_or_abandon
+        EXTERN _print_string_svc
+        EXTERN str_dict_full
+        EXTERN _error_abandon
+        EXTERN XSTOP
+        EXTERN _task_forget_cut
+
+; Empty DSP and PAD of the task in x27. Must match tasking.asm.
+TU_S0 EQU 48
 
         EXPORT XCATCH
         EXPORT XCATCH_OK
@@ -357,27 +359,27 @@ XPLUSSTORE_END
         BOOT_WORD PAD, PAD ( -- addr ) transient scratch of 1024 bytes, 0, XPAD, XPAD_END
 XPAD
         str     x20, [x22, #-8]!
-        adrp    x0, pad_buffer
-        add     x0, x0, pad_buffer
+        mov     x0, x27
+        cbnz    x0, _xpad_up
+        adrp    x0, up_var
+        add     x0, x0, up_var
+        ldr     x0, [x0]
+_xpad_up
+        ldr     x0, [x0, #TU_PAD_PTR]
         mov     x20, x0
 XPAD_END
         NEXT
 
         BOOT_WORD UNUSED, UNUSED ( -- u ) bytes from HERE to the dictionary end, 0, XUNUSED, XUNUSED_END
 XUNUSED
-        adrp    x0, here_ptr
-        add     x0, x0, here_ptr
-        ldr     x1, [x0]
-        adrp    x0, user_dict_area
-        add     x0, x0, user_dict_area
-        adrp    x2, user_dict_size_cell
-        add     x2, x2, user_dict_size_cell
-        ldr     x2, [x2]
-        add     x0, x0, x2
-        subs    x0, x0, x1
+        stp     x29, x30, [sp, #-16]!
+        bl      _task_dp_bounds
+        ldr     x3, [x0]
+        subs    x0, x1, x3
         b.hs    _unused_ok
         mov     x0, #0
 _unused_ok
+        ldp     x29, x30, [sp], #16
         str     x20, [x22, #-8]!
         mov     x20, x0
 XUNUSED_END
@@ -396,6 +398,18 @@ XUSER_DICT
 XGROWMEMORYMB
         mov     x0, x20
         ldr     x20, [x22], #8
+        adrp    x6, up_var
+        add     x6, x6, up_var
+        ldr     x6, [x6]
+        adrp    x7, console_task
+        add     x7, x7, console_task
+        cmp     x6, x7
+        b.eq    _gmm_console
+        adrp    x0, str_gmm_task
+        add     x0, x0, str_gmm_task
+        bl      _print_string_svc
+        b       XSTOP
+_gmm_console
         adrp    x1, grow_memory_used
         add     x1, x1, grow_memory_used
         ldr     x2, [x1]
@@ -430,43 +444,31 @@ _gmm_shrink
         adrp    x0, str_gmm_shrink
         add     x0, x0, str_gmm_shrink
 _gmm_fail
-        sub     sp, sp, #64
-        stp     x29, x30, [sp, #32]
-        bl      emit_cstr
-        ldp     x29, x30, [sp, #32]
-        add     sp, sp, #64
-        b       _quit_exit
+        bl      _print_string_svc
+        b       _error_abandon
 
         BOOT_WORD_CCOMMA  ( b -- ) compile a byte, 0, XCCOMMA, 0
 XCCOMMA
-        mov     w0, w20
+        bl      _core_console_only
+        stp     x29, x30, [sp, #-16]!
+        bl      _task_require_dict
+        bl      _task_dp_bounds
+        mov     w6, w20
         ldr     x20, [x22], #8
-        adrp    x1, here_ptr
-        add     x1, x1, here_ptr
-        ldr     x2, [x1]
+        ldr     x2, [x0]
         add     x3, x2, #1
-        adrp    x4, user_dict_area
-        add     x4, x4, user_dict_area
-        cmp     x3, x4
-        b.lo    _ccomma_fail
-        adrp    x5, user_dict_size_cell
-        add     x5, x5, user_dict_size_cell
-        ldr     x5, [x5]
-        add     x5, x4, x5
-        cmp     x3, x5
-        b.hi    _ccomma_fail
-        strb    w0, [x2]
-        str     x3, [x1]
+        cmp     x3, x1
+        b.hi    _ccomma_full
+        strb    w6, [x2]
+        str     x3, [x0]
+        ldp     x29, x30, [sp], #16
         NEXT
-_ccomma_fail
-        sub     sp, sp, #64
-        stp     x29, x30, [sp, #32]
-        adrp    x0, msg_allot
-        add     x0, x0, msg_allot
-        bl      emit_cstr
-        ldp     x29, x30, [sp, #32]
-        add     sp, sp, #64
-        b       _quit_exit
+_ccomma_full
+        ldp     x29, x30, [sp], #16
+        adrp    x0, str_dict_full
+        add     x0, x0, str_dict_full
+        bl      _print_string_svc
+        b       _task_stop_or_abandon
 
         BOOT_WORD 2@, 2@ ( addr -- n1 n2 ) fetch two cells, 0, XTWOFETCH, XTWOFETCH_END
 XTWOFETCH
@@ -1074,26 +1076,6 @@ XTIME_DATE
 XTIME_DATE_END
         NEXT
 
-        BOOT_WORD KEY, KEY ( -- c ) next character from the host, 0, XKEY, XKEY_END
-XKEY
-        sub     sp, sp, #64
-        stp     x29, x30, [sp, #32]
-        adrp    x1, key_fn
-        add     x1, x1, key_fn
-        ldr     x1, [x1]
-        cbz     x1, _key_none
-        blr     x1
-        b       _key_push
-_key_none
-        mov     x0, #0
-_key_push
-        ldp     x29, x30, [sp, #32]
-        add     sp, sp, #64
-        str     x20, [x22, #-8]!
-        mov     x20, x0
-XKEY_END
-        NEXT
-
         BOOT_WORD EKEY, EKEY ( -- u ) next key event, 0, XEKEY, XEKEY_END
 XEKEY
         sub     sp, sp, #64
@@ -1110,31 +1092,6 @@ ekey_push
         str     x20, [x22, #-8]!
         mov     x20, x0
 XEKEY_END
-        NEXT
-
-        BOOT_WORD KEY?, KEY? ( -- flag ) true if a key is waiting, 0, XKEYQ, XKEYQ_END
-XKEYQ
-        str     x20, [x22, #-8]!
-        mov     x20, #0
-XKEYQ_END
-        NEXT
-
-        BOOT_WORD PAUSE, PAUSE ( -- ) show pending console output then wait 1 ms, 0, XPAUSE, XPAUSE_END
-XPAUSE
-        sub     sp, sp, #64
-        stp     x29, x30, [sp, #32]
-        adrp    x1, pause_hook
-        add     x1, x1, pause_hook
-        ldr     x1, [x1]
-        cbz     x1, _pause_sleep
-        blr     x1
-        b       _pause_done
-_pause_sleep
-        bl      host_pause
-_pause_done
-        ldp     x29, x30, [sp, #32]
-        add     sp, sp, #64
-XPAUSE_END
         NEXT
 
 ; ---------------------------------------------------------------------
@@ -1198,9 +1155,15 @@ _tick_mark
         BOOT_WORD EXECUTE, EXECUTE ( xt -- ) run the word at xt, 0, XEXECUTE, XEXECUTE_END
 XEXECUTE
         mov     x21, x20
-        adrp    x0, data_stack
-        add     x0, x0, data_stack
-        add     x0, x0, #1, lsl #12
+        cbnz    x27, _exec_up
+        adrp    x0, up_var
+        add     x0, x0, up_var
+        ldr     x0, [x0]
+        b       _exec_s0
+_exec_up
+        mov     x0, x27
+_exec_s0
+        ldr     x0, [x0, #TU_S0]
         cmp     x22, x0
         b.hs    _exec_empty
         ldr     x20, [x22], #8
@@ -1231,9 +1194,7 @@ XLITERAL
         BOOT_WORD >IN, >IN ( -- addr ) input offset from the source base, 0, XTOIN, 0
 XTOIN
         str     x20, [x22, #-8]!
-        adrp    x0, to_in
-        add     x0, x0, to_in
-        mov     x20, x0
+        UP_ADDR x20, TU_TO_IN
         NEXT
 
         BOOT_WORD PARSE-NAME, PARSE-NAME ( -- c-addr u ) next blank-delimited name, 0, XPARSE_NAME, 0
@@ -1310,13 +1271,9 @@ _bln_done
 XREFILL
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
-        adrp    x0, blk_var
-        add     x0, x0, blk_var
-        ldr     x0, [x0]
+        UP_LOAD x0, TU_BLK
         cbnz    x0, _refill_block
-        adrp    x0, line_mode
-        add     x0, x0, line_mode
-        ldr     x0, [x0]
+        UP_LOAD x0, TU_LINE_MODE
         cbz     x0, _refill_no
         bl      _take_line
         ldp     x29, x30, [sp, #32]
@@ -1332,8 +1289,7 @@ _refill_no
         mov     x20, #0
         NEXT
 _refill_block
-        adrp    x0, blk_var
-        add     x0, x0, blk_var
+        UP_ADDR x0, TU_BLK
         ldr     x1, [x0]
         add     x1, x1, #1
         str     x1, [x0]
@@ -1341,19 +1297,8 @@ _refill_block
         bl      _block_load_nr
         adrp    x0, block_buf
         add     x0, x0, block_buf
-        adrp    x2, source_base
-        add     x2, x2, source_base
-        str     x0, [x2]
-        adrp    x2, source_cur
-        add     x2, x2, source_cur
-        str     x0, [x2]
-        add     x0, x0, #1024
-        adrp    x2, source_end
-        add     x2, x2, source_end
-        str     x0, [x2]
-        adrp    x2, to_in
-        add     x2, x2, to_in
-        str     xzr, [x2]
+        mov     x1, #1024
+        bl      _set_source
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
         str     x20, [x22, #-8]!
@@ -1384,9 +1329,7 @@ XDOTQ
         stp     x29, x30, [sp, #32]
         bl      _cursor_load
         mov     x9, x0
-        adrp    x3, source_end
-        add     x3, x3, source_end
-        ldr     x6, [x3]
+        UP_SRC_END x6
         mov     x1, x9
 _dq_scan
         cmp     x1, x6
@@ -1426,10 +1369,11 @@ _dq_comp
         ldr     x0, [sp, #56]
         bl      _compile_cell
         ldr     x5, [sp, #56]
+        mov     x0, x5
+        bl      _here_reserve
+        mov     x1, x0
+        ldr     x5, [sp, #56]
         ldr     x9, [sp, #48]
-        adrp    x0, here_ptr
-        add     x0, x0, here_ptr
-        ldr     x1, [x0]
         mov     x3, #0
 _dq_cpy
         cmp     x3, x5
@@ -1439,10 +1383,6 @@ _dq_cpy
         add     x3, x3, #1
         b       _dq_cpy
 _dq_align
-        add     x1, x1, x5
-        add     x1, x1, #7
-        bic     x1, x1, #7
-        str     x1, [x0]
         adrp    x0, str_type
         add     x0, x0, str_type
         mov     x1, #4
@@ -1462,9 +1402,7 @@ _parse_name_raw
         stp     x29, x30, [sp, #-16]!
         bl      _cursor_load
         mov     x2, x0
-        adrp    x9, source_end
-        add     x9, x9, source_end
-        ldr     x9, [x9]
+        UP_SRC_END x9
 _pn_skip
         cmp     x2, x9
         b.hs    _pn_empty
@@ -1799,7 +1737,7 @@ _tw_stop
 ; CATCH / TO support already above. UTF-8, boot table, float address.
 ; ---------------------------------------------------------------------
 
-; Frame, deepest first: eval_resume_sp, prev, TOS, DSP, source_sp, IP.
+; Frame, deepest first: eval depth, prev, TOS, DSP, source depth, IP.
 ; throw_handler points at saved IP. Success does not pop SOURCE.
         BOOT_WORD CATCH, CATCH ( xt -- n ) run xt and push 0 or the throw code, 0, XCATCH, XCATCH_END
 XCATCH
@@ -1817,16 +1755,12 @@ _catch_save
         adrp    x7, throw_handler
         add     x7, x7, throw_handler
         ldr     x2, [x7]
-        adrp    x3, eval_resume_sp
-        add     x3, x3, eval_resume_sp
-        ldr     x3, [x3]
+        UP_LOAD x3, TU_EVAL_SP
         str     x3, [x23, #-8]!
         str     x2, [x23, #-8]!
         str     x20, [x23, #-8]!
         str     x22, [x23, #-8]!
-        adrp    x2, source_sp
-        add     x2, x2, source_sp
-        ldr     x2, [x2]
+        UP_LOAD x2, TU_SRC_SP
         str     x2, [x23, #-8]!
         str     x19, [x23, #-8]!
         str     x23, [x7]
@@ -2630,14 +2564,10 @@ XLINE_SOURCE
         bl      _view_set_src_from_pending
         ldp     x0, x1, [sp, #48]
         bl      _arm_lines
-        adrp    x0, source_id
-        add     x0, x0, source_id
         mov     x1, #2
         neg     x1, x1
-        str     x1, [x0]
-        adrp    x0, blk_var
-        add     x0, x0, blk_var
-        str     xzr, [x0]
+        UP_STORE x1, TU_SRC_ID
+        UP_STORE xzr, TU_BLK
         bl      _eval_resume_push
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #64
@@ -2732,9 +2662,7 @@ _parse_filespec
         stp     x29, x30, [sp, #32]
         bl      _cursor_load
         mov     x2, x0
-        adrp    x9, source_end
-        add     x9, x9, source_end
-        ldr     x9, [x9]
+        UP_SRC_END x9
 _pfs_skip
         cmp     x2, x9
         b.hs    _pfs_empty
@@ -3104,6 +3032,7 @@ _forget_drop
         add     x0, x0, forget_cut
         ldr     x0, [x0]
         bl      host_forget_drop_stale
+        bl      _task_forget_cut
 _forget_done
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #80
@@ -3187,9 +3116,7 @@ XBLOCK_NR
         BOOT_WORD BLK, BLK ( -- addr ) block being loaded or zero, 0, XBLK, 0
 XBLK
         str     x20, [x22, #-8]!
-        adrp    x0, blk_var
-        add     x0, x0, blk_var
-        mov     x20, x0
+        UP_ADDR x20, TU_BLK
         NEXT
 
         BOOT_WORD SCR, SCR ( -- addr ) last listed block number, 0, XSCR, 0
@@ -3205,9 +3132,7 @@ XLOAD_ENTER
         stp     x29, x30, [sp, #-16]!
         bl      _push_source
         ldp     x29, x30, [sp], #16
-        adrp    x0, blk_var
-        add     x0, x0, blk_var
-        str     x20, [x0]
+        UP_STORE x20, TU_BLK
         NEXT
 
         BOOT_WORD (LOAD-RUN), (LOAD-RUN) ( c-addr u -- ) interpret a block buffer, 0, XLOAD_RUN, 0
@@ -3219,26 +3144,9 @@ XLOAD_RUN
         stp     x29, x30, [sp, #32]
         stp     x0, x1, [sp, #48]
         ldp     x0, x1, [sp, #48]
-        adrp    x2, source_base
-        add     x2, x2, source_base
-        str     x0, [x2]
-        adrp    x2, source_cur
-        add     x2, x2, source_cur
-        str     x0, [x2]
-        add     x0, x0, x1
-        adrp    x2, source_end
-        add     x2, x2, source_end
-        str     x0, [x2]
-        adrp    x2, to_in
-        add     x2, x2, to_in
-        str     xzr, [x2]
-        adrp    x2, line_mode
-        add     x2, x2, line_mode
-        str     xzr, [x2]
-        adrp    x2, source_id
-        add     x2, x2, source_id
+        bl      _set_source
         mov     x3, #-1
-        str     x3, [x2]
+        UP_STORE x3, TU_SRC_ID
         bl      _eval_resume_push
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #80
@@ -3270,29 +3178,10 @@ XEVALUATE
         bl      _push_source
         cbz     x0, _ev_fail
         ldp     x0, x1, [sp, #48]
-        adrp    x2, source_base
-        add     x2, x2, source_base
-        str     x0, [x2]
-        adrp    x2, source_cur
-        add     x2, x2, source_cur
-        str     x0, [x2]
-        add     x0, x0, x1
-        adrp    x2, source_end
-        add     x2, x2, source_end
-        str     x0, [x2]
-        adrp    x2, to_in
-        add     x2, x2, to_in
-        str     xzr, [x2]
-        adrp    x2, line_mode
-        add     x2, x2, line_mode
-        str     xzr, [x2]
-        adrp    x2, source_id
-        add     x2, x2, source_id
+        bl      _set_source
         mov     x3, #-1
-        str     x3, [x2]
-        adrp    x2, blk_var
-        add     x2, x2, blk_var
-        str     xzr, [x2]
+        UP_STORE x3, TU_SRC_ID
+        UP_STORE xzr, TU_BLK
         bl      _eval_resume_push
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #80
@@ -3309,37 +3198,20 @@ XQUIT_END
 
         BOOT_WORD_BS_S  stop the rest of this source, FLAG_IMM, XBACKSLASH_S, 0
 XBACKSLASH_S
-        adrp    x0, line_mode
-        add     x0, x0, line_mode
-        ldr     x0, [x0]
+        UP_LOAD x0, TU_LINE_MODE
         cbz     x0, _bs_pin
-        adrp    x0, line_limit
-        add     x0, x0, line_limit
-        ldr     x1, [x0]
-        adrp    x0, line_next
-        add     x0, x0, line_next
-        str     x1, [x0]
+        UP_LOAD x1, TU_LINE_LIMIT
+        UP_STORE x1, TU_LINE_NEXT
 _bs_pin
-        adrp    x0, source_base
-        add     x0, x0, source_base
-        ldr     x0, [x0]
-        adrp    x1, source_end
-        add     x1, x1, source_end
-        ldr     x1, [x1]
-        sub     x2, x1, x0
-        adrp    x0, to_in
-        add     x0, x0, to_in
-        str     x2, [x0]
-        adrp    x0, source_cur
-        add     x0, x0, source_cur
-        str     x1, [x0]
+        UP_LOAD x2, TU_SRC_LEN
+        UP_STORE x2, TU_TO_IN
+        UP_SRC_END x1
+        UP_STORE x1, TU_WORD_CURSOR
         NEXT
 
         BOOT_WORD SOURCE-ID, SOURCE-ID ( -- id ) 0 console -1 evaluate -2 file, 0, XSOURCE_ID, 0
 XSOURCE_ID
-        adrp    x0, source_id
-        add     x0, x0, source_id
-        ldr     x0, [x0]
+        UP_LOAD x0, TU_SRC_ID
         DPUSH
         NEXT
 
@@ -3482,26 +3354,15 @@ _env_no
         BOOT_WORD SAVE-INPUT, SAVE-INPUT ( -- xn .. x1 n ) save the current input source, 0, XSAVE_INPUT, 0
 XSAVE_INPUT
         str     x20, [x22, #-8]!
-        adrp    x0, source_base
-        add     x0, x0, source_base
-        ldr     x20, [x0]
+        UP_LOAD x20, TU_SRC_ADDR
         str     x20, [x22, #-8]!
-        adrp    x1, source_end
-        add     x1, x1, source_end
-        ldr     x1, [x1]
-        sub     x20, x1, x20
+        UP_LOAD x20, TU_SRC_LEN
         str     x20, [x22, #-8]!
-        adrp    x0, to_in
-        add     x0, x0, to_in
-        ldr     x20, [x0]
+        UP_LOAD x20, TU_TO_IN
         str     x20, [x22, #-8]!
-        adrp    x0, source_id
-        add     x0, x0, source_id
-        ldr     x20, [x0]
+        UP_LOAD x20, TU_SRC_ID
         str     x20, [x22, #-8]!
-        adrp    x0, blk_var
-        add     x0, x0, blk_var
-        ldr     x20, [x0]
+        UP_LOAD x20, TU_BLK
         str     x20, [x22, #-8]!
         mov     x20, #5
         NEXT
@@ -3522,9 +3383,7 @@ _ri_common
         ldr     x2, [x22], #8
         ldr     x3, [x22], #8
         ldr     x20, [x22], #8
-        adrp    x4, blk_var
-        add     x4, x4, blk_var
-        str     x5, [x4]
+        UP_STORE x5, TU_BLK
         cbz     x5, _ri_apply
         sub     sp, sp, #64
         stp     x29, x30, [sp, #16]
@@ -3540,30 +3399,15 @@ _ri_common
         add     x3, x3, block_buf
         mov     x2, #1024
 _ri_apply
-        adrp    x4, source_base
-        add     x4, x4, source_base
-        str     x3, [x4]
-        adrp    x4, source_cur
-        add     x4, x4, source_cur
+        UP_STORE x3, TU_SRC_ADDR
+        UP_STORE x2, TU_SRC_LEN
+        UP_STORE x1, TU_TO_IN
         add     x6, x3, x1
-        str     x6, [x4]
-        add     x6, x3, x2
-        adrp    x4, source_end
-        add     x4, x4, source_end
-        str     x6, [x4]
-        adrp    x4, to_in
-        add     x4, x4, to_in
-        str     x1, [x4]
-        adrp    x4, source_id
-        add     x4, x4, source_id
-        str     x0, [x4]
-        adrp    x4, line_mode
-        add     x4, x4, line_mode
-        ldr     x4, [x4]
+        UP_STORE x6, TU_WORD_CURSOR
+        UP_STORE x0, TU_SRC_ID
+        UP_LOAD x4, TU_LINE_MODE
         cbz     x4, _ri_ok
-        adrp    x4, line_limit
-        add     x4, x4, line_limit
-        ldr     x5, [x4]
+        UP_LOAD x5, TU_LINE_LIMIT
         add     x3, x3, x2
         cmp     x3, x5
         b.hs    _ri_next
@@ -3583,9 +3427,7 @@ _ri_apply
 _ri_nl
         add     x3, x3, #1
 _ri_next
-        adrp    x4, line_next
-        add     x4, x4, line_next
-        str     x3, [x4]
+        UP_STORE x3, TU_LINE_NEXT
 _ri_ok
         str     x20, [x22, #-8]!
         mov     x20, #0
@@ -3958,6 +3800,7 @@ str_gmm_already DCB     "? GROWMEMORYMB already used (once per session)", 10, 0
 str_gmm_small   DCB     "? GROWMEMORYMB needs at least 1 MB", 10, 0
 str_gmm_big     DCB     "? GROWMEMORYMB exceeds maximum (256 MB)", 10, 0
 str_gmm_shrink  DCB     "? GROWMEMORYMB cannot shrink memory", 10, 0
+str_gmm_task    DCB     "? GROWMEMORYMB only from the console task", 10, 0
 str_bang        DCB     "!", 0
 str_twostore    DCB     "2!", 0
 str_twofetch    DCB     "2@", 0

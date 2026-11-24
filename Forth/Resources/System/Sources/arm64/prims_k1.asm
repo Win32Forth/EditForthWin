@@ -9,18 +9,11 @@
 
         AREA |.text|, CODE, READONLY, ALIGN=4
 
-        EXTERN source_base
-        EXTERN source_cur
-        EXTERN source_end
-        EXTERN to_in
-        EXTERN blk_var
         EXTERN _cursor_load
         EXTERN _cursor_commit
         EXTERN _take_line
-        EXTERN line_mode
         EXTERN throw_handler
         EXTERN here_ptr
-        EXTERN user_dict_size_cell
         EXTERN xchar_emit_buf
         EXTERN state_var
         EXTERN last_cfa
@@ -29,8 +22,6 @@
         EXTERN search_order
         EXTERN search_order_n
         EXTERN latest_var
-        EXTERN data_stack
-        EXTERN user_dict_area
         EXTERN word_scratch
         EXTERN pending_help_addr
         EXTERN pending_help_len
@@ -47,6 +38,7 @@
         EXTERN _next_word
         EXTERN _find_word
         EXTERN _compile_cell
+        EXTERN _here_reserve
         EXTERN _header_build
         EXTERN _nfa_reveal_cfa
         EXTERN _take_pending_help
@@ -57,7 +49,18 @@
         EXTERN _print_signed
         EXTERN _quit_exit
         EXTERN _throw_unwind_to_sp
-        EXTERN eval_resume_sp
+        EXTERN _task_dp_bounds
+        EXTERN _task_require_dict
+        EXTERN _core_console_only
+        EXTERN _task_stop_or_abandon
+        EXTERN _print_string_svc
+        EXTERN str_allot_over
+        EXTERN str_allot_under
+        EXTERN str_dict_full
+        EXTERN up_var
+
+; Empty DSP of the task in x27. Must match tasking.asm TU_S0.
+TU_S0 EQU 48
 
         EXPORT DOVAR
         EXPORT DOCON
@@ -351,62 +354,61 @@ XXCHAR_EMIT_END
 
         BOOT_WORD DP, DP ( -- addr ) dictionary pointer variable, 0, XDP, XDP_END
 XDP
-        adrp    x0, here_ptr
-        add     x0, x0, here_ptr
+        stp     x29, x30, [sp, #-16]!
+        bl      _task_dp_bounds
+        ldp     x29, x30, [sp], #16
         DPUSH
 XDP_END
         NEXT
 
         BOOT_WORD HERE, HERE ( -- addr ) current dictionary pointer, 0, XHERE, XHERE_END
 XHERE
-        adrp    x0, here_ptr
-        add     x0, x0, here_ptr
+        stp     x29, x30, [sp, #-16]!
+        bl      _task_dp_bounds
         ldr     x0, [x0]
+        ldp     x29, x30, [sp], #16
         DPUSH
 XHERE_END
         NEXT
 
         BOOT_WORD ALLOT, ALLOT ( n -- ) allocate n bytes in dictionary, 0, XALLOT, XALLOT_END
 XALLOT
+        bl      _core_console_only
+        stp     x29, x30, [sp, #-16]!
+        bl      _task_require_dict
         mov     x0, x20
         ldr     x20, [x22], #8
-        adrp    x1, here_ptr
-        add     x1, x1, here_ptr
-        ldr     x2, [x1]
-        add     x3, x2, x0
-        adrp    x4, user_dict_area
-        add     x4, x4, user_dict_area
-        cmp     x3, x4
-        b.lo    _allot_fail
-        adrp    x5, user_dict_size_cell
-        add     x5, x5, user_dict_size_cell
-        ldr     x5, [x5]
-        add     x5, x4, x5
-        cmp     x3, x5
-        b.hi    _allot_fail
-        str     x3, [x1]
-        b       XALLOT_END
-_allot_fail
-        sub     sp, sp, #64
-        stp     x29, x30, [sp, #32]
-        adrp    x0, msg_allot
-        add     x0, x0, msg_allot
-        bl      emit_cstr
-        ldp     x29, x30, [sp, #32]
-        add     sp, sp, #64
-        b       _quit_exit
-XALLOT_END
+        str     x0, [sp, #-16]!
+        bl      _task_dp_bounds
+        ldr     x6, [sp], #16
+        ldr     x3, [x0]
+        add     x4, x3, x6
+        cmp     x4, x2
+        b.lo    _allot_under
+        cmp     x4, x1
+        b.hi    _allot_over
+        str     x4, [x0]
+        ldp     x29, x30, [sp], #16
         NEXT
+_allot_under
+        adrp    x0, str_allot_under
+        add     x0, x0, str_allot_under
+        b       _allot_fail
+_allot_over
+        adrp    x0, str_allot_over
+        add     x0, x0, str_allot_over
+_allot_fail
+        bl      _print_string_svc
+        ldp     x29, x30, [sp], #16
+        b       _task_stop_or_abandon
+XALLOT_END
 
         BOOT_WORD_COMMA  ( n -- ) compile a cell, 0, XCOMMA, 0
 XCOMMA
+        bl      _core_console_only
         mov     x0, x20
         ldr     x20, [x22], #8
-        sub     sp, sp, #64
-        stp     x29, x30, [sp, #32]
         bl      _compile_cell
-        ldp     x29, x30, [sp, #32]
-        add     sp, sp, #64
         NEXT
 
         BOOT_WORD IMMEDIATE, IMMEDIATE ( -- ) mark latest word as immediate, 0, XIMMEDIATE, 0
@@ -450,6 +452,7 @@ _setdoc_store
 
         BOOT_WORD CREATE, CREATE ( 'name' -- ) create a word that pushes its data field, 0, XCREATE, 0
 XCREATE
+        bl      _core_console_only
         sub     sp, sp, #96
         stp     x29, x30, [sp, #32]
         bl      _next_word
@@ -461,11 +464,8 @@ XCREATE
         add     x4, x4, DOVAR
         mov     x5, #0
         bl      _header_build
-        adrp    x1, here_ptr
-        add     x1, x1, here_ptr
-        ldr     x0, [x1]
-        str     xzr, [x0], #8
-        str     x0, [x1]
+        mov     x0, #0
+        bl      _compile_cell
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #96
         NEXT
@@ -511,7 +511,7 @@ XREGWID
         add     sp, sp, #64
         NEXT
 
-; x0 = wid. Ignore a duplicate or a full table (32 entries).
+; x0 = wid. Ignore a duplicate or a full table (128 entries).
 _wordlist_register
         adrp    x1, wordlist_reg_n
         add     x1, x1, wordlist_reg_n
@@ -528,7 +528,7 @@ _wreg_scan
         add     x4, x4, #1
         b       _wreg_scan
 _wreg_add
-        cmp     x2, #32
+        cmp     x2, #128
         b.hs    _wreg_done
         str     x0, [x3, x2, lsl #3]
         add     x2, x2, #1
@@ -680,37 +680,37 @@ XSET_CURRENT
 
         BOOT_WORD WORDLIST, WORDLIST ( -- wid ) create empty word list, 0, XWORDLIST, 0
 XWORDLIST
-        adrp    x0, here_ptr
-        add     x0, x0, here_ptr
-        ldr     x1, [x0]
-        add     x1, x1, #7
-        bic     x1, x1, #7
-        add     x3, x1, #128
-        adrp    x4, user_dict_area
-        add     x4, x4, user_dict_area
-        cmp     x3, x4
-        b.lo    _allot_fail
-        adrp    x5, user_dict_size_cell
-        add     x5, x5, user_dict_size_cell
-        ldr     x5, [x5]
-        add     x5, x4, x5
-        cmp     x3, x5
-        b.hi    _allot_fail
-        mov     x2, x1
-        mov     x5, #16
+        stp     x29, x30, [sp, #-16]!
+        bl      _task_require_dict
+        bl      _task_dp_bounds
+        ldr     x3, [x0]
+        add     x3, x3, #7
+        bic     x3, x3, #7
+        mov     x4, #16
+        lsl     x4, x4, #3
+        add     x5, x3, x4
+        cmp     x5, x3
+        b.lo    _wl_full
+        cmp     x5, x1
+        b.hi    _wl_full
+        mov     x6, x3
+        mov     x4, #16
 _wl_zero
-        str     xzr, [x1], #8
-        subs    x5, x5, #1
+        str     xzr, [x6], #8
+        subs    x4, x4, #1
         b.ne    _wl_zero
-        str     x1, [x0]
-        mov     x0, x2
-        sub     sp, sp, #64
-        stp     x29, x30, [sp, #32]
+        str     x5, [x0]
+        mov     x0, x3
         bl      _wordlist_register
-        ldp     x29, x30, [sp, #32]
-        add     sp, sp, #64
+        ldp     x29, x30, [sp], #16
         DPUSH
         NEXT
+_wl_full
+        ldp     x29, x30, [sp], #16
+        adrp    x0, str_dict_full
+        add     x0, x0, str_dict_full
+        bl      _print_string_svc
+        b       _task_stop_or_abandon
 
         BOOT_WORD PREVIOUS, PREVIOUS ( -- ) drop first search-order entry, 0, XPREVIOUS, 0
 XPREVIOUS
@@ -792,13 +792,20 @@ XCELLS_END
         NEXT
 
 ; Depth is the cells under TOS. The cached top is not counted, so an
-; untouched stack reports 0. SP0 is data_stack+4096. A pointer outside
-; that range is repaired to empty before the measurement.
+; untouched stack reports 0. SP0 is this task's TU_S0. A pointer outside
+; [SP0-4096, SP0] is repaired to empty before the measurement.
         BOOT_WORD DEPTH, DEPTH ( -- +n ) data stack depth in cells, 0, XDEPTH, XDEPTH_END
 XDEPTH
-        adrp    x1, data_stack
-        add     x1, x1, data_stack
-        add     x0, x1, #1, lsl #12
+        cbnz    x27, _depth_up
+        adrp    x2, up_var
+        add     x2, x2, up_var
+        ldr     x2, [x2]
+        b       _depth_s0
+_depth_up
+        mov     x2, x27
+_depth_s0
+        ldr     x0, [x2, #TU_S0]
+        sub     x1, x0, #1, lsl #12
         cmp     x22, x0
         b.hi    _depth_fix
         cmp     x22, x1
@@ -817,18 +824,31 @@ XDEPTH_END
 
         BOOT_WORD CLEARSTACK, CLEARSTACK ( -- ) empty the data stack, 0, XCLEARSTACK, XCLEARSTACK_END
 XCLEARSTACK
-        adrp    x22, data_stack
-        add     x22, x22, data_stack
-        add     x22, x22, #1, lsl #12
+        cbnz    x27, _clr_up
+        adrp    x0, up_var
+        add     x0, x0, up_var
+        ldr     x0, [x0]
+        b       _clr_s0
+_clr_up
+        mov     x0, x27
+_clr_s0
+        ldr     x22, [x0, #TU_S0]
         mov     x20, #0
 XCLEARSTACK_END
         NEXT
 
         BOOT_WORD SP0, SP0 ( -- addr ) empty data-stack pointer, 0, XSP0, XSP0_END
 XSP0
-        adrp    x1, data_stack
-        add     x1, x1, data_stack
-        add     x0, x1, #1, lsl #12
+        cbnz    x27, _sp0_up
+        adrp    x2, up_var
+        add     x2, x2, up_var
+        ldr     x2, [x2]
+        b       _sp0_s0
+_sp0_up
+        mov     x2, x27
+_sp0_s0
+        ldr     x0, [x2, #TU_S0]
+        sub     x1, x0, #1, lsl #12
         cmp     x22, x0
         b.hi    _sp0_fix
         cmp     x22, x1
@@ -951,9 +971,15 @@ XBranch_END
 
         BOOT_WORD 0BRANCH, 0BRANCH ( flag -- ) branch if zero, 0, X0Branch, X0Branch_END
 X0Branch
-        adrp    x1, data_stack
-        add     x1, x1, data_stack
-        add     x1, x1, #1, lsl #12
+        cbnz    x27, _0br_up
+        adrp    x1, up_var
+        add     x1, x1, up_var
+        ldr     x1, [x1]
+        b       _0br_s0
+_0br_up
+        mov     x1, x27
+_0br_s0
+        ldr     x1, [x1, #TU_S0]
         cbz     x20, _0br_true
         cmp     x22, x1
         b.hs    _0br_empty_skip
@@ -1127,9 +1153,7 @@ _throw_tos_snap
         ldr     x0, [x23], #8
         str     x0, [x7]
         ldr     x0, [x23], #8
-        adrp    x3, eval_resume_sp
-        add     x3, x3, eval_resume_sp
-        str     x0, [x3]
+        UP_STORE x0, TU_EVAL_SP
         sub     sp, sp, #80
         stp     x29, x30, [sp, #32]
         stp     x5, x20, [sp, #48]
@@ -1176,9 +1200,7 @@ XPARSE
         ldr     x20, [x22], #8
         bl      _cursor_load
         mov     x9, x0
-        adrp    x3, source_end
-        add     x3, x3, source_end
-        ldr     x6, [x3]
+        UP_SRC_END x6
         mov     x3, x9
 _parse_scan
         cmp     x3, x6
@@ -1213,9 +1235,7 @@ XWORD
         stp     x29, x30, [sp, #32]
         mov     w7, w20
         bl      _cursor_load
-        adrp    x3, source_end
-        add     x3, x3, source_end
-        ldr     x9, [x3]
+        UP_SRC_END x9
 _word_skip
         cmp     x0, x9
         b.hs    _word_empty
@@ -1285,8 +1305,11 @@ _word_store
         mov     x5, #63
 _word_len_ok
         bl      _cursor_commit
+        UP_LOAD x6, TU_WORD_PTR
+        cbnz    x6, _word_have
         adrp    x6, word_scratch
         add     x6, x6, word_scratch
+_word_have
         strb    w5, [x6]
         mov     x1, #0
 _word_copy
@@ -1304,8 +1327,11 @@ _word_done
         NEXT
 _word_empty
         bl      _cursor_commit
+        UP_LOAD x6, TU_WORD_PTR
+        cbnz    x6, _word_empty_have
         adrp    x6, word_scratch
         add     x6, x6, word_scratch
+_word_empty_have
         strb    wzr, [x6]
         mov     x20, x6
         ldp     x29, x30, [sp, #32]
@@ -1320,9 +1346,7 @@ XDOTPAREN
         mov     w7, #41
         bl      _cursor_load
         mov     x9, x0
-        adrp    x3, source_end
-        add     x3, x3, source_end
-        ldr     x6, [x3]
+        UP_SRC_END x6
         mov     x3, x9
 _dotp_scan
         cmp     x3, x6
@@ -1352,17 +1376,13 @@ _dotp_go
 
         BOOT_WORD_BSLASH  ( -- ) comment to end of line (immediate), FLAG_IMM, XBACKSLASH, 0
 XBACKSLASH
-        adrp    x0, blk_var
-        add     x0, x0, blk_var
-        ldr     x0, [x0]
+        UP_LOAD x0, TU_BLK
         cbnz    x0, _bs_block
         sub     sp, sp, #64
         stp     x29, x30, [sp, #32]
         bl      _cursor_load
         mov     x10, x0
-        adrp    x3, source_end
-        add     x3, x3, source_end
-        ldr     x9, [x3]
+        UP_SRC_END x9
 _bs_loop
         cmp     x10, x9
         b.hs    _bs_done
@@ -1381,16 +1401,9 @@ _bs_done
         add     sp, sp, #64
         NEXT
 _bs_block
-        adrp    x0, to_in
-        add     x0, x0, to_in
-        ldr     x1, [x0]
-        adrp    x2, source_base
-        add     x2, x2, source_base
-        ldr     x3, [x2]
-        adrp    x2, source_end
-        add     x2, x2, source_end
-        ldr     x2, [x2]
-        sub     x2, x2, x3
+        UP_LOAD x1, TU_TO_IN
+        UP_LOAD x3, TU_SRC_ADDR
+        UP_LOAD x2, TU_SRC_LEN
         lsr     x5, x1, #6
         add     x5, x5, #1
         lsl     x5, x5, #6
@@ -1398,11 +1411,9 @@ _bs_block
         b.ls    _bs_blk_ok
         mov     x5, x2
 _bs_blk_ok
-        str     x5, [x0]
+        UP_STORE x5, TU_TO_IN
         add     x3, x3, x5
-        adrp    x0, source_cur
-        add     x0, x0, source_cur
-        str     x3, [x0]
+        UP_STORE x3, TU_WORD_CURSOR
         NEXT
 
         BOOT_WORD (, ( -- ) comment until ) (immediate), FLAG_IMM, XPAREN, 0
@@ -1411,9 +1422,7 @@ XPAREN
         stp     x29, x30, [sp, #32]
         bl      _cursor_load
         mov     x10, x0
-        adrp    x3, source_end
-        add     x3, x3, source_end
-        ldr     x9, [x3]
+        UP_SRC_END x9
 _par_loop
         cmp     x10, x9
         b.hs    _par_eol
@@ -1427,17 +1436,13 @@ _par_found
         add     x10, x10, #1
         b       _par_store
 _par_eol
-        adrp    x0, line_mode
-        add     x0, x0, line_mode
-        ldr     x0, [x0]
+        UP_LOAD x0, TU_LINE_MODE
         cbz     x0, _par_store
         bl      _take_line
         cbz     x0, _par_eof
         bl      _cursor_load
         mov     x10, x0
-        adrp    x3, source_end
-        add     x3, x3, source_end
-        ldr     x9, [x3]
+        UP_SRC_END x9
         b       _par_loop
 _par_eof
         bl      _cursor_load
@@ -1468,9 +1473,7 @@ XSQUOTE
         stp     x29, x30, [sp, #32]
         bl      _cursor_load
         mov     x1, x0
-        adrp    x3, source_end
-        add     x3, x3, source_end
-        ldr     x6, [x3]
+        UP_SRC_END x6
         mov     x9, x1
 _sq_scan
         cmp     x1, x6
@@ -1510,10 +1513,11 @@ _sq_comp
         ldr     x0, [sp, #56]
         bl      _compile_cell
         ldr     x5, [sp, #56]
+        mov     x0, x5
+        bl      _here_reserve
+        mov     x1, x0
+        ldr     x5, [sp, #56]
         ldr     x9, [sp, #48]
-        adrp    x0, here_ptr
-        add     x0, x0, here_ptr
-        ldr     x1, [x0]
         mov     x3, #0
 _sq_cpy
         cmp     x3, x5
@@ -1523,10 +1527,6 @@ _sq_cpy
         add     x3, x3, #1
         b       _sq_cpy
 _sq_align
-        add     x1, x1, x5
-        add     x1, x1, #7
-        bic     x1, x1, #7
-        str     x1, [x0]
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #96
         NEXT
@@ -1549,9 +1549,7 @@ XCQUOTE
         stp     x29, x30, [sp, #32]
         bl      _cursor_load
         mov     x1, x0
-        adrp    x3, source_end
-        add     x3, x3, source_end
-        ldr     x6, [x3]
+        UP_SRC_END x6
         mov     x9, x1
 _cq_scan
         cmp     x1, x6
@@ -1604,10 +1602,11 @@ _cq_comp
         ldr     x0, [x0]
         bl      _compile_cell
         ldr     x5, [sp, #56]
+        add     x0, x5, #1
+        bl      _here_reserve
+        mov     x1, x0
+        ldr     x5, [sp, #56]
         ldr     x9, [sp, #48]
-        adrp    x0, here_ptr
-        add     x0, x0, here_ptr
-        ldr     x1, [x0]
         strb    w5, [x1], #1
         mov     x3, #0
 _cq_cpy
@@ -1618,10 +1617,6 @@ _cq_cpy
         add     x3, x3, #1
         b       _cq_cpy
 _cq_align
-        add     x1, x1, x5
-        add     x1, x1, #7
-        bic     x1, x1, #7
-        str     x1, [x0]
         ldp     x29, x30, [sp, #32]
         add     sp, sp, #96
         NEXT
